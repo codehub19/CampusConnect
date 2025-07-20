@@ -14,11 +14,11 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import type { User, Chat, CampusEvent, MissedConnectionPost } from '@/lib/types';
-import { getFirestore, collection, query, where, getDocs, orderBy, limit, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
+import { getFirestore, collection, query, where, getDocs, orderBy, limit, onSnapshot, doc, deleteDoc, updateDoc, arrayRemove } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { format } from 'date-fns';
-import { Pencil, Trash2, Users, MessageSquareText, Newspaper, Calendar } from 'lucide-react';
+import { Pencil, Trash2, Users, MessageSquareText, Newspaper, Calendar, UserMinus } from 'lucide-react';
 import CreateEventView from './create-event-view';
 
 interface ProfileViewProps {
@@ -110,6 +110,18 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
     }
   };
 
+  const handleRemoveFriend = async (friendId: string) => {
+    const meRef = doc(db, 'users', user.id);
+    const friendRef = doc(db, 'users', friendId);
+    try {
+        await updateDoc(meRef, { friends: arrayRemove(friendId) });
+        await updateDoc(friendRef, { friends: arrayRemove(user.id) });
+        toast({ title: "Friend Removed" });
+    } catch (error) {
+        toast({ variant: 'destructive', title: "Error", description: "Could not remove friend." });
+    }
+  };
+
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => setFormData(prev => ({ ...prev, [e.target.id]: e.target.value }));
   const handleGenderChange = (value: string) => setFormData(prev => ({ ...prev, gender: value as User['gender'] }));
   const handleInterestChange = (interest: string, checked: boolean) => {
@@ -129,7 +141,7 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="p-0">
+      <DialogContent className="p-0 max-w-3xl">
         <ScrollArea className="max-h-[90vh]">
           <div className="p-6">
             <DialogHeader className="mb-6">
@@ -237,7 +249,24 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
                         {friends.length > 0 ? friends.map(friend => (
                             <div key={friend.id} className="flex items-center gap-3 p-2 rounded-md bg-secondary/50">
                                 <Avatar className="h-9 w-9"><AvatarImage src={friend.avatar} alt={friend.name} /><AvatarFallback>{friend.name.charAt(0)}</AvatarFallback></Avatar>
-                                <span className="font-medium">{friend.name}</span>
+                                <span className="font-medium flex-grow">{friend.name}</span>
+                                <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive">
+                                            <UserMinus className="h-4 w-4" />
+                                        </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent>
+                                        <AlertDialogHeader>
+                                            <AlertDialogTitle>Remove Friend?</AlertDialogTitle>
+                                            <AlertDialogDescription>Are you sure you want to remove {friend.name} from your friends?</AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                            <AlertDialogAction onClick={() => handleRemoveFriend(friend.id)}>Remove</AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
                             </div>
                         )) : <p className="text-sm text-muted-foreground px-2">No friends yet. Start chatting to add some!</p>}
                     </CardContent>

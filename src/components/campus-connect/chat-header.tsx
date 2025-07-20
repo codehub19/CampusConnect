@@ -3,7 +3,7 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquarePlus, LogOut, Video, Gamepad2, UserPlus, ShieldAlert, MoreVertical, UserCheck, Menu } from 'lucide-react';
+import { Loader2, MessageSquarePlus, LogOut, Video, Gamepad2, UserPlus, ShieldAlert, MoreVertical, UserCheck, Menu, UserMinus, Search } from 'lucide-react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -25,7 +25,9 @@ interface ChatHeaderProps {
   activeView: ActiveView;
   onFindChat: () => void;
   onLeaveChat: () => void;
+  onGoToWelcome: () => void;
   onAddFriend: () => void;
+  onRemoveFriend: () => void;
   onBlockUser: () => void;
   onStartGame: () => void;
   onVideoCall: () => void;
@@ -34,7 +36,7 @@ interface ChatHeaderProps {
   isGuest?: boolean;
 }
 
-export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSearching, onAddFriend, onBlockUser, isFriend, isGuest, onStartGame, onVideoCall }: ChatHeaderProps) {
+export default function ChatHeader({ activeView, onFindChat, onLeaveChat, onGoToWelcome, onAddFriend, onRemoveFriend, onBlockUser, isSearching, isFriend, isGuest, onStartGame, onVideoCall }: ChatHeaderProps) {
   const { toast } = useToast();
 
   const renderContent = () => {
@@ -94,14 +96,25 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSear
                         {isFriend ? <UserCheck className="mr-2 h-4 w-4 text-green-500" /> : <UserPlus className="mr-2 h-4 w-4" /> }
                         <span>{isFriend ? "Already friends" : "Add friend"}</span>
                     </DropdownMenuItem>
-                    <DropdownMenuItem 
-                        className="text-destructive focus:text-destructive-foreground focus:bg-destructive sm:hidden"
-                        onSelect={onLeaveChat}
-                    >
-                      <LogOut className="mr-2 h-4 w-4" />
-                      <span>Leave Chat</span>
-                    </DropdownMenuItem>
+                    {!isFriend && (
+                        <DropdownMenuItem 
+                            className="text-destructive focus:text-destructive-foreground focus:bg-destructive sm:hidden"
+                            onSelect={onLeaveChat}
+                        >
+                          <LogOut className="mr-2 h-4 w-4" />
+                          <span>Leave Chat</span>
+                        </DropdownMenuItem>
+                    )}
                     <DropdownMenuSeparator className="sm:hidden" />
+                    {isFriend && (
+                        <DropdownMenuItem 
+                            className="text-destructive focus:text-destructive-foreground focus:bg-destructive"
+                            onSelect={onRemoveFriend}
+                        >
+                          <UserMinus className="mr-2 h-4 w-4" />
+                          <span>Remove Friend</span>
+                        </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem 
                         className="text-destructive focus:text-destructive-foreground focus:bg-destructive"
                         onSelect={onBlockUser}
@@ -111,10 +124,17 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSear
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <Button onClick={onLeaveChat} variant="destructive" size="sm" className="ml-2 hidden sm:inline-flex">
-                    <LogOut className="mr-2 h-4 w-4" />
-                    Leave
-                </Button>
+                {isFriend ? (
+                    <Button onClick={onGoToWelcome} variant="outline" size="sm" className="ml-2 hidden sm:inline-flex">
+                        <Search className="mr-2 h-4 w-4" />
+                        Find Chat
+                    </Button>
+                ) : (
+                    <Button onClick={onLeaveChat} variant="destructive" size="sm" className="ml-2 hidden sm:inline-flex">
+                        <LogOut className="mr-2 h-4 w-4" />
+                        Leave
+                    </Button>
+                )}
             </div>
           </>
         );

@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Bot, MessageSquare, Home, HeartCrack } from 'lucide-react';
+import { Bot, MessageSquare, Home, HeartCrack, UserX } from 'lucide-react';
 import {
   SidebarProvider,
   Sidebar,
@@ -17,7 +17,8 @@ import {
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import ChatView from '@/components/campus-connect/chat-view';
 import AiAssistantView from '@/components/campus-connect/ai-assistant-view';
 import WelcomeView from '@/components/campus-connect/welcome-view';
@@ -28,7 +29,7 @@ import ConnectFour from '@/components/campus-connect/connect-four';
 import DotsAndBoxes from '@/components/campus-connect/dots-and-boxes';
 import { useAuth } from '@/hooks/use-auth';
 import type { User, Chat, FriendRequest, GameState, GameType } from '@/lib/types';
-import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where, getDocs, deleteDoc, addDoc, updateDoc, serverTimestamp, arrayUnion, writeBatch, limit, runTransaction } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where, getDocs, deleteDoc, addDoc, updateDoc, serverTimestamp, arrayUnion, writeBatch, limit, runTransaction, arrayRemove } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import VideoCallView from './video-call-view';
@@ -54,6 +55,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   const [isSearching, setIsSearching] = useState(false);
   const [incomingCall, setIncomingCall] = useState<{ chat: Chat, from: User } | null>(null);
   const [isVideoCallOpen, setVideoCallOpen] = useState(false);
+  const [friendToRemove, setFriendToRemove] = useState<User | null>(null);
   
   const { toast } = useToast();
   const db = getFirestore(firebaseApp);
@@ -325,8 +327,8 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
       const chatRef = doc(db, 'chats', chat.id);
       
       const chatSnap = await getDoc(chatRef);
-      if(chatSnap.exists()) {
-         // Mark the user as inactive
+      if(chatSnap.exists() && !chatSnap.data().isFriendChat) {
+         // Mark the user as inactive in non-friend chats
         await updateDoc(chatRef, {
             [`usersData.${user.uid}.online`]: false
         });
@@ -357,6 +359,30 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     } catch (error) {
         console.error("Error sending friend request:", error);
         toast({ variant: 'destructive', title: "Error", description: "Could not send friend request." });
+    }
+  };
+
+  const handleRemoveFriend = async () => {
+    if (!user || !friendToRemove) return;
+
+    const batch = writeBatch(db);
+
+    const meRef = doc(db, 'users', user.uid);
+    batch.update(meRef, { friends: arrayRemove(friendToRemove.id) });
+
+    const friendRef = doc(db, 'users', friendToRemove.id);
+    batch.update(friendRef, { friends: arrayRemove(user.uid) });
+    
+    try {
+        await batch.commit();
+        toast({ title: "Friend Removed", description: `You are no longer friends with ${friendToRemove.name}.` });
+        setActiveView({type: 'welcome'});
+        setActiveChat(null);
+    } catch (error) {
+        console.error("Error removing friend:", error);
+        toast({ variant: 'destructive', title: 'Error', description: 'Could not remove friend.' });
+    } finally {
+        setFriendToRemove(null);
     }
   };
 
@@ -529,9 +555,26 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         return <WelcomeView onFindChat={handleFindChat} />;
     }
   };
+  
+  const isFriend = (activeView.type === 'chat') ? profile.friends?.includes(activeView.data.user.id) : false;
 
   return (
     <SidebarProvider>
+       <AlertDialog open={!!friendToRemove} onOpenChange={(open) => !open && setFriendToRemove(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove Friend?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to remove {friendToRemove?.name} as a friend? You will no longer see this chat.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleRemoveFriend}>Remove</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
        {incomingCall && (
         <Dialog open={!!incomingCall} onOpenChange={() => setIncomingCall(null)}>
             <DialogContent>
@@ -681,12 +724,14 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
               activeView={activeView} 
               onFindChat={handleFindChat} 
               onLeaveChat={() => handleLeaveChat(false)}
+              onGoToWelcome={() => setActiveView({ type: 'welcome' })}
               isSearching={isSearching}
               onAddFriend={(activeView.type === 'chat') ? () => handleAddFriend(activeView.data.user.id) : () => {}}
+              onRemoveFriend={(activeView.type === 'chat') ? () => setFriendToRemove(activeView.data.user) : () => {}}
               onBlockUser={(activeView.type === 'chat') ? () => handleBlockUser(activeView.data.user.id) : () => {}}
               onStartGame={() => setGameCenterOpen(true)}
               onVideoCall={() => setVideoCallOpen(true)}
-              isFriend={(activeView.type === 'chat') ? profile.friends?.includes(activeView.data.user.id) : false}
+              isFriend={isFriend}
               isGuest={profile.isGuest || ((activeView.type === 'chat') && activeView.data.user.isGuest)}
             />
             <div className="flex-1 min-h-0">
