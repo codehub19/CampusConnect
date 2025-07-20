@@ -5,13 +5,15 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-import type { GameState } from '@/lib/types';
+import type { TicTacToeState } from '@/lib/types';
+import { useToast } from '@/hooks/use-toast';
+import { getFirestore, doc, runTransaction } from 'firebase/firestore';
+import { firebaseApp } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
 
 interface TicTacToeProps {
-    game: GameState;
+    game: TicTacToeState;
     currentUserId: string;
-    onMakeMove: (index: number) => void;
     onAcceptGame: () => void;
     onQuitGame: () => void;
 }
@@ -32,14 +34,75 @@ const Square = ({ value, onSquareClick, disabled }: { value: string | null; onSq
   );
 };
 
-export default function TicTacToe({ game, currentUserId, onMakeMove, onAcceptGame, onQuitGame }: TicTacToeProps) {
+export default function TicTacToe({ game, currentUserId, onAcceptGame, onQuitGame }: TicTacToeProps) {
   const isMyTurn = game.turn === currentUserId;
   const mySymbol = game.players[currentUserId];
+  const { toast } = useToast();
+  const db = getFirestore(firebaseApp);
+  const { user: authUser } = useAuth();
   
+  const handleMakeMove = async (index: number) => {
+    if (!authUser) return;
+    const partnerId = Object.keys(game.players).find(id => id !== authUser.uid)!;
+    const chatId = [authUser.uid, partnerId].sort().join('_');
+    const chatRef = doc(db, 'chats', chatId);
+
+    try {
+      await runTransaction(db, async (transaction) => {
+        const freshChatDoc = await transaction.get(chatRef);
+        if (!freshChatDoc.exists()) throw new Error("Chat does not exist");
+        
+        const freshGame = freshChatDoc.data().game as TicTacToeState;
+        if (!freshGame || freshGame.turn !== authUser.uid || freshGame.board[index] !== null || freshGame.status !== 'active') return;
+
+        const newBoard = [...freshGame.board];
+        newBoard[index] = freshGame.players[authUser.uid];
+
+        const calculateWinner = (squares: any[]) => {
+            const lines = [
+              [0, 1, 2], [3, 4, 5], [6, 7, 8],
+              [0, 3, 6], [1, 4, 7], [2, 5, 8],
+              [0, 4, 8], [2, 4, 6],
+            ];
+            for (let i = 0; i < lines.length; i++) {
+              const [a, b, c] = lines[i];
+              if (squares[a] && squares[a] === squares[b] && squares[a] === squares[c]) return squares[a];
+            }
+            return null;
+        };
+        
+        const winnerSymbol = calculateWinner(newBoard);
+        const isDraw = newBoard.every(cell => cell !== null);
+        let newStatus: 'active' | 'finished' | 'draw' = 'active';
+        let newWinner: string | null = null;
+        
+        if (winnerSymbol) {
+            newStatus = 'finished';
+            newWinner = Object.keys(freshGame.players).find(key => freshGame.players[key] === winnerSymbol) || null;
+        } else if (isDraw) {
+            newStatus = 'draw';
+        }
+
+        const newGameData = {
+          ...freshGame,
+          board: newBoard,
+          turn: newStatus === 'active' ? partnerId : null,
+          status: newStatus,
+          winner: newWinner,
+        };
+
+        transaction.update(chatRef, { game: newGameData });
+      });
+    } catch (e) {
+      console.error("Game move transaction failed:", e);
+      toast({ variant: 'destructive', title: "Error", description: "Could not make move." });
+    }
+  };
+
+
   const getStatusText = () => {
     if (game.status === 'pending') {
-        // If the current user is not the one who started the game
-        if (game.players[currentUserId] === 'O') {
+        if (game.initiatorId !== currentUserId) {
             return (
                 <div className="text-center space-y-4">
                     <p>Your opponent has invited you to play Tic-Tac-Toe!</p>
@@ -50,10 +113,11 @@ export default function TicTacToe({ game, currentUserId, onMakeMove, onAcceptGam
         return "Waiting for opponent to accept...";
     }
     if (game.status === 'finished') {
-        if (game.winner === 'draw') return "It's a draw!";
         if (game.winner === currentUserId) return "You win!";
         return "You lose!";
     }
+     if (game.status === 'draw') return "It's a draw!";
+
     if (isMyTurn) return `Your turn (${mySymbol})`;
     return "Opponent's turn";
   };
@@ -73,19 +137,14 @@ export default function TicTacToe({ game, currentUserId, onMakeMove, onAcceptGam
             <Square 
                 key={i} 
                 value={square} 
-                onSquareClick={() => onMakeMove(i)} 
+                onSquareClick={() => handleMakeMove(i)} 
                 disabled={game.status !== 'active' || !isMyTurn || square !== null}
             />
           ))}
         </div>
       </CardContent>
        <CardFooter className="flex-col gap-2">
-         {game.status === 'finished' && (
-            <Button variant="secondary" className="w-full" onClick={onQuitGame}>Back to Chat</Button>
-         )}
-         {game.status !== 'finished' && (
-            <Button variant="destructive" className="w-full" onClick={onQuitGame}>Quit Game</Button>
-         )}
+         {game.status !== 'pending' && <Button variant="destructive" className="w-full" onClick={onQuitGame}>Quit Game</Button>}
       </CardFooter>
     </Card>
   );

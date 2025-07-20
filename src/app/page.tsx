@@ -5,6 +5,7 @@ import AuthView from '@/components/campus-connect/auth-view';
 import { MainLayout } from '@/components/campus-connect/main-layout';
 import PolicyView from '@/components/campus-connect/policy-view';
 import { useState } from 'react';
+import ProfileSetupView from '@/components/campus-connect/profile-setup-view';
 
 function AppContent() {
   const { user, loading, profile } = useAuth();
@@ -36,6 +37,10 @@ function AppContent() {
 
   if (!user || !profile) {
     return <AuthView />;
+  }
+  
+  if (!profile.profileComplete && !profile.isGuest) {
+    return <ProfileSetupView />;
   }
   
   return <MainLayout />;

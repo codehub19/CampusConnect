@@ -63,7 +63,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
                await updateDoc(userDocRef, { online: true, lastSeen: serverTimestamp() });
             }
           } else {
-             // Profile will be created by auth functions
+             // Profile will be created by auth functions, let it proceed
           }
            setLoading(false);
         });
@@ -71,7 +71,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return () => unsubProfile();
 
       } else {
-        if (user && profile) { // User is signing out
+        if (user && profile) {
            const userDocRef = doc(db, 'users', user.uid);
            const docSnap = await getDoc(userDocRef);
            if (docSnap.exists()){
@@ -102,6 +102,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         friends: [],
         blockedUsers: [],
         isGuest,
+        profileComplete: isGuest, // Guests don't need profile setup
         ...data,
       };
       await setDoc(userDocRef, defaultProfile);
@@ -111,15 +112,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
     const result = await signInWithPopup(auth, provider);
-    await createProfile(result.user.uid, { 
-        name: result.user.displayName, 
-        avatar: result.user.photoURL 
-    });
+    const userDocRef = doc(db, 'users', result.user.uid);
+    const userDoc = await getDoc(userDocRef);
+    if (!userDoc.exists()) {
+        await createProfile(result.user.uid, { 
+            name: result.user.displayName, 
+            avatar: result.user.photoURL,
+            profileComplete: false,
+        });
+    }
   };
 
   const signUpWithEmail = async (email: string, password: string) => {
      const result = await createUserWithEmailAndPassword(auth, email, password);
-     await createProfile(result.user.uid, { name: email.split('@')[0] });
+     await createProfile(result.user.uid, { 
+        name: email.split('@')[0],
+        profileComplete: false,
+     });
   };
     
   const signInWithEmail = async (email: string, password: string) => {

@@ -23,24 +23,28 @@ import ChatView from '@/components/campus-connect/chat-view';
 import AiAssistantView from '@/components/campus-connect/ai-assistant-view';
 import WelcomeView from '@/components/campus-connect/welcome-view';
 import ChatHeader from '@/components/campus-connect/chat-header';
+import GameCenterView from '@/components/campus-connect/game-center-view';
+import TicTacToe from '@/components/campus-connect/tic-tac-toe';
+import ConnectFour from '@/components/campus-connect/connect-four';
+import DotsAndBoxes from '@/components/campus-connect/dots-and-boxes';
 import { useAuth } from '@/hooks/use-auth';
-import type { User, Chat, FriendRequest } from '@/lib/types';
+import type { User, Chat, FriendRequest, GameState, GameType } from '@/lib/types';
 import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where, getDocs, deleteDoc, addDoc, updateDoc, serverTimestamp, arrayUnion, writeBatch, limit, runTransaction } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
-import TicTacToe from './tic-tac-toe';
 import VideoCallView from './video-call-view';
 
 type ActiveView = 
   | { type: 'welcome' }
   | { type: 'ai' }
-  | { type: 'chat', data: { user: User, chat: Chat } }
-  | { type: 'game', data: { user: User, chat: Chat } };
+  | { type: 'chat', data: { user: User, chat: Chat } };
 
 export function MainLayout() {
   const { user, profile, logout, updateProfile } = useAuth();
   const [activeView, setActiveView] = useState<ActiveView>({ type: 'welcome' });
+  const [activeChat, setActiveChat] = useState<Chat | null>(null);
   const [isProfileOpen, setProfileOpen] = useState(false);
+  const [isGameCenterOpen, setGameCenterOpen] = useState(false);
   const [friends, setFriends] = useState<User[]>([]);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [isSearching, setIsSearching] = useState(false);
@@ -127,6 +131,7 @@ export function MainLayout() {
              const partnerDoc = await getDoc(doc(db, 'users', partnerId));
              if (partnerDoc.exists()) {
                 const partnerProfile = partnerDoc.data() as User;
+                setActiveChat(chatData);
                 setActiveView({ type: 'chat', data: { user: partnerProfile, chat: chatData } });
              }
           }
@@ -138,9 +143,9 @@ export function MainLayout() {
     return () => unsubscribe();
   }, [user, isSearching, db, profile]);
   
-  // Listen for incoming calls on the active chat
+  // Listen for incoming calls and game state on the active chat
   useEffect(() => {
-    if (activeView.type !== 'chat' && activeView.type !== 'game') return;
+    if (activeView.type !== 'chat') return;
 
     const { chat } = activeView.data;
     const chatRef = doc(db, 'chats', chat.id);
@@ -149,34 +154,13 @@ export function MainLayout() {
       if (!docSnap.exists()) return;
       const chatData = { id: docSnap.id, ...docSnap.data() } as Chat;
       
-      // Update local chat state
-      setActiveView(prev => {
-        if ((prev.type === 'chat' || prev.type === 'game') && prev.data.chat.id === chatData.id) {
-            const newType = chatData.game ? 'game' : 'chat';
-            return { type: newType, data: { ...prev.data, chat: chatData } };
-        }
-        return prev;
-      });
+      setActiveChat(chatData); // Keep the active chat state updated
       
       if (chatData.call && chatData.call.callerId !== user?.uid && !isVideoCallOpen) {
           const partner = activeView.data.user;
           setIncomingCall({ chat: chatData, from: partner });
       } else if (!chatData.call && incomingCall?.chat.id === chatData.id) {
-          // Caller hung up before answering
           setIncomingCall(null);
-      }
-
-      // Partner leaves chat notification
-      if (chatData.userIds.includes(user!.uid) && chatData.userIds.includes(activeView.data.user.id)) {
-        const partnerId = activeView.data.user.id;
-        const partnerDocInChat = (chatData as any).usersData?.[partnerId];
-        if (partnerDocInChat && !partnerDocInChat.online) {
-            toast({
-                title: 'User Left',
-                description: `${activeView.data.user.name} has left the chat.`,
-            });
-            handleLeaveChat();
-        }
       }
     });
     
@@ -189,7 +173,7 @@ export function MainLayout() {
     await updateProfile(updatedUser);
     if(profile) {
        setActiveView(prev => {
-        if((prev.type === 'chat' || prev.type === 'game') && prev.data.user.id === updatedUser.id) {
+        if(prev.type === 'chat' && prev.data.user.id === updatedUser.id) {
           return { ...prev, data: { ...prev.data, user: updatedUser } }
         }
         return prev;
@@ -219,11 +203,13 @@ export function MainLayout() {
         chatData = {id: chatDoc.id, ...chatDoc.data()} as Chat;
     }
     
+    setActiveChat(chatData);
     setActiveView({ type: 'chat', data: { user: friend, chat: chatData } });
   };
 
   const handleSelectAi = () => {
     setActiveView({ type: 'ai' });
+    setActiveChat(null);
   };
 
   const handleFindChat = async () => {
@@ -259,7 +245,7 @@ export function MainLayout() {
 
         if(!blockedByMe.includes(potentialPartner.id) && !blockedMe.includes(user.uid)) {
             partnerWaitingDocId = potentialPartner.id;
-            partner = partnerProfile; // Use the full profile
+            partner = partnerProfile;
             break;
         }
     }
@@ -276,6 +262,7 @@ export function MainLayout() {
 
         await updateDoc(doc(db, 'waiting_users', partnerWaitingDocId), { matchedChatId: newChatRef.id });
         
+        setActiveChat(newChat);
         setActiveView({type: 'chat', data: { user: partner, chat: newChat }});
         setIsSearching(false);
         toast({ title: "Chat found!", description: `You've been connected with ${partner.name}.` });
@@ -293,12 +280,20 @@ export function MainLayout() {
   };
   
   const handleLeaveChat = async () => {
-    if ((activeView.type === 'chat' || activeView.type === 'game') && user) {
-        const { chat } = activeView.data;
-        const userRef = doc(db, 'users', user.uid);
-        await updateDoc(userRef, { online: false, lastSeen: serverTimestamp() });
+    if (activeView.type === 'chat' && user) {
+      const { chat } = activeView.data;
+      const chatRef = doc(db, 'chats', chat.id);
+      
+      const chatSnap = await getDoc(chatRef);
+      if(chatSnap.exists() && !chatSnap.data().isFriendChat) {
+         // For non-friend chats, mark the user as inactive
+        await updateDoc(chatRef, {
+            [`usersData.${user.uid}.online`]: false
+        });
+      }
     }
     setActiveView({ type: 'welcome' });
+    setActiveChat(null);
     toast({ title: "You left the chat."});
   }
 
@@ -355,110 +350,73 @@ export function MainLayout() {
       handleLeaveChat();
   }
 
-  const handleStartGame = async (gameType: 'ticTacToe') => {
-      if (activeView.type !== 'chat') return;
-      if (!user) return;
+  const handleInviteToGame = async (gameType: GameType) => {
+    if (activeView.type !== 'chat') return;
+    if (!user) return;
 
-      const { chat } = activeView.data;
-      const chatRef = doc(db, 'chats', chat.id);
-
-      const initialGameState: any = {
-        type: gameType,
-        status: 'pending',
-        board: Array(9).fill(null),
-        turn: activeView.data.user.id,
-        players: {
-            [user.uid]: 'X',
-            [activeView.data.user.id]: 'O'
-        },
-        winner: null,
-      };
-
-      await updateDoc(chatRef, { game: initialGameState });
-  };
-
-  const handleMakeMove = async (index: number) => {
-    if (activeView.type !== 'game') return;
     const { chat, user: partner } = activeView.data;
-    const { game } = chat;
-    if (!game || game.status !== 'active' || game.turn !== user?.uid || game.board[index] !== null) {
-      return;
-    }
-    
     const chatRef = doc(db, 'chats', chat.id);
+
+    let initialGameState: GameState | null = null;
     
-    try {
-      await runTransaction(db, async (transaction) => {
-        const freshChatDoc = await transaction.get(chatRef);
-        if (!freshChatDoc.exists()) throw new Error("Chat does not exist");
-        
-        const freshGame = freshChatDoc.data().game;
-        if (!freshGame || freshGame.turn !== user?.uid || freshGame.board[index] !== null) return;
-
-        const newBoard = [...freshGame.board];
-        newBoard[index] = freshGame.players[user!.uid];
-
-        const calculateWinner = (squares: any[]) => {
-            const lines = [
-              [0, 1, 2], [3, 4, 5], [6, 7, 8],
-              [0, 3, 6], [1, 4, 7], [2, 5, 8],
-              [0, 4, 8], [2, 4, 6],
-            ];
-            for (let i = 0; i < lines.length; i++) {
-              const [a, b, c] = lines[i];
-              if (squares[a] && squares[a] === squares[b] && squares[a] === squares[c]) {
-                return squares[a];
-              }
-            }
-            return null;
+    if (gameType === 'ticTacToe') {
+        initialGameState = {
+            type: 'ticTacToe',
+            status: 'pending',
+            board: Array(9).fill(null),
+            turn: partner.id,
+            players: { [user.uid]: 'X', [partner.id]: 'O' },
+            winner: null,
+            initiatorId: user.uid,
         };
-        
-        const winnerSymbol = calculateWinner(newBoard);
-        const isDraw = newBoard.every(cell => cell !== null);
-        let newStatus = freshGame.status;
-        let newWinner: string | null = null;
-        
-        if (winnerSymbol) {
-            newStatus = 'finished';
-            newWinner = Object.keys(freshGame.players).find(key => freshGame.players[key] === winnerSymbol) || null;
-        } else if (isDraw) {
-            newStatus = 'finished';
-            newWinner = 'draw';
-        }
-
-        const newGameData = {
-          ...freshGame,
-          board: newBoard,
-          turn: newStatus === 'finished' ? null : partner.id,
-          status: newStatus,
-          winner: newWinner,
+    } else if (gameType === 'connectFour') {
+        initialGameState = {
+            type: 'connectFour',
+            status: 'pending',
+            board: Array(42).fill(null),
+            turn: partner.id,
+            players: { [user.uid]: 1, [partner.id]: 2 },
+            winner: null,
+            initiatorId: user.uid,
         };
-
-        transaction.update(chatRef, { game: newGameData });
-      });
-    } catch (e) {
-      console.error("Game move transaction failed:", e);
-      toast({ variant: 'destructive', title: "Error", description: "Could not make move." });
+    } else if (gameType === 'dotsAndBoxes') {
+        const gridSize = 4;
+        initialGameState = {
+            type: 'dotsAndBoxes',
+            status: 'pending',
+            gridSize,
+            h_lines: Array((gridSize + 1) * gridSize).fill(null),
+            v_lines: Array(gridSize * (gridSize + 1)).fill(null),
+            boxes: Array(gridSize * gridSize).fill(null),
+            scores: { [user.uid]: 0, [partner.id]: 0 },
+            turn: partner.id,
+            players: { [user.uid]: 'p1', [partner.id]: 'p2' },
+            winner: null,
+            initiatorId: user.uid,
+        };
     }
+    await updateDoc(chatRef, { game: initialGameState });
+    setGameCenterOpen(false);
   };
-
+  
   const handleAcceptGame = async () => {
-    if (activeView.type !== 'game') return;
-    const chatRef = doc(db, 'chats', activeView.data.chat.id);
+    if (activeView.type !== 'chat' || !activeChat?.game) return;
+    const chatRef = doc(db, 'chats', activeChat.id);
     await updateDoc(chatRef, { 
         'game.status': 'active',
-        'game.turn': activeView.data.user.id, // Initiator's turn
+        'game.turn': activeChat.game.initiatorId,
     });
   };
   
   const handleQuitGame = async () => {
-      if (activeView.type !== 'game') return;
-      const chatRef = doc(db, 'chats', activeView.data.chat.id);
+      if (activeView.type !== 'chat' || !activeChat?.game) return;
+      const chatRef = doc(db, 'chats', activeChat.id);
       await updateDoc(chatRef, { game: null });
   };
   
   const handleAnswerCall = () => {
     if (!incomingCall) return;
+    setActiveChat(incomingCall.chat);
     setActiveView({ type: 'chat', data: { user: incomingCall.from, chat: incomingCall.chat } });
     setVideoCallOpen(true);
     setIncomingCall(null);
@@ -480,8 +438,22 @@ export function MainLayout() {
     return null; 
   }
 
+  const renderGameView = () => {
+      if (!activeChat?.game) return null;
+      switch (activeChat.game.type) {
+          case 'ticTacToe':
+              return <TicTacToe game={activeChat.game} currentUserId={user.uid} onAcceptGame={handleAcceptGame} onQuitGame={handleQuitGame} />;
+          case 'connectFour':
+              return <ConnectFour game={activeChat.game} currentUserId={user.uid} onAcceptGame={handleAcceptGame} onQuitGame={handleQuitGame} />;
+          case 'dotsAndBoxes':
+              return <DotsAndBoxes game={activeChat.game} currentUserId={user.uid} onAcceptGame={handleAcceptGame} onQuitGame={handleQuitGame} />;
+          default:
+              return null;
+      }
+  };
+
   const renderView = () => {
-    if (isVideoCallOpen && (activeView.type === 'chat' || activeView.type === 'game')) {
+    if (isVideoCallOpen && activeView.type === 'chat') {
         return (
             <Dialog open={isVideoCallOpen} onOpenChange={setVideoCallOpen}>
               <VideoCallView 
@@ -496,23 +468,16 @@ export function MainLayout() {
 
     switch (activeView.type) {
       case 'chat':
-        return <ChatView chat={activeView.data.chat} currentUser={profile} />;
-      case 'game':
-        if (!activeView.data.chat.game) return <ChatView chat={activeView.data.chat} currentUser={profile} />;
         return (
-            <div className="h-full flex flex-col md:flex-row">
+             <div className="h-full flex flex-col md:flex-row">
                 <div className="flex-1 min-h-0">
                     <ChatView chat={activeView.data.chat} currentUser={profile} />
                 </div>
-                <div className="md:w-[400px] md:border-l">
-                    <TicTacToe 
-                        game={activeView.data.chat.game} 
-                        currentUserId={user.uid}
-                        onMakeMove={handleMakeMove}
-                        onAcceptGame={handleAcceptGame}
-                        onQuitGame={handleQuitGame}
-                    />
-                </div>
+                {activeChat?.game && (
+                    <div className="md:w-[400px] md:border-l bg-card flex-shrink-0">
+                       {renderGameView()}
+                    </div>
+                )}
             </div>
         )
       case 'ai':
@@ -541,6 +506,13 @@ export function MainLayout() {
             </DialogContent>
         </Dialog>
       )}
+
+       <Dialog open={isGameCenterOpen} onOpenChange={setGameCenterOpen}>
+           <GameCenterView 
+                onInvite={handleInviteToGame}
+                isGuest={profile.isGuest}
+           />
+       </Dialog>
 
       <Sidebar>
         <SidebarHeader>
@@ -622,7 +594,7 @@ export function MainLayout() {
                     <SidebarMenuItem key={friend.id}>
                       <SidebarMenuButton
                         onClick={() => handleSelectChat(friend)}
-                        isActive={(activeView.type === 'chat' || activeView.type === 'game') && activeView.data?.user.id === friend.id}
+                        isActive={activeView.type === 'chat' && activeView.data?.user.id === friend.id}
                         tooltip={friend.name}
                       >
                         <Avatar className="h-6 w-6 relative flex items-center justify-center">
@@ -656,12 +628,12 @@ export function MainLayout() {
               onFindChat={handleFindChat} 
               onLeaveChat={handleLeaveChat}
               isSearching={isSearching}
-              onAddFriend={handleAddFriend}
-              onBlockUser={handleBlockUser}
-              onStartGame={() => handleStartGame('ticTacToe')}
+              onAddFriend={(activeView.type === 'chat') ? () => handleAddFriend(activeView.data.user.id) : () => {}}
+              onBlockUser={(activeView.type === 'chat') ? () => handleBlockUser(activeView.data.user.id) : () => {}}
+              onStartGame={() => setGameCenterOpen(true)}
               onVideoCall={() => setVideoCallOpen(true)}
-              isFriend={(activeView.type === 'chat' || activeView.type === 'game') ? profile.friends?.includes(activeView.data.user.id) : false}
-              isGuest={profile.isGuest || ((activeView.type === 'chat' || activeView.type === 'game') && activeView.data.user.isGuest)}
+              isFriend={(activeView.type === 'chat') ? profile.friends?.includes(activeView.data.user.id) : false}
+              isGuest={profile.isGuest || ((activeView.type === 'chat') && activeView.data.user.isGuest)}
             />
             <div className="flex-1 min-h-0">
               {renderView()}

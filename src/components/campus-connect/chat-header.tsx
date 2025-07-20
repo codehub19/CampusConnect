@@ -18,16 +18,15 @@ import { SidebarTrigger } from '@/components/ui/sidebar';
 type ActiveView = 
   | { type: 'welcome' }
   | { type: 'ai' }
-  | { type: 'chat', data: { user: User, chat: Chat } }
-  | { type: 'game', data: { user: User, chat: Chat } };
+  | { type: 'chat', data: { user: User, chat: Chat } };
 
 interface ChatHeaderProps {
   activeView: ActiveView;
   onFindChat: () => void;
   onLeaveChat: () => void;
-  onAddFriend: (friendId: string) => void;
-  onBlockUser: (userId: string) => void;
-  onStartGame: (gameType: 'ticTacToe') => void;
+  onAddFriend: () => void;
+  onBlockUser: () => void;
+  onStartGame: () => void;
   onVideoCall: () => void;
   isSearching: boolean;
   isFriend?: boolean;
@@ -37,22 +36,9 @@ interface ChatHeaderProps {
 export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSearching, onAddFriend, onBlockUser, isFriend, isGuest, onStartGame, onVideoCall }: ChatHeaderProps) {
   const { toast } = useToast();
 
-  const handleAddFriendClick = () => {
-    if (activeView.type === 'chat' || activeView.type === 'game') {
-        onAddFriend(activeView.data.user.id);
-    }
-  }
-
-  const handleBlockUserClick = () => {
-     if (activeView.type === 'chat' || activeView.type === 'game') {
-        onBlockUser(activeView.data.user.id);
-     }
-  }
-
   const renderContent = () => {
     switch (activeView.type) {
       case 'chat':
-      case 'game':
         const { user } = activeView.data;
         return (
           <>
@@ -76,14 +62,14 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSear
                     variant="ghost" 
                     size="icon" 
                     className="rounded-full" 
-                    onClick={handleAddFriendClick} 
+                    onClick={onAddFriend} 
                     disabled={isFriend || isGuest}
                     title={isGuest ? "Sign up to add friends" : (isFriend ? "Already friends" : "Add friend")}
                 >
                     {isFriend ? <UserCheck className="h-5 w-5 text-green-500" /> : <UserPlus className="h-5 w-5" /> }
                     <span className="sr-only">Add Friend</span>
                 </Button>
-                <Button variant="ghost" size="icon" className="rounded-full" onClick={() => onStartGame('ticTacToe')}>
+                <Button variant="ghost" size="icon" className="rounded-full" onClick={onStartGame}>
                     <Gamepad2 className="h-5 w-5" />
                     <span className="sr-only">Play Game</span>
                 </Button>
@@ -101,7 +87,7 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSear
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem 
                         className="text-destructive focus:text-destructive-foreground focus:bg-destructive"
-                        onSelect={handleBlockUserClick}
+                        onSelect={onBlockUser}
                     >
                       <ShieldAlert className="mr-2 h-4 w-4" />
                       <span>Block User</span>

@@ -9,6 +9,7 @@ export interface User {
   isGuest?: boolean;
   friends?: string[];
   blockedUsers?: string[];
+  profileComplete?: boolean;
 }
 
 export interface Message {
@@ -18,14 +19,43 @@ export interface Message {
   timestamp: any;
 }
 
-export interface GameState {
+export type GameType = 'ticTacToe' | 'connectFour' | 'dotsAndBoxes';
+
+export interface BaseGameState {
+    type: GameType;
+    status: 'pending' | 'active' | 'finished' | 'draw';
+    winner: string | null;
+    initiatorId: string;
+    players: { [key: string]: any };
+}
+
+export interface TicTacToeState extends BaseGameState {
     type: 'ticTacToe';
-    status: 'pending' | 'active' | 'finished';
     board: (string | null)[];
     turn: string | null;
     players: { [key: string]: 'X' | 'O' };
-    winner: string | null | 'draw';
 }
+
+export interface ConnectFourState extends BaseGameState {
+    type: 'connectFour';
+    board: (number | null)[];
+    turn: string | null;
+    players: { [key: string]: 1 | 2 };
+}
+
+export interface DotsAndBoxesState extends BaseGameState {
+    type: 'dotsAndBoxes';
+    gridSize: number;
+    h_lines: (string | null)[];
+    v_lines: (string | null)[];
+    boxes: (string | null)[];
+    scores: { [key: string]: number };
+    turn: string | null;
+    players: { [key: string]: 'p1' | 'p2' };
+}
+
+export type GameState = TicTacToeState | ConnectFourState | DotsAndBoxesState;
+
 
 export interface Chat {
   id: string;
@@ -37,6 +67,12 @@ export interface Chat {
     offer: any;
     answer?: any;
     callerId: string;
+  }
+  isFriendChat?: boolean;
+  usersData?: {
+      [key: string]: {
+          online: boolean;
+      }
   }
 }
 
