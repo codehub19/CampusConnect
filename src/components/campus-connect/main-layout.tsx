@@ -33,6 +33,7 @@ import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where
 import { firebaseApp } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import VideoCallView from './video-call-view';
+import { generateIcebreaker } from '@/ai/flows/generate-icebreaker';
 
 type ActiveView = 
   | { type: 'welcome' }
@@ -196,6 +197,27 @@ export function MainLayout({ onNavigateHome }: MainLayoutProps) {
     }
   };
 
+  const addIcebreakerMessage = async (chatId: string, currentUser: User, partnerUser: User) => {
+    try {
+      const result = await generateIcebreaker({
+        userName1: currentUser.name,
+        interests1: currentUser.interests,
+        userName2: partnerUser.name,
+        interests2: partnerUser.interests,
+      });
+
+      const messagesRef = collection(db, "chats", chatId, "messages");
+      await addDoc(messagesRef, {
+          senderId: 'ai-assistant',
+          text: result.icebreaker,
+          timestamp: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error("Failed to generate icebreaker:", error);
+      // Fail silently, don't block chat experience
+    }
+  };
+
   const handleSelectChat = async (friend: User) => {
     if(!user || !profile) return;
     
@@ -218,6 +240,7 @@ export function MainLayout({ onNavigateHome }: MainLayoutProps) {
         }
       };
       await setDoc(chatDocRef, newChat);
+      await addIcebreakerMessage(chatId, profile, friend);
       chatData = newChat;
     } else {
         chatData = {id: chatDoc.id, ...chatDoc.data()} as Chat;
@@ -274,7 +297,7 @@ export function MainLayout({ onNavigateHome }: MainLayoutProps) {
     }
 
 
-    if (partner && partnerWaitingDocId) {
+    if (partner && partnerWaitingDocId && profile) {
         const newChatRef = doc(collection(db, 'chats'));
         const newChat: Chat = {
             id: newChatRef.id,
@@ -287,6 +310,8 @@ export function MainLayout({ onNavigateHome }: MainLayoutProps) {
             }
         };
         await setDoc(newChatRef, newChat);
+
+        await addIcebreakerMessage(newChatRef.id, profile, partner);
 
         await updateDoc(doc(db, 'waiting_users', partnerWaitingDocId), { matchedChatId: newChatRef.id });
         

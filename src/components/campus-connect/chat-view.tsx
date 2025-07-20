@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send } from 'lucide-react';
+import { Send, Bot } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter } from '@/components/ui/card';
@@ -77,25 +77,35 @@ export default function ChatView({ chat, currentUser }: ChatViewProps) {
                 key={message.id}
                 className={cn(
                   'flex items-end gap-2',
-                  message.senderId === currentUser.id ? 'justify-end' : 'justify-start'
+                  message.senderId === currentUser.id ? 'justify-end' : 
+                  message.senderId === 'ai-assistant' ? 'justify-center' : 'justify-start'
                 )}
               >
-                {message.senderId !== currentUser.id && (
+                {message.senderId !== currentUser.id && message.senderId !== 'ai-assistant' && (
                   <Avatar className="h-8 w-8">
                     <AvatarImage src={partner.avatar} alt={partner.name} />
                     <AvatarFallback>{partner.name.charAt(0)}</AvatarFallback>
                   </Avatar>
+                )}
+                 {message.senderId === 'ai-assistant' && (
+                    <Avatar className="h-8 w-8">
+                        <div className="h-full w-full flex items-center justify-center bg-primary rounded-full">
+                           <Bot className="h-5 w-5 text-primary-foreground" />
+                        </div>
+                    </Avatar>
                 )}
                 <div
                   className={cn(
                     'max-w-xs md:max-w-md lg:max-w-lg rounded-lg px-3 py-2 text-sm shadow',
                     message.senderId === currentUser.id
                       ? 'bg-primary text-primary-foreground rounded-br-none'
+                      : message.senderId === 'ai-assistant'
+                      ? 'bg-secondary text-secondary-foreground text-center'
                       : 'bg-secondary text-secondary-foreground rounded-bl-none'
                   )}
                 >
-                  <p>{message.text}</p>
-                   {message.timestamp && (
+                  <p className={cn(message.senderId === 'ai-assistant' && 'italic')}>{message.text}</p>
+                   {message.timestamp && message.senderId !== 'ai-assistant' && (
                     <p className={cn("text-xs mt-1", message.senderId === currentUser.id ? 'text-primary-foreground/70' : 'text-muted-foreground/70' )}>
                         {new Date((message.timestamp as any).toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
