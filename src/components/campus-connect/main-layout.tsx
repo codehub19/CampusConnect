@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from 'react';
-import { Bot, MessageSquare, User as UserIcon } from 'lucide-react';
+import { Bot, MessageSquare } from 'lucide-react';
 import {
   SidebarProvider,
   Sidebar,
@@ -23,13 +23,16 @@ import AiAssistantView from '@/components/campus-connect/ai-assistant-view';
 import WelcomeView from '@/components/campus-connect/welcome-view';
 import { users as initialUsers, chats, currentUser as initialCurrentUser } from '@/lib/data';
 import type { User, Chat } from '@/lib/types';
+import { useAuth } from '@/hooks/use-auth';
 
 export function MainLayout() {
-  const [currentUser, setCurrentUser] = useState<User>(initialCurrentUser);
-  const [users, setUsers] = useState<User[]>(initialUsers);
+  const { user, profile, logout } = useAuth();
   const [activeView, setActiveView] = useState<{ type: 'welcome' | 'chat' | 'ai', data?: { user: User, chat: Chat } }>({ type: 'welcome' });
   const [isProfileOpen, setProfileOpen] = useState(false);
 
+    // Mock data for now, will be replaced with real data from Firestore
+  const [users, setUsers] = useState<User[]>(initialUsers);
+  
   const handleSelectChat = (user: User) => {
     const chat = chats.find(c => c.userIds.includes(user.id));
     if (chat) {
@@ -41,14 +44,14 @@ export function MainLayout() {
     setActiveView({ type: 'ai' });
   };
   
-  const handleProfileUpdate = (updatedUser: User) => {
-    setCurrentUser(updatedUser);
-  };
+  if (!user || !profile) {
+    return null; 
+  }
 
   const renderView = () => {
     switch (activeView.type) {
       case 'chat':
-        return activeView.data ? <ChatView user={activeView.data.user} chat={activeView.data.chat} currentUser={currentUser} /> : <WelcomeView />;
+        return activeView.data ? <ChatView user={activeView.data.user} chat={activeView.data.chat} currentUser={profile} /> : <WelcomeView />;
       case 'ai':
         return <AiAssistantView />;
       case 'welcome':
@@ -75,16 +78,16 @@ export function MainLayout() {
                 <DialogTrigger asChild>
                   <Button variant="ghost" className="w-full justify-start gap-2">
                     <Avatar className="h-8 w-8">
-                       <AvatarImage src={currentUser.avatar} alt={currentUser.name} data-ai-hint="profile avatar" />
-                       <AvatarFallback>{currentUser.name.charAt(0)}</AvatarFallback>
+                       <AvatarImage src={profile.avatar} alt={profile.name} data-ai-hint="profile avatar" />
+                       <AvatarFallback>{profile.name.charAt(0)}</AvatarFallback>
                     </Avatar>
                     <div className="flex flex-col items-start">
-                      <span className="font-medium">{currentUser.name}</span>
+                      <span className="font-medium">{profile.name}</span>
                       <span className="text-xs text-muted-foreground">My Profile</span>
                     </div>
                   </Button>
                 </DialogTrigger>
-                <ProfileView user={currentUser} onOpenChange={setProfileOpen} onProfileUpdate={handleProfileUpdate} />
+                <ProfileView user={profile} onOpenChange={setProfileOpen} onProfileUpdate={() => {}} />
               </Dialog>
             </SidebarMenuItem>
           </SidebarMenu>
@@ -126,6 +129,11 @@ export function MainLayout() {
             </SidebarMenu>
           </SidebarGroup>
         </SidebarContent>
+         <SidebarHeader>
+            <Button onClick={logout} variant="ghost" className="w-full justify-center">
+              Logout
+            </Button>
+        </SidebarHeader>
       </Sidebar>
       <SidebarInset>{renderView()}</SidebarInset>
     </SidebarProvider>
