@@ -14,15 +14,15 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import type { User } from '@/lib/types';
-import { currentUser } from '@/lib/data';
 import { cn } from '@/lib/utils';
 
 interface VideoCallViewProps {
   user: User;
+  currentUser: User;
   onOpenChange: (open: boolean) => void;
 }
 
-export default function VideoCallView({ user, onOpenChange }: VideoCallViewProps) {
+export default function VideoCallView({ user, currentUser, onOpenChange }: VideoCallViewProps) {
   const [isMicOn, setMicOn] = useState(true);
   const [isCameraOn, setCameraOn] = useState(true);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
@@ -35,7 +35,7 @@ export default function VideoCallView({ user, onOpenChange }: VideoCallViewProps
       if (hasCameraPermission !== null) return;
       
       try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
         setHasCameraPermission(true);
 
         if (videoRef.current) {
@@ -63,15 +63,26 @@ export default function VideoCallView({ user, onOpenChange }: VideoCallViewProps
     };
   }, [hasCameraPermission, toast]);
 
-  const handleToggleCamera = () => {
+  const toggleMediaStream = (type: 'video' | 'audio', state: boolean) => {
     if (videoRef.current && videoRef.current.srcObject) {
-        const stream = videoRef.current.srcObject as MediaStream;
-        const videoTrack = stream.getVideoTracks()[0];
-        videoTrack.enabled = !isCameraOn;
-        setCameraOn(!isCameraOn);
-    } else {
-        setCameraOn(!isCameraOn);
+      const stream = videoRef.current.srcObject as MediaStream;
+      const track = type === 'video' ? stream.getVideoTracks()[0] : stream.getAudioTracks()[0];
+      if (track) {
+        track.enabled = state;
+      }
     }
+  };
+
+  const handleToggleCamera = () => {
+    const newState = !isCameraOn;
+    setCameraOn(newState);
+    toggleMediaStream('video', newState);
+  };
+
+  const handleToggleMic = () => {
+    const newState = !isMicOn;
+    setMicOn(newState);
+    toggleMediaStream('audio', newState);
   };
 
 
@@ -118,7 +129,8 @@ export default function VideoCallView({ user, onOpenChange }: VideoCallViewProps
           variant={isMicOn ? 'secondary' : 'destructive'}
           size="icon"
           className="rounded-full h-14 w-14"
-          onClick={() => setMicOn(!isMicOn)}
+          onClick={handleToggleMic}
+          disabled={hasCameraPermission === false}
         >
           {isMicOn ? <Mic className="h-6 w-6" /> : <MicOff className="h-6 w-6" />}
         </Button>

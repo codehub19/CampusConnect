@@ -12,14 +12,14 @@ import VideoCallView from './video-call-view';
 import TicTacToe from './tic-tac-toe';
 import { cn } from '@/lib/utils';
 import type { User, Chat, Message } from '@/lib/types';
-import { currentUser } from '@/lib/data';
 
 interface ChatViewProps {
   user: User;
   chat: Chat;
+  currentUser: User;
 }
 
-export default function ChatView({ user, chat }: ChatViewProps) {
+export default function ChatView({ user, chat, currentUser }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>(chat.messages);
   const [isVideoCallOpen, setVideoCallOpen] = useState(false);
   const [isGameOpen, setGameOpen] = useState(false);
@@ -77,7 +77,7 @@ export default function ChatView({ user, chat }: ChatViewProps) {
                 <span className="sr-only">Video Call</span>
               </Button>
             </DialogTrigger>
-            <VideoCallView user={user} onOpenChange={setVideoCallOpen} />
+            <VideoCallView user={user} currentUser={currentUser} onOpenChange={setVideoCallOpen} />
           </Dialog>
         </div>
       </CardHeader>

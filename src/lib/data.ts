@@ -2,10 +2,10 @@ import type { User, Chat, Message } from './types';
 
 export const currentUser: User = {
   id: 'user-0',
-  name: 'You',
-  avatar: 'https://placehold.co/100x100',
+  name: 'Alex Ray',
+  avatar: 'https://placehold.co/100x100/E879F9/121820',
   online: true,
-  gender: 'Prefer not to say',
+  gender: 'Male',
   interests: ['Gaming', 'Music', 'Sports'],
 };
 
