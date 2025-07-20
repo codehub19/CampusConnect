@@ -1,6 +1,7 @@
 // This file is machine-generated - edit at your own risk.
 import { initializeApp, getApp, getApps } from "firebase/app";
 import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 
 // Your web app's Firebase configuration
 // IMPORTANT: DO NOT COMMIT THIS FILE WITH KEYS TO PUBLIC REPOSITORIES
@@ -15,6 +16,7 @@ const firebaseConfig = {
 
 // Initialize Firebase
 export const firebaseApp = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+export const storage = getStorage(firebaseApp);
 
 // Enable offline persistence
 const db = getFirestore(firebaseApp);

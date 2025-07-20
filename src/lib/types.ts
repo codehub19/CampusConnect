@@ -13,11 +13,18 @@ export interface User {
   profileComplete?: boolean;
 }
 
+export type MessageContent = 
+    | { type: 'text', value: string }
+    | { type: 'image', value: { url: string, name: string } }
+    | { type: 'video', value: { url: string, name: string } }
+    | { type: 'file', value: { url: string, name: string } };
+
 export interface Message {
   id: string;
   senderId: string;
-  text: string;
+  content: MessageContent;
   timestamp: any;
+  text?: string; // Kept for backwards compatibility and simple text use
 }
 
 export type GameType = 'ticTacToe' | 'connectFour' | 'dotsAndBoxes';

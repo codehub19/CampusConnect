@@ -2,27 +2,63 @@
 "use client";
 
 import React, { useState, useRef, useEffect, UIEvent } from 'react';
-import { Send, Bot, ArrowDown } from 'lucide-react';
+import { Send, Bot, ArrowDown, Paperclip, Loader2, File as FileIcon } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import type { User, Chat, Message } from '@/lib/types';
+import type { User, Chat, Message, MessageContent } from '@/lib/types';
 import { getFirestore, onSnapshot, collection, query, orderBy, addDoc, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
-import { firebaseApp } from '@/lib/firebase';
+import { firebaseApp, storage } from '@/lib/firebase';
+import { getDownloadURL, ref, uploadBytesResumable } from 'firebase/storage';
+import { useToast } from '@/hooks/use-toast';
+import Image from 'next/image';
 
 interface ChatViewProps {
   chat: Chat;
   currentUser: User;
 }
 
+const MediaMessage = ({ content }: { content: MessageContent }) => {
+    if (content.type === 'image' && content.value?.url) {
+        return (
+            <div className="relative aspect-video max-w-xs rounded-lg overflow-hidden">
+                <Image src={content.value.url} alt={content.value.name || "Shared image"} layout="fill" objectFit="cover" />
+            </div>
+        )
+    }
+    if (content.type === 'video' && content.value?.url) {
+        return (
+            <video src={content.value.url} controls className="max-w-xs rounded-lg" />
+        )
+    }
+    if (content.type === 'file' && content.value?.url) {
+        return (
+            <a 
+                href={content.value.url} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="flex items-center gap-2 p-2 bg-background/50 rounded-md hover:bg-background"
+            >
+                <FileIcon className="h-6 w-6" />
+                <span className="truncate">{content.value.name}</span>
+            </a>
+        )
+    }
+    return <p>{content.value as string}</p>;
+}
+
 export default function ChatView({ chat, currentUser }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const partner = chat.users?.find(u => u.id !== currentUser.id) || { name: 'Chat', avatar: '' };
   const db = getFirestore(firebaseApp);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   const isAtBottomRef = useRef(true);
+  const { toast } = useToast();
+
 
   const scrollToBottom = (behavior: 'smooth' | 'auto' = 'auto') => {
     if (scrollAreaRef.current) {
@@ -39,7 +75,13 @@ export default function ChatView({ chat, currentUser }: ChatViewProps) {
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedMessages: Message[] = [];
       snapshot.forEach((doc) => {
-        fetchedMessages.push({ id: doc.id, ...doc.data() } as Message);
+        const data = doc.data();
+        // Handle backwards compatibility for old text-only messages
+        if (typeof data.text === 'string' && !data.content) {
+            fetchedMessages.push({ id: doc.id, content: { type: 'text', value: data.text }, ...data } as Message);
+        } else {
+            fetchedMessages.push({ id: doc.id, ...data } as Message);
+        }
       });
       setMessages(fetchedMessages);
     });
@@ -64,26 +106,64 @@ export default function ChatView({ chat, currentUser }: ChatViewProps) {
     }
   };
 
-  const handleSendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    const form = e.currentTarget;
-    const textarea = form.querySelector<HTMLTextAreaElement>('textarea');
-    const text = textarea?.value.trim();
-
-    if (text && chat.id) {
+  const sendNewMessage = async (content: MessageContent) => {
+    if (chat.id) {
         const messagesRef = collection(db, "chats", chat.id, "messages");
         await addDoc(messagesRef, {
             senderId: currentUser.id,
-            text: text,
+            content: content,
             timestamp: serverTimestamp(),
         });
         
         const chatRef = doc(db, 'chats', chat.id);
         await updateDoc(chatRef, { lastMessageTimestamp: serverTimestamp() });
 
-        if(textarea) textarea.value = '';
         scrollToBottom('smooth');
     }
+  }
+
+  const handleSendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const form = e.currentTarget;
+    const textarea = form.querySelector<HTMLTextAreaElement>('textarea');
+    const text = textarea?.value.trim();
+
+    if (text) {
+        await sendNewMessage({ type: 'text', value: text });
+        if(textarea) textarea.value = '';
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > 5 * 1024 * 1024) { // 5MB limit
+        toast({ variant: 'destructive', title: 'File too large', description: 'Please select a file smaller than 5MB.' });
+        return;
+    }
+
+    setIsUploading(true);
+    const storageRef = ref(storage, `chat_media/${chat.id}/${Date.now()}_${file.name}`);
+    const uploadTask = uploadBytesResumable(storageRef, file);
+
+    uploadTask.on('state_changed',
+      (snapshot) => { /* progress can be handled here */ },
+      (error) => {
+        console.error("Upload failed:", error);
+        toast({ variant: 'destructive', title: 'Upload failed', description: 'Could not upload your file. Please try again.' });
+        setIsUploading(false);
+      },
+      async () => {
+        const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
+        let type: 'image' | 'video' | 'file' = 'file';
+        if (file.type.startsWith('image/')) type = 'image';
+        if (file.type.startsWith('video/')) type = 'video';
+        
+        await sendNewMessage({ type, value: { url: downloadURL, name: file.name }});
+        setIsUploading(false);
+      }
+    );
   };
 
   return (
@@ -119,12 +199,18 @@ export default function ChatView({ chat, currentUser }: ChatViewProps) {
                       ? 'bg-primary text-primary-foreground rounded-br-none'
                       : message.senderId === 'ai-assistant'
                       ? 'bg-secondary text-secondary-foreground text-center'
-                      : 'bg-secondary text-secondary-foreground rounded-bl-none'
+                      : 'bg-secondary text-secondary-foreground rounded-bl-none',
+                    message.content.type !== 'text' && 'p-1' // Less padding for media
                   )}
                 >
-                  <p className={cn(message.senderId === 'ai-assistant' && 'italic')}>{message.text}</p>
+                  {message.content.type === 'text' ? <p>{message.content.value as string}</p> : <MediaMessage content={message.content} />}
+                  
                    {message.timestamp && message.senderId !== 'ai-assistant' && (
-                    <p className={cn("text-xs mt-1", message.senderId === currentUser.id ? 'text-primary-foreground/70' : 'text-muted-foreground/70' )}>
+                    <p className={cn(
+                        "text-xs mt-1", 
+                        message.senderId === currentUser.id ? 'text-primary-foreground/70' : 'text-muted-foreground/70',
+                        message.content.type !== 'text' ? 'px-2' : ''
+                    )}>
                         {new Date((message.timestamp as any).toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                     </p>
                    )}
@@ -145,10 +231,27 @@ export default function ChatView({ chat, currentUser }: ChatViewProps) {
         )}
         <div className="p-4 border-t">
             <form onSubmit={handleSendMessage} className="flex w-full items-center gap-2">
+            {chat.isFriendChat &&
+                <>
+                <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" />
+                <Button 
+                    type="button" 
+                    variant="ghost" 
+                    size="icon" 
+                    className="rounded-full flex-shrink-0"
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isUploading}
+                >
+                    {isUploading ? <Loader2 className="animate-spin" /> : <Paperclip className="h-5 w-5" />}
+                    <span className="sr-only">Attach file</span>
+                </Button>
+                </>
+            }
             <textarea
                 placeholder="Type a message..."
                 className="flex-1 resize-none bg-background focus-visible:ring-1 focus-visible:ring-offset-0 flex min-h-[40px] w-full rounded-md border border-input px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
                 rows={1}
+                disabled={isUploading}
                 onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {
                     e.preventDefault();
@@ -156,7 +259,7 @@ export default function ChatView({ chat, currentUser }: ChatViewProps) {
                 }
                 }}
             />
-            <Button type="submit" size="icon" className="rounded-full flex-shrink-0">
+            <Button type="submit" size="icon" className="rounded-full flex-shrink-0" disabled={isUploading}>
                 <Send className="h-5 w-5" />
                 <span className="sr-only">Send</span>
             </Button>
