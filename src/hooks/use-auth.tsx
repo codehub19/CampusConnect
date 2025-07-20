@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { createContext, useContext, useEffect, useState } from 'react';
@@ -56,8 +57,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         
         const unsubProfile = onSnapshot(userDocRef, async (docSnap) => {
           if (docSnap.exists()) {
-            setProfile(docSnap.data() as User);
-            await updateDoc(userDocRef, { online: true, lastSeen: serverTimestamp() });
+            const userProfile = docSnap.data() as User;
+            setProfile(userProfile);
+            if(!userProfile.online) {
+               await updateDoc(userDocRef, { online: true, lastSeen: serverTimestamp() });
+            }
           } else {
              // Profile will be created by auth functions
           }
@@ -67,9 +71,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return () => unsubProfile();
 
       } else {
-        if (user) { // User is signing out
+        if (user && profile) { // User is signing out
            const userDocRef = doc(db, 'users', user.uid);
-           await updateDoc(userDocRef, { online: false, lastSeen: serverTimestamp() });
+           if ((await getDoc(userDocRef)).exists()){
+             await updateDoc(userDocRef, { online: false, lastSeen: serverTimestamp() });
+           }
         }
         setUser(null);
         setProfile(null);
@@ -78,6 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
 
     return () => unsubscribe();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth, db]);
 
   const createProfile = async (uid: string, data: Partial<User>) => {
@@ -87,7 +94,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const defaultProfile: User = {
         id: uid,
         name: data.name || 'Anonymous',
-        avatar: data.avatar || `https://placehold.co/100x100?text=${(data.name || 'A').charAt(0)}`,
+        avatar: data.avatar || `https://placehold.co/100x100/FFFFFF/121820?text=${(data.name || 'A').charAt(0)}`,
         online: true,
         gender: 'Prefer not to say',
         interests: [],
@@ -125,10 +132,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (!user) throw new Error("You must be logged in to update your profile.");
     const userDocRef = doc(db, 'users', user.uid);
     await updateDoc(userDocRef, data);
-     toast({
-      title: 'Profile Updated',
-      description: 'Your profile has been successfully saved.',
-    });
   };
 
   const logout = async () => {
@@ -147,7 +150,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     updateProfile,
   };
 
-  return <AuthContext.Provider value={value}>{!loading && children}</AuthContext.Provider>;
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export const useAuth = () => {
