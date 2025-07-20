@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Bot, MessageSquare, Home, CalendarDays } from 'lucide-react';
+import { Bot, MessageSquare, Home, HeartCrack } from 'lucide-react';
 import {
   SidebarProvider,
   Sidebar,
@@ -42,9 +42,10 @@ type ActiveView =
   
 interface MainLayoutProps {
   onNavigateHome: () => void;
+  onNavigateToMissedConnections: () => void;
 }
 
-export function MainLayout({ onNavigateHome }: MainLayoutProps) {
+export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: MainLayoutProps) {
   const { user, profile, logout, updateProfile } = useAuth();
   const [activeView, setActiveView] = useState<ActiveView>({ type: 'welcome' });
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
@@ -619,6 +620,15 @@ export function MainLayout({ onNavigateHome }: MainLayoutProps) {
                 >
                   <Bot />
                   <span>AI Assistant</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={onNavigateToMissedConnections}
+                  tooltip="Missed Connections"
+                >
+                  <HeartCrack />
+                  <span>Missed Connections</span>
                 </SidebarMenuButton>
               </SidebarMenuItem>
             </SidebarMenu>

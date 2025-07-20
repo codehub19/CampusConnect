@@ -9,8 +9,9 @@ import { useState, useEffect } from 'react';
 import ProfileSetupView from '@/components/campus-connect/profile-setup-view';
 import HomeView from '@/components/campus-connect/home-view';
 import EventsView from '@/components/campus-connect/events-view';
+import MissedConnectionsView from '@/components/campus-connect/missed-connections-view';
 
-type AppState = 'policy' | 'auth' | 'profile_setup' | 'home' | 'chat' | 'events';
+type AppState = 'policy' | 'auth' | 'profile_setup' | 'home' | 'chat' | 'events' | 'missed_connections';
 
 function AppContent() {
   const { user, loading, profile } = useAuth();
@@ -62,11 +63,13 @@ function AppContent() {
     case 'profile_setup':
       return <ProfileSetupView />;
     case 'home':
-      return <HomeView onNavigateTo1v1Chat={() => navigateTo('chat')} onNavigateToEvents={() => navigateTo('events')} userName={profile?.name || 'User'} />;
+      return <HomeView onNavigateTo1v1Chat={() => navigateTo('chat')} onNavigateToEvents={() => navigateTo('events')} onNavigateToMissedConnections={() => navigateTo('missed_connections')} userName={profile?.name || 'User'} />;
     case 'chat':
-      return <MainLayout onNavigateHome={() => navigateTo('home')} />;
+      return <MainLayout onNavigateHome={() => navigateTo('home')} onNavigateToMissedConnections={() => navigateTo('missed_connections')} />;
     case 'events':
-        return <EventsView onNavigateHome={() => navigateTo('home')} />;
+      return <EventsView onNavigateHome={() => navigateTo('home')} />;
+    case 'missed_connections':
+      return <MissedConnectionsView onNavigateHome={() => navigateTo('home')} />;
     default:
        return <AuthView />;
   }
