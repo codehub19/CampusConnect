@@ -1,26 +1,46 @@
+
 "use client";
 
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import AuthView from '@/components/campus-connect/auth-view';
 import { MainLayout } from '@/components/campus-connect/main-layout';
 import PolicyView from '@/components/campus-connect/policy-view';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import ProfileSetupView from '@/components/campus-connect/profile-setup-view';
+import HomeView from '@/components/campus-connect/home-view';
+
+type AppState = 'policy' | 'auth' | 'profile_setup' | 'home' | 'chat';
 
 function AppContent() {
   const { user, loading, profile } = useAuth();
-  const [policyAgreed, setPolicyAgreed] = useState(() => {
-    if (typeof window !== 'undefined') {
-      return localStorage.getItem('policyAgreed') === 'true';
+  
+  const getInitialState = (): AppState => {
+    if (loading) return 'auth'; // Show loader, but logically it's part of auth flow
+    if (typeof window !== 'undefined' && localStorage.getItem('policyAgreed') !== 'true') {
+      return 'policy';
     }
-    return false;
-  });
+    if (!user || !profile) {
+      return 'auth';
+    }
+    if (!profile.profileComplete && !profile.isGuest) {
+      return 'profile_setup';
+    }
+    return 'home';
+  };
+
+  const [appState, setAppState] = useState<AppState>('auth');
+  
+  // Effect to manage state transitions based on auth changes
+  useEffect(() => {
+    setAppState(getInitialState());
+  }, [loading, user, profile]);
+
 
   const handleAgree = () => {
-     if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined') {
       localStorage.setItem('policyAgreed', 'true');
     }
-    setPolicyAgreed(true);
+    setAppState(getInitialState());
   };
 
   if (loading) {
@@ -31,19 +51,20 @@ function AppContent() {
     );
   }
 
-  if (!policyAgreed) {
-    return <PolicyView onAgree={handleAgree} />;
+  switch (appState) {
+    case 'policy':
+      return <PolicyView onAgree={handleAgree} />;
+    case 'auth':
+      return <AuthView />;
+    case 'profile_setup':
+      return <ProfileSetupView />;
+    case 'home':
+      return <HomeView onNavigateTo1v1Chat={() => setAppState('chat')} userName={profile?.name || 'User'} />;
+    case 'chat':
+      return <MainLayout />;
+    default:
+       return <AuthView />;
   }
-
-  if (!user || !profile) {
-    return <AuthView />;
-  }
-  
-  if (!profile.profileComplete && !profile.isGuest) {
-    return <ProfileSetupView />;
-  }
-  
-  return <MainLayout />;
 }
 
 export default function Home() {
