@@ -2,34 +2,23 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import type { User, Chat, CampusEvent, MissedConnectionPost } from '@/lib/types';
 import { getFirestore, collection, query, where, getDocs, orderBy, limit, onSnapshot, doc, deleteDoc } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { format } from 'date-fns';
-import { Pencil, Trash2 } from 'lucide-react';
+import { Pencil, Trash2, Users, MessageSquareText, Newspaper, Calendar } from 'lucide-react';
 import CreateEventView from './create-event-view';
 
 interface ProfileViewProps {
@@ -56,38 +45,22 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
   useEffect(() => {
     if (!isOpen || !user) return;
 
-    setFormData(user); // Reset form data when dialog opens
+    setFormData(user);
     
-    // Fetch friends
     if (user.friends && user.friends.length > 0) {
         const friendsQuery = query(collection(db, 'users'), where('id', 'in', user.friends));
-        getDocs(friendsQuery).then(snapshot => {
-            setFriends(snapshot.docs.map(doc => doc.data() as User));
-        });
+        getDocs(friendsQuery).then(snapshot => setFriends(snapshot.docs.map(doc => doc.data() as User)));
     } else {
         setFriends([]);
     }
 
-    // Fetch my events
     const eventsQuery = query(collection(db, 'campus_events'), where('authorId', '==', user.id), orderBy('date', 'desc'));
-    const eventsUnsub = onSnapshot(eventsQuery, (snapshot) => {
-      setMyEvents(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CampusEvent)));
-    });
+    const eventsUnsub = onSnapshot(eventsQuery, (snapshot) => setMyEvents(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CampusEvent))));
 
-    // Fetch my posts
     const postsQuery = query(collection(db, 'missed_connections'), where('authorId', '==', user.id), orderBy('timestamp', 'desc'));
-    const postsUnsub = onSnapshot(postsQuery, (snapshot) => {
-        setMyPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MissedConnectionPost)));
-    });
+    const postsUnsub = onSnapshot(postsQuery, (snapshot) => setMyPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MissedConnectionPost))));
 
-    // Fetch recent chats
-    const chatsQuery = query(
-        collection(db, 'chats'),
-        where('userIds', 'array-contains', user.id),
-        orderBy('lastMessageTimestamp', 'desc'),
-        limit(5)
-    );
-    
+    const chatsQuery = query(collection(db, 'chats'), where('userIds', 'array-contains', user.id), orderBy('lastMessageTimestamp', 'desc'), limit(5));
     const chatsUnsub = onSnapshot(chatsQuery, async (snapshot) => {
         const chatsData: {user: User, lastMessage: string}[] = [];
         for (const docSnap of snapshot.docs) {
@@ -112,7 +85,6 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
         postsUnsub();
         chatsUnsub();
     }
-
   }, [user, isOpen, db]);
   
   const handleEditEvent = (event: CampusEvent) => {
@@ -123,38 +95,27 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
   const handleDeleteEvent = async (eventId: string) => {
     try {
         await deleteDoc(doc(db, 'campus_events', eventId));
-        toast({ title: "Event Deleted", description: "The event has been successfully removed." });
+        toast({ title: "Event Deleted" });
     } catch (error) {
         toast({ variant: 'destructive', title: "Error", description: "Could not delete the event." });
-        console.error("Error deleting event:", error);
     }
   };
 
   const handleDeletePost = async (postId: string) => {
     try {
         await deleteDoc(doc(db, 'missed_connections', postId));
-        toast({ title: "Post Deleted", description: "The post has been successfully removed." });
+        toast({ title: "Post Deleted" });
     } catch (error) {
         toast({ variant: 'destructive', title: "Error", description: "Could not delete the post." });
-        console.error("Error deleting post:", error);
     }
   };
 
-  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const { id, value } = e.target;
-    setFormData(prev => ({ ...prev, [id]: value }));
-  };
-  
-  const handleGenderChange = (value: string) => {
-    setFormData(prev => ({ ...prev, gender: value as User['gender'] }));
-  };
-
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => setFormData(prev => ({ ...prev, [e.target.id]: e.target.value }));
+  const handleGenderChange = (value: string) => setFormData(prev => ({ ...prev, gender: value as User['gender'] }));
   const handleInterestChange = (interest: string, checked: boolean) => {
     setFormData(prev => {
       const currentInterests = prev.interests || [];
-      const interests = checked
-        ? [...currentInterests, interest]
-        : currentInterests.filter(i => i !== interest);
+      const interests = checked ? [...currentInterests, interest] : currentInterests.filter(i => i !== interest);
       return { ...prev, interests };
     });
   };
@@ -162,159 +123,141 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     onProfileUpdate(formData);
-    toast({
-      title: 'Profile Saved',
-      description: 'Your profile information has been updated.',
-    });
+    toast({ title: 'Profile Saved' });
     onOpenChange(false);
   };
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md p-0">
+      <DialogContent className="p-0">
         <ScrollArea className="max-h-[90vh]">
           <div className="p-6">
-            <form onSubmit={handleSubmit}>
-              <DialogHeader>
-                <DialogTitle>Profile & Preferences</DialogTitle>
-                <DialogDescription>
-                  Make changes to your profile here. Click save when you're done.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-6 py-6">
-                <div className="flex items-center gap-4">
-                  <Avatar className="h-20 w-20">
-                    <AvatarImage src={formData.avatar} alt={formData.name} data-ai-hint="profile avatar" />
-                    <AvatarFallback>{formData.name.charAt(0)}</AvatarFallback>
-                  </Avatar>
-                  <p className="text-sm text-muted-foreground">Profile avatars are currently assigned. Custom uploads coming soon!</p>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="name">Name</Label>
-                  <Input id="name" value={formData.name} onChange={handleInputChange} />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="gender">Gender</Label>
-                  <Select value={formData.gender} onValueChange={handleGenderChange}>
-                    <SelectTrigger id="gender">
-                      <SelectValue placeholder="Select gender" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="Male">Male</SelectItem>
-                      <SelectItem value="Female">Female</SelectItem>
-                      <SelectItem value="Other">Other</SelectItem>
-                      <SelectItem value="Prefer not to say">Prefer not to say</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="grid gap-2">
-                  <Label>Interests</Label>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-2 mt-1">
-                    {allInterests.map(interest => (
-                      <div key={interest} className="flex items-center gap-2">
-                        <Checkbox
-                          id={`interest-${interest}`}
-                          checked={formData.interests?.includes(interest)}
-                          onCheckedChange={(checked) => handleInterestChange(interest, !!checked)}
-                        />
-                        <Label htmlFor={`interest-${interest}`} className="font-normal">{interest}</Label>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button type="button" variant="ghost" onClick={() => onOpenChange(false)}>Cancel</Button>
-                <Button type="submit">Save Changes</Button>
-              </DialogFooter>
-            </form>
+            <DialogHeader className="mb-6">
+                <DialogTitle className="text-2xl">Profile & Settings</DialogTitle>
+                <DialogDescription>Manage your profile, content, and social connections.</DialogDescription>
+            </DialogHeader>
 
-             <div className="mt-6 pt-6 border-t">
-                  <h3 className="text-lg font-semibold mb-3">My Campus Events</h3>
-                  <div className="space-y-3">
+            <Tabs defaultValue="profile" className="w-full">
+              <TabsList className="grid w-full grid-cols-3 mb-6">
+                <TabsTrigger value="profile">Profile</TabsTrigger>
+                <TabsTrigger value="content">My Content</TabsTrigger>
+                <TabsTrigger value="social">Social</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="profile">
+                <form onSubmit={handleSubmit}>
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Edit Profile</CardTitle>
+                            <CardDescription>Update your public information.</CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-6">
+                            <div className="flex items-center gap-4">
+                                <Avatar className="h-20 w-20">
+                                    <AvatarImage src={formData.avatar} alt={formData.name} data-ai-hint="profile avatar" />
+                                    <AvatarFallback>{formData.name.charAt(0)}</AvatarFallback>
+                                </Avatar>
+                                <p className="text-sm text-muted-foreground">Avatars are currently assigned. Custom uploads coming soon!</p>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="name">Name</Label>
+                                    <Input id="name" value={formData.name} onChange={handleInputChange} />
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="gender">Gender</Label>
+                                    <Select value={formData.gender} onValueChange={handleGenderChange}>
+                                        <SelectTrigger id="gender"><SelectValue placeholder="Select gender" /></SelectTrigger>
+                                        <SelectContent>
+                                            <SelectItem value="Male">Male</SelectItem>
+                                            <SelectItem value="Female">Female</SelectItem>
+                                            <SelectItem value="Other">Other</SelectItem>
+                                            <SelectItem value="Prefer not to say">Prefer not to say</SelectItem>
+                                        </SelectContent>
+                                    </Select>
+                                </div>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Interests</Label>
+                                <div className="grid grid-cols-3 gap-2 pt-1">
+                                    {allInterests.map(interest => (
+                                    <div key={interest} className="flex items-center gap-2">
+                                        <Checkbox id={`interest-${interest}`} checked={formData.interests?.includes(interest)} onCheckedChange={(checked) => handleInterestChange(interest, !!checked)} />
+                                        <Label htmlFor={`interest-${interest}`} className="font-normal">{interest}</Label>
+                                    </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </CardContent>
+                        <CardFooter>
+                            <Button type="submit" className="ml-auto">Save Changes</Button>
+                        </CardFooter>
+                    </Card>
+                </form>
+              </TabsContent>
+
+              <TabsContent value="content" className="space-y-6">
+                <Card>
+                  <CardHeader><CardTitle>My Campus Events</CardTitle></CardHeader>
+                  <CardContent className="space-y-3">
                       {myEvents.length > 0 ? myEvents.map(event => (
                           <div key={event.id} className="flex items-center gap-3 p-2 rounded-md bg-secondary/50">
+                              <Calendar className="h-5 w-5 text-muted-foreground" />
                               <div className="flex-grow">
                                 <p className="font-medium">{event.title}</p>
                                 <p className="text-xs text-muted-foreground">{format(event.date.toDate(), 'PPP')}</p>
                               </div>
                               <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditEvent(event)}><Pencil className="h-4 w-4" /></Button>
-                              <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                   <Button variant="destructive" size="icon" className="h-8 w-8"><Trash2 className="h-4 w-4" /></Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                    <AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete your event. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction onClick={() => handleDeleteEvent(event.id)}>Delete</AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
+                              <AlertDialog><AlertDialogTrigger asChild><Button variant="destructive" size="icon" className="h-8 w-8"><Trash2 className="h-4 w-4" /></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete your event.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteEvent(event.id)}>Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
                           </div>
-                      )) : <p className="text-sm text-muted-foreground">You haven't created any events yet.</p>}
-                  </div>
-              </div>
-              
-               <div className="mt-6 pt-6 border-t">
-                  <h3 className="text-lg font-semibold mb-3">My Missed Connections</h3>
-                  <div className="space-y-3">
+                      )) : <p className="text-sm text-muted-foreground px-2">You haven't created any events yet.</p>}
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardHeader><CardTitle>My Missed Connections</CardTitle></CardHeader>
+                  <CardContent className="space-y-3">
                       {myPosts.length > 0 ? myPosts.map(post => (
                           <div key={post.id} className="flex items-center gap-3 p-2 rounded-md bg-secondary/50">
+                              <Newspaper className="h-5 w-5 text-muted-foreground"/>
                               <div className="flex-grow">
                                 <p className="font-medium truncate">{post.title}</p>
                                 <p className="text-xs text-muted-foreground">Status: <span className={post.status === 'approved' ? 'text-green-500' : 'text-yellow-500'}>{post.status}</span></p>
                               </div>
-                               <AlertDialog>
-                                <AlertDialogTrigger asChild>
-                                   <Button variant="destructive" size="icon" className="h-8 w-8"><Trash2 className="h-4 w-4" /></Button>
-                                </AlertDialogTrigger>
-                                <AlertDialogContent>
-                                    <AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete your post. This action cannot be undone.</AlertDialogDescription></AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                        <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                        <AlertDialogAction onClick={() => handleDeletePost(post.id)}>Delete</AlertDialogAction>
-                                    </AlertDialogFooter>
-                                </AlertDialogContent>
-                              </AlertDialog>
+                               <AlertDialog><AlertDialogTrigger asChild><Button variant="destructive" size="icon" className="h-8 w-8"><Trash2 className="h-4 w-4" /></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete your post.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeletePost(post.id)}>Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
                           </div>
-                      )) : <p className="text-sm text-muted-foreground">You haven't created any posts yet.</p>}
-                  </div>
-              </div>
+                      )) : <p className="text-sm text-muted-foreground px-2">You haven't created any posts yet.</p>}
+                  </CardContent>
+                </Card>
+              </TabsContent>
 
-
-            <div className="mt-6 pt-6 border-t">
-                <h3 className="text-lg font-semibold mb-3">Friends ({friends.length})</h3>
-                <div className="space-y-3">
-                    {friends.length > 0 ? friends.map(friend => (
-                        <div key={friend.id} className="flex items-center gap-3">
-                            <Avatar className="h-9 w-9">
-                                <AvatarImage src={friend.avatar} alt={friend.name} />
-                                <AvatarFallback>{friend.name.charAt(0)}</AvatarFallback>
-                            </Avatar>
-                            <span className="font-medium">{friend.name}</span>
-                        </div>
-                    )) : <p className="text-sm text-muted-foreground">No friends yet. Start chatting to add some!</p>}
-                </div>
-            </div>
-
-            <div className="mt-6 pt-6 border-t">
-                <h3 className="text-lg font-semibold mb-3">Recent Chats</h3>
-                <div className="space-y-4">
-                    {recentChats.length > 0 ? recentChats.map(chat => (
-                        <div key={chat.user.id} className="flex items-start gap-3">
-                            <Avatar className="h-9 w-9">
-                                <AvatarImage src={chat.user.avatar} alt={chat.user.name} />
-                                <AvatarFallback>{chat.user.name.charAt(0)}</AvatarFallback>
-                            </Avatar>
-                            <div className="min-w-0">
-                              <p className="font-medium truncate">{chat.user.name}</p>
-                              <p className="text-sm text-muted-foreground truncate">{chat.lastMessage}</p>
+              <TabsContent value="social" className="space-y-6">
+                <Card>
+                    <CardHeader><CardTitle>Friends ({friends.length})</CardTitle></CardHeader>
+                    <CardContent className="space-y-3">
+                        {friends.length > 0 ? friends.map(friend => (
+                            <div key={friend.id} className="flex items-center gap-3 p-2 rounded-md bg-secondary/50">
+                                <Avatar className="h-9 w-9"><AvatarImage src={friend.avatar} alt={friend.name} /><AvatarFallback>{friend.name.charAt(0)}</AvatarFallback></Avatar>
+                                <span className="font-medium">{friend.name}</span>
                             </div>
-                        </div>
-                    )) : <p className="text-sm text-muted-foreground">No recent conversations.</p>}
-                </div>
-            </div>
+                        )) : <p className="text-sm text-muted-foreground px-2">No friends yet. Start chatting to add some!</p>}
+                    </CardContent>
+                </Card>
+                <Card>
+                    <CardHeader><CardTitle>Recent Chats</CardTitle></CardHeader>
+                    <CardContent className="space-y-4">
+                        {recentChats.length > 0 ? recentChats.map(chat => (
+                            <div key={chat.user.id} className="flex items-start gap-3 p-2 rounded-md bg-secondary/50">
+                                <Avatar className="h-9 w-9"><AvatarImage src={chat.user.avatar} alt={chat.user.name} /><AvatarFallback>{chat.user.name.charAt(0)}</AvatarFallback></Avatar>
+                                <div className="min-w-0">
+                                <p className="font-medium truncate">{chat.user.name}</p>
+                                <p className="text-sm text-muted-foreground truncate italic">"{chat.lastMessage}"</p>
+                                </div>
+                            </div>
+                        )) : <p className="text-sm text-muted-foreground px-2">No recent conversations.</p>}
+                    </CardContent>
+                </Card>
+              </TabsContent>
+            </Tabs>
           </div>
         </ScrollArea>
         {eventToEdit && (
