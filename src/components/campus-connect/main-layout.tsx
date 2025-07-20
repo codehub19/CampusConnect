@@ -23,8 +23,8 @@ import AiAssistantView from '@/components/campus-connect/ai-assistant-view';
 import WelcomeView from '@/components/campus-connect/welcome-view';
 import ChatHeader from '@/components/campus-connect/chat-header';
 import { useAuth } from '@/hooks/use-auth';
-import type { User, Chat } from '@/lib/types';
-import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where, getDocs, deleteDoc, addDoc, updateDoc, serverTimestamp } from 'firebase/firestore';
+import type { User, Chat, FriendRequest } from '@/lib/types';
+import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where, getDocs, deleteDoc, addDoc, updateDoc, serverTimestamp, arrayUnion, writeBatch, limit } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 
@@ -37,27 +37,55 @@ export function MainLayout() {
   const { user, profile, logout, updateProfile } = useAuth();
   const [activeView, setActiveView] = useState<ActiveView>({ type: 'welcome' });
   const [isProfileOpen, setProfileOpen] = useState(false);
-  const [users, setUsers] = useState<User[]>([]);
+  const [friends, setFriends] = useState<User[]>([]);
+  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const { toast } = useToast();
 
   const db = getFirestore(firebaseApp);
 
+  // Listen for friends
+  useEffect(() => {
+    if (!user || !profile?.friends) return;
+
+    const friendsIds = profile.friends;
+    if (friendsIds.length === 0) {
+      setFriends([]);
+      return;
+    }
+    
+    const usersRef = collection(db, 'users');
+    const q = query(usersRef, where('id', 'in', friendsIds));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedFriends: User[] = [];
+      snapshot.forEach((doc) => {
+        fetchedFriends.push(doc.data() as User);
+      });
+      setFriends(fetchedFriends);
+    });
+
+    return () => unsubscribe();
+  }, [user, profile?.friends, db]);
+
+  // Listen for friend requests
   useEffect(() => {
     if (!user) return;
-    const usersRef = collection(db, 'users');
-    const q = query(usersRef, where('id', '!=', user.uid));
+    const requestsRef = collection(db, 'friend_requests');
+    const q = query(requestsRef, where('toId', '==', user.uid), where('status', '==', 'pending'));
+    
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedUsers: User[] = [];
+      const fetchedRequests: FriendRequest[] = [];
       snapshot.forEach((doc) => {
-        fetchedUsers.push(doc.data() as User);
+        fetchedRequests.push({ id: doc.id, ...doc.data() } as FriendRequest);
       });
-      setUsers(fetchedUsers);
+      setFriendRequests(fetchedRequests);
     });
 
     return () => unsubscribe();
   }, [user, db]);
-  
+
+
   // Listen for matches
    useEffect(() => {
     if (!user || !isSearching) return;
@@ -71,8 +99,8 @@ export function MainLayout() {
         const chatDocRef = doc(db, 'chats', matchedChatId);
         const chatDoc = await getDoc(chatDocRef);
         if(chatDoc.exists()) {
-          const chatData = chatDoc.data() as Chat;
-          const partnerId = chatData.userIds.find(id => id !== user.uid);
+          const chatData = chatDoc.data() as any;
+          const partnerId = chatData.userIds.find((id:string) => id !== user.uid);
           if (partnerId) {
              const partnerDoc = await getDoc(doc(db, 'users', partnerId));
              if (partnerDoc.exists()) {
@@ -100,14 +128,25 @@ export function MainLayout() {
     }
   };
 
-  const handleSelectChat = (user: User) => {
-    // This part will be updated to fetch or create a chat from Firestore
-    const mockChat: Chat = {
-        id: `chat-${user.id}`,
-        userIds: [profile!.id, user.id],
+  const handleSelectChat = async (friend: User) => {
+    if(!user || !profile) return;
+    
+    const sortedIds = [user.uid, friend.id].sort();
+    const chatId = sortedIds.join('_');
+    const chatDocRef = doc(db, "chats", chatId);
+
+    let chatDoc = await getDoc(chatDocRef);
+    if (!chatDoc.exists()) {
+      const newChat: Chat = {
+        id: chatId,
+        userIds: sortedIds,
         messages: [],
-    };
-    setActiveView({ type: 'chat', data: { user, chat: mockChat } });
+      };
+      await setDoc(chatDocRef, newChat);
+      chatDoc = await getDoc(chatDocRef);
+    }
+    
+    setActiveView({ type: 'chat', data: { user: friend, chat: chatDoc.data() as Chat } });
   };
 
   const handleSelectAi = () => {
@@ -128,37 +167,45 @@ export function MainLayout() {
     toast({ title: 'Searching for a chat...' });
 
     const waitingUsersRef = collection(db, 'waiting_users');
+    const blockedByMe = profile.blockedUsers || [];
+    
     const q = query(waitingUsersRef, where('id', '!=', user.uid));
     const querySnapshot = await getDocs(q);
 
     let partner: User | null = null;
     let partnerWaitingDocId: string | null = null;
     
-    // Simple matchmaking: find the first user
-    if(!querySnapshot.empty){
-        const partnerDoc = querySnapshot.docs[0];
-        partnerWaitingDocId = partnerDoc.id;
-        partner = partnerDoc.data() as User;
+    for (const partnerDoc of querySnapshot.docs) {
+        const waitingUser = partnerDoc.data() as User;
+        if (waitingUser.id === user.uid) continue;
+        const partnerProfileDoc = await getDoc(doc(db, 'users', waitingUser.id));
+        const partnerProfile = partnerProfileDoc.data() as User;
+        const blockedMe = partnerProfile.blockedUsers || [];
+
+        if(!blockedByMe.includes(waitingUser.id) && !blockedMe.includes(user.uid)) {
+            partnerWaitingDocId = partnerDoc.id;
+            partner = waitingUser;
+            break;
+        }
     }
 
+
     if (partner && partnerWaitingDocId) {
-        // Match found
         const newChatRef = doc(collection(db, 'chats'));
-        const newChat: Chat = {
+        const newChat: any = {
             id: newChatRef.id,
             userIds: [user.uid, partner.id],
             messages: [],
         };
         await setDoc(newChatRef, newChat);
 
-        // Notify partner
         await updateDoc(doc(db, 'waiting_users', partnerWaitingDocId), { matchedChatId: newChatRef.id });
         
-        setActiveView({type: 'chat', data: { user: partner, chat: newChat }});
+        const partnerProfile = (await getDoc(doc(db, 'users', partner.id))).data() as User;
+        setActiveView({type: 'chat', data: { user: partnerProfile, chat: newChat }});
         setIsSearching(false);
         toast({ title: "Chat found!", description: `You've been connected with ${partner.name}.` });
     } else {
-        // No match, add to waiting list
         await setDoc(doc(db, 'waiting_users', user.uid), {
             id: user.uid,
             name: profile.name,
@@ -174,6 +221,59 @@ export function MainLayout() {
   const handleLeaveChat = () => {
     setActiveView({ type: 'welcome' });
     toast({ title: "You left the chat."});
+  }
+
+  const handleAddFriend = async (friendId: string) => {
+    if (!user || !profile || profile.isGuest) return;
+    const requestId = [user.uid, friendId].sort().join('_');
+    const requestRef = doc(db, 'friend_requests', requestId);
+
+    try {
+        await setDoc(requestRef, {
+            fromId: user.uid,
+            toId: friendId,
+            fromName: profile.name,
+            fromAvatar: profile.avatar,
+            status: 'pending',
+            timestamp: serverTimestamp()
+        });
+        toast({ title: "Friend request sent!" });
+    } catch (error) {
+        console.error("Error sending friend request:", error);
+        toast({ variant: 'destructive', title: "Error", description: "Could not send friend request." });
+    }
+  };
+
+  const handleAcceptRequest = async (requestId: string, fromId: string) => {
+    if(!user) return;
+    const batch = writeBatch(db);
+    
+    const meRef = doc(db, 'users', user.uid);
+    batch.update(meRef, { friends: arrayUnion(fromId) });
+
+    const friendRef = doc(db, 'users', fromId);
+    batch.update(friendRef, { friends: arrayUnion(user.uid) });
+
+    const requestRef = doc(db, 'friend_requests', requestId);
+    batch.delete(requestRef);
+
+    await batch.commit();
+    toast({ title: "Friend added!" });
+  };
+  
+  const handleDeclineRequest = async (requestId: string) => {
+     await deleteDoc(doc(db, 'friend_requests', requestId));
+     toast({ title: "Request declined." });
+  };
+  
+  const handleBlockUser = async (userIdToBlock: string) => {
+      if(!user) return;
+      const userRef = doc(db, 'users', user.uid);
+      await updateDoc(userRef, {
+          blockedUsers: arrayUnion(userIdToBlock)
+      });
+      toast({ variant: 'destructive', title: 'User Blocked', description: "You will no longer be matched with this user." });
+      handleLeaveChat();
   }
 
   if (!user || !profile) {
@@ -240,26 +340,60 @@ export function MainLayout() {
             </SidebarMenu>
           </SidebarGroup>
           <SidebarSeparator />
-          <SidebarGroup>
-            <SidebarMenu>
-              {users.map(user => (
-                <SidebarMenuItem key={user.id}>
-                  <SidebarMenuButton
-                    onClick={() => handleSelectChat(user)}
-                    isActive={activeView.type === 'chat' && activeView.data?.user.id === user.id}
-                    tooltip={user.name}
-                  >
-                    <Avatar className="h-6 w-6 relative flex items-center justify-center">
-                      <AvatarImage src={user.avatar} alt={user.name} />
-                      <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
-                      {user.online && <span className="absolute bottom-0 right-0 block h-2 w-2 rounded-full bg-green-500 ring-2 ring-sidebar-background" />}
-                    </Avatar>
-                    <span>{user.name}</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroup>
+
+          {!profile.isGuest && (
+             <>
+               {friendRequests.length > 0 && (
+                <SidebarGroup>
+                    <SidebarMenu>
+                    <p className="px-2 text-xs font-semibold text-muted-foreground mb-2">Friend Requests</p>
+                    {friendRequests.map(req => (
+                        <SidebarMenuItem key={req.id}>
+                            <div className="flex items-center w-full justify-between p-2">
+                                <div className="flex items-center gap-2">
+                                    <Avatar className="h-6 w-6">
+                                        <AvatarImage src={req.fromAvatar} alt={req.fromName} />
+                                        <AvatarFallback>{req.fromName.charAt(0)}</AvatarFallback>
+                                    </Avatar>
+                                    <span className="text-sm">{req.fromName}</span>
+                                </div>
+                                <div className="flex gap-1">
+                                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleAcceptRequest(req.id, req.fromId)}>✓</Button>
+                                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleDeclineRequest(req.id)}>×</Button>
+                                </div>
+                            </div>
+                        </SidebarMenuItem>
+                    ))}
+                    </SidebarMenu>
+                </SidebarGroup>
+               )}
+              <SidebarGroup>
+                <SidebarMenu>
+                  <p className="px-2 text-xs font-semibold text-muted-foreground mb-2">Friends</p>
+                  {friends.map(friend => (
+                    <SidebarMenuItem key={friend.id}>
+                      <SidebarMenuButton
+                        onClick={() => handleSelectChat(friend)}
+                        isActive={activeView.type === 'chat' && activeView.data?.user.id === friend.id}
+                        tooltip={friend.name}
+                      >
+                        <Avatar className="h-6 w-6 relative flex items-center justify-center">
+                          <AvatarImage src={friend.avatar} alt={friend.name} />
+                          <AvatarFallback>{friend.name.charAt(0)}</AvatarFallback>
+                          {friend.online && <span className="absolute bottom-0 right-0 block h-2 w-2 rounded-full bg-green-500 ring-2 ring-sidebar-background" />}
+                        </Avatar>
+                        <span>{friend.name}</span>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                   {friends.length === 0 && (
+                       <p className="px-2 text-xs text-muted-foreground">No friends yet.</p>
+                   )}
+                </SidebarMenu>
+              </SidebarGroup>
+             </>
+          )}
+
         </SidebarContent>
          <SidebarHeader>
             <Button onClick={logout} variant="ghost" className="w-full justify-center">
@@ -274,6 +408,10 @@ export function MainLayout() {
               onFindChat={handleFindChat} 
               onLeaveChat={handleLeaveChat}
               isSearching={isSearching}
+              onAddFriend={handleAddFriend}
+              onBlockUser={handleBlockUser}
+              isFriend={activeView.type === 'chat' ? profile.friends?.includes(activeView.data.user.id) : false}
+              isGuest={profile.isGuest || (activeView.type === 'chat' && activeView.data.user.isGuest)}
             />
             <div className="flex-1 min-h-0">
               {renderView()}

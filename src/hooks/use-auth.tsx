@@ -73,7 +73,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         if (user && profile) { // User is signing out
            const userDocRef = doc(db, 'users', user.uid);
-           if ((await getDoc(userDocRef)).exists()){
+           const docSnap = await getDoc(userDocRef);
+           if (docSnap.exists()){
              await updateDoc(userDocRef, { online: false, lastSeen: serverTimestamp() });
            }
         }
@@ -87,7 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [auth, db]);
 
-  const createProfile = async (uid: string, data: Partial<User>) => {
+  const createProfile = async (uid: string, data: Partial<User>, isGuest = false) => {
     const userDocRef = doc(db, 'users', uid);
     const userDoc = await getDoc(userDocRef);
     if (!userDoc.exists()) {
@@ -98,6 +99,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         online: true,
         gender: 'Prefer not to say',
         interests: [],
+        friends: [],
+        blockedUsers: [],
+        isGuest,
         ...data,
       };
       await setDoc(userDocRef, defaultProfile);
@@ -125,7 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signInAsGuest = async (displayName: string) => {
     if (!displayName) throw new Error("Display name cannot be empty.");
     const result = await signInAnonymously(auth);
-    await createProfile(result.user.uid, { name: displayName });
+    await createProfile(result.user.uid, { name: displayName }, true);
   };
 
   const updateProfile = async (data: Partial<User>) => {

@@ -5,6 +5,9 @@ export interface User {
   online: boolean;
   gender: 'Male' | 'Female' | 'Other' | 'Prefer not to say';
   interests: string[];
+  isGuest?: boolean;
+  friends?: string[];
+  blockedUsers?: string[];
 }
 
 export interface Message {
@@ -18,4 +21,14 @@ export interface Chat {
   id: string;
   userIds: string[];
   messages: Message[];
+}
+
+export interface FriendRequest {
+    id: string;
+    fromId: string;
+    toId: string;
+    fromName: string;
+    fromAvatar: string;
+    status: 'pending' | 'accepted' | 'declined';
+    timestamp: Date;
 }

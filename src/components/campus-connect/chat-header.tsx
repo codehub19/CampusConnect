@@ -2,7 +2,7 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquarePlus, LogOut, Video, Gamepad2, UserPlus, ShieldAlert, MoreVertical } from 'lucide-react';
+import { Loader2, MessageSquarePlus, LogOut, Video, Gamepad2, UserPlus, ShieldAlert, MoreVertical, UserCheck } from 'lucide-react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import type { User, Chat } from '@/lib/types';
+import { useToast } from '@/hooks/use-toast';
 
 type ActiveView = 
   | { type: 'welcome' }
@@ -21,10 +22,28 @@ interface ChatHeaderProps {
   activeView: ActiveView;
   onFindChat: () => void;
   onLeaveChat: () => void;
+  onAddFriend: (friendId: string) => void;
+  onBlockUser: (userId: string) => void;
   isSearching: boolean;
+  isFriend?: boolean;
+  isGuest?: boolean;
 }
 
-export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSearching }: ChatHeaderProps) {
+export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSearching, onAddFriend, onBlockUser, isFriend, isGuest }: ChatHeaderProps) {
+  const { toast } = useToast();
+
+  const handleAddFriendClick = () => {
+    if (activeView.type === 'chat') {
+        onAddFriend(activeView.data.user.id);
+    }
+  }
+
+  const handleBlockUserClick = () => {
+     if (activeView.type === 'chat') {
+        onBlockUser(activeView.data.user.id);
+     }
+  }
+
   const renderContent = () => {
     switch (activeView.type) {
       case 'chat':
@@ -42,8 +61,15 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSear
                 </div>
             </div>
             <div className="flex items-center gap-1">
-                 <Button variant="ghost" size="icon" className="rounded-full">
-                    <UserPlus className="h-5 w-5" />
+                 <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="rounded-full" 
+                    onClick={handleAddFriendClick} 
+                    disabled={isFriend || isGuest}
+                    title={isGuest ? "Sign up to add friends" : (isFriend ? "Already friends" : "Add friend")}
+                >
+                    {isFriend ? <UserCheck className="h-5 w-5 text-green-500" /> : <UserPlus className="h-5 w-5" /> }
                     <span className="sr-only">Add Friend</span>
                 </Button>
                 <Button variant="ghost" size="icon" className="rounded-full">
@@ -62,7 +88,10 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSear
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem className="text-destructive focus:text-destructive-foreground focus:bg-destructive">
+                    <DropdownMenuItem 
+                        className="text-destructive focus:text-destructive-foreground focus:bg-destructive"
+                        onSelect={handleBlockUserClick}
+                    >
                       <ShieldAlert className="mr-2 h-4 w-4" />
                       <span>Block User</span>
                     </DropdownMenuItem>
@@ -81,7 +110,7 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSear
                 <div className="flex items-center gap-3">
                     <h2 className="font-semibold text-lg">AI Assistant</h2>
                 </div>
-                <Button onClick={() => window.location.reload()} variant="outline" size="sm">
+                 <Button onClick={onLeaveChat} variant="outline" size="sm">
                     End Chat
                 </Button>
             </>
