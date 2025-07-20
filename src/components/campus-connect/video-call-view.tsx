@@ -15,6 +15,7 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import type { User } from '@/lib/types';
 import { currentUser } from '@/lib/data';
+import { cn } from '@/lib/utils';
 
 interface VideoCallViewProps {
   user: User;
