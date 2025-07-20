@@ -6,3 +6,4 @@ import '@/ai/flows/ai-assistant-answers-questions.ts';
 import '@/ai/flows/generate-icebreaker.ts';
 import '@/ai/flows/moderate-missed-connection.ts';
 import '@/ai/flows/handle-reported-post.ts';
+import '@/ai/flows/generate-event-image-flow.ts';

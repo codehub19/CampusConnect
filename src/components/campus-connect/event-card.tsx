@@ -22,6 +22,8 @@ export default function EventCard({ event }: EventCardProps) {
       description: "Group chat functionality is currently under development.",
     });
   }
+  
+  const eventDate = event.date?.toDate ? event.date.toDate() : new Date(event.date);
 
   return (
     <Card className="flex flex-col h-full overflow-hidden transition-all duration-300 hover:shadow-primary/10">
@@ -33,6 +35,7 @@ export default function EventCard({ event }: EventCardProps) {
             layout="fill"
             objectFit="cover"
             data-ai-hint="event cover"
+            className="bg-secondary"
           />
         </div>
       </CardHeader>
@@ -40,7 +43,7 @@ export default function EventCard({ event }: EventCardProps) {
         <CardTitle className="mb-2 text-xl">{event.title}</CardTitle>
         <div className="flex items-center text-sm text-muted-foreground mb-1">
           <Calendar className="mr-2 h-4 w-4" />
-          <span>{format(new Date(event.date), 'EEE, MMM d, yyyy \'at\' h:mm a')}</span>
+          <span>{format(eventDate, 'EEE, MMM d, yyyy \'at\' h:mm a')}</span>
         </div>
         <div className="flex items-center text-sm text-muted-foreground mb-4">
           <Pin className="mr-2 h-4 w-4" />

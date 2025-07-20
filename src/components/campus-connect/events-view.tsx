@@ -6,61 +6,29 @@ import { Button } from '@/components/ui/button';
 import { ArrowLeft, PlusCircle } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
-import EventCard from './event-card'; // We will create this next
+import EventCard from './event-card';
 import type { CampusEvent } from '@/lib/types';
-import { format } from 'date-fns';
+import CreateEventView from './create-event-view';
+import { getFirestore, collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { firebaseApp } from '@/lib/firebase';
+import { useAuth } from '@/hooks/use-auth';
 
 interface EventsViewProps {
   onNavigateHome: () => void;
 }
 
-// Placeholder data for now
-const placeholderEvents: CampusEvent[] = [
-  {
-    id: '1',
-    title: 'Annual Tech Summit 2024',
-    description: 'Join us for a day of tech talks, workshops, and networking with industry leaders.',
-    location: 'Main Auditorium',
-    date: new Date('2024-10-26T09:00:00'),
-    organizer: 'Computer Science Club',
-    imageUrl: `https://placehold.co/600x400/4f46e5/ffffff`,
-    chatId: 'chat-event-1'
-  },
-  {
-    id: '2',
-    title: 'Fall Music Festival',
-    description: 'Live bands, food trucks, and good vibes on the main quad. Don\'t miss out!',
-    location: 'University Quad',
-    date: new Date('2024-11-02T14:00:00'),
-    organizer: 'Student Activities Board',
-    imageUrl: `https://placehold.co/600x400/f59e0b/ffffff`,
-    chatId: 'chat-event-2'
-  },
-  {
-    id: '3',
-    title: 'Startup Career Fair',
-    description: 'Connect with innovative startups looking to hire interns and full-time employees.',
-    location: 'Student Union Ballroom',
-    date: new Date('2024-11-09T10:00:00'),
-    organizer: 'Career Services',
-    imageUrl: `https://placehold.co/600x400/10b981/ffffff`,
-    chatId: 'chat-event-3'
-  },
-];
-
-
 const EventSkeleton = () => (
-  <div className="rounded-lg border bg-card text-card-foreground shadow-sm">
-    <Skeleton className="h-[200px] w-full rounded-t-lg" />
-    <div className="p-6">
+  <div className="flex flex-col h-full overflow-hidden transition-all duration-300 rounded-lg border bg-card text-card-foreground shadow-sm">
+      <Skeleton className="h-48 w-full" />
+    <div className="p-6 flex-grow">
       <Skeleton className="h-6 w-3/4 mb-2" />
       <Skeleton className="h-4 w-1/2 mb-4" />
       <Skeleton className="h-4 w-full" />
       <Skeleton className="h-4 w-5/6 mt-2" />
-      <div className="flex justify-between items-center mt-4">
-        <Skeleton className="h-8 w-24" />
-        <Skeleton className="h-10 w-32" />
-      </div>
+    </div>
+     <div className="p-6 pt-0 bg-card/50 flex-col items-stretch gap-4">
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-4 w-1/3 mx-auto mt-4" />
     </div>
   </div>
 );
@@ -68,17 +36,36 @@ const EventSkeleton = () => (
 export default function EventsView({ onNavigateHome }: EventsViewProps) {
   const [events, setEvents] = useState<CampusEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCreateEventOpen, setCreateEventOpen] = useState(false);
+  const db = getFirestore(firebaseApp);
+  const { profile } = useAuth();
 
   useEffect(() => {
-    // Simulate fetching data
-    const timer = setTimeout(() => {
-      setEvents(placeholderEvents);
+    const eventsRef = collection(db, 'campus_events');
+    const q = query(eventsRef, orderBy('date', 'asc'));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedEvents: CampusEvent[] = [];
+      snapshot.forEach(doc => {
+        fetchedEvents.push({ id: doc.id, ...doc.data() } as CampusEvent);
+      });
+      setEvents(fetchedEvents);
       setIsLoading(false);
-    }, 1000);
-    return () => clearTimeout(timer);
-  }, []);
+    }, (error) => {
+      console.error("Error fetching events: ", error);
+      setIsLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, [db]);
+  
+  const handleCreateEventClick = () => {
+    setCreateEventOpen(true);
+  }
 
   return (
+    <>
+    <CreateEventView isOpen={isCreateEventOpen} onOpenChange={setCreateEventOpen} />
     <div className="flex flex-col h-screen bg-background text-foreground">
       <header className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-background/80 backdrop-blur-sm z-10">
         <Button variant="ghost" size="icon" onClick={onNavigateHome}>
@@ -86,7 +73,7 @@ export default function EventsView({ onNavigateHome }: EventsViewProps) {
           <span className="sr-only">Back to Home</span>
         </Button>
         <h1 className="text-xl font-bold">Campus Events</h1>
-        <Button>
+        <Button onClick={handleCreateEventClick} disabled={profile?.isGuest}>
           <PlusCircle className="mr-2 h-4 w-4" />
           Create Event
         </Button>
@@ -104,7 +91,7 @@ export default function EventsView({ onNavigateHome }: EventsViewProps) {
               ) : (
                 <div className="text-center py-20 col-span-full">
                   <p className="text-lg font-semibold">No events scheduled.</p>
-                  <p className="text-muted-foreground">Check back soon for more events!</p>
+                  <p className="text-muted-foreground">Check back soon or create the first event!</p>
                 </div>
               )}
             </div>
@@ -112,5 +99,6 @@ export default function EventsView({ onNavigateHome }: EventsViewProps) {
         </ScrollArea>
       </main>
     </div>
+    </>
   );
 }

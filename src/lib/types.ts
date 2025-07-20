@@ -1,6 +1,5 @@
 
 
-
 export interface User {
   id: string;
   name: string;
@@ -118,14 +117,14 @@ export interface PostRestriction {
   expires: any; // Firestore Timestamp
 }
 
-
 export interface CampusEvent {
   id: string;
   title: string;
   description: string;
   location: string;
-  date: any; // Firestore Timestamp
+  date: any;
   organizer: string;
   imageUrl: string;
-  chatId: string; // Link to the associated group chat
+  chatId: string;
+  authorId: string;
 }

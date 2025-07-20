@@ -7,7 +7,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { ArrowLeft, PlusCircle, Pin, Clock, MessageSquare, AlertTriangle, Send } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { getFirestore, collection, query, where, onSnapshot, orderBy, doc, addDoc, serverTimestamp, runTransaction, getDoc, writeBatch, deleteDoc } from 'firebase/firestore';
+import { getFirestore, collection, query, where, onSnapshot, orderBy, doc, addDoc, serverTimestamp, runTransaction, getDoc, writeBatch, deleteDoc, Timestamp } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import type { MissedConnectionPost, MissedConnectionComment } from '@/lib/types';
 import { formatDistanceToNow } from 'date-fns';
@@ -119,8 +119,14 @@ export default function MissedConnectionsView({ onNavigateHome }: MissedConnecti
   const { toast } = useToast();
 
   useEffect(() => {
+    const fortyEightHoursAgo = Timestamp.fromMillis(Date.now() - 48 * 60 * 60 * 1000);
     const postsRef = collection(db, 'missed_connections');
-    const q = query(postsRef, where('status', '==', 'approved'), orderBy('timestamp', 'desc'));
+    const q = query(
+        postsRef, 
+        where('status', '==', 'approved'), 
+        where('timestamp', '>', fortyEightHoursAgo),
+        orderBy('timestamp', 'desc')
+    );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedPosts: MissedConnectionPost[] = [];
@@ -232,7 +238,7 @@ export default function MissedConnectionsView({ onNavigateHome }: MissedConnecti
               ) : (
                 <div className="text-center py-20">
                     <p className="text-lg font-semibold">No posts yet!</p>
-                    <p className="text-muted-foreground">Be the first to share a missed connection.</p>
+                    <p className="text-muted-foreground">Check back soon for more events!</p>
                 </div>
               )}
             </div>
