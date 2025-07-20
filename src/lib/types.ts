@@ -85,3 +85,15 @@ export interface FriendRequest {
     status: 'pending' | 'accepted' | 'declined';
     timestamp: any;
 }
+
+export interface MissedConnectionPost {
+  id: string;
+  title: string;
+  content: string;
+  location: string;
+  timeOfDay: string;
+  authorId: string;
+  authorName: string;
+  timestamp: any;
+  status: 'pending' | 'approved' | 'rejected';
+}
