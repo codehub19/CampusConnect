@@ -33,7 +33,6 @@ import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where
 import { firebaseApp } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import VideoCallView from './video-call-view';
-import { SheetTitle } from '../ui/sheet';
 
 type ActiveView = 
   | { type: 'welcome' }
@@ -543,7 +542,6 @@ export function MainLayout() {
 
       <Sidebar>
         <SidebarHeader>
-          <SheetTitle className="sr-only">CampusConnect</SheetTitle>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" className="h-8 w-8 bg-primary text-primary-foreground rounded-full">
               <MessageSquare className="h-4 w-4" />
