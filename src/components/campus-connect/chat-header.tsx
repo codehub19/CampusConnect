@@ -10,6 +10,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu"
 import type { User, Chat } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
@@ -93,6 +94,14 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSear
                         {isFriend ? <UserCheck className="mr-2 h-4 w-4 text-green-500" /> : <UserPlus className="mr-2 h-4 w-4" /> }
                         <span>{isFriend ? "Already friends" : "Add friend"}</span>
                     </DropdownMenuItem>
+                    <DropdownMenuItem 
+                        className="text-destructive focus:text-destructive-foreground focus:bg-destructive sm:hidden"
+                        onSelect={onLeaveChat}
+                    >
+                      <LogOut className="mr-2 h-4 w-4" />
+                      <span>Leave Chat</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator className="sm:hidden" />
                     <DropdownMenuItem 
                         className="text-destructive focus:text-destructive-foreground focus:bg-destructive"
                         onSelect={onBlockUser}

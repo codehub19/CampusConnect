@@ -38,15 +38,15 @@ export default function DotsAndBoxes({ game, currentUserId, onAcceptGame, onQuit
                 const freshChatDoc = await transaction.get(chatRef);
                 if (!freshChatDoc.exists()) throw "Chat does not exist!";
                 
-                const game = freshChatDoc.data().game as DotsAndBoxesState;
-                if (!game || game.status !== 'active' || game.turn !== authUser.uid) return;
-                if ((type === 'h' && game.h_lines[index]) || (type === 'v' && game.v_lines[index])) return;
+                const freshGame = freshChatDoc.data().game as DotsAndBoxesState | null;
+                if (!freshGame || freshGame.type !== 'dotsAndBoxes' || freshGame.status !== 'active' || freshGame.turn !== authUser.uid) return;
+                if ((type === 'h' && freshGame.h_lines[index]) || (type === 'v' && freshGame.v_lines[index])) return;
 
-                const { gridSize } = game;
-                const h_lines = [...game.h_lines];
-                const v_lines = [...game.v_lines];
-                const boxes = [...game.boxes];
-                const scores = { ...game.scores };
+                const { gridSize } = freshGame;
+                const h_lines = [...freshGame.h_lines];
+                const v_lines = [...freshGame.v_lines];
+                const boxes = [...freshGame.boxes];
+                const scores = { ...freshGame.scores };
                 
                 if (type === 'h') h_lines[index] = authUser.uid;
                 else v_lines[index] = authUser.uid;
@@ -57,8 +57,8 @@ export default function DotsAndBoxes({ game, currentUserId, onAcceptGame, onQuit
                         const boxIndex = r * gridSize + c;
                         if (boxes[boxIndex]) continue;
 
-                        const top = h_lines[r * gridSize + c];
-                        const bottom = h_lines[(r + 1) * gridSize + c];
+                        const top = h_lines[r * (gridSize) + c];
+                        const bottom = h_lines[(r + 1) * (gridSize) + c];
                         const left = v_lines[r * (gridSize + 1) + c];
                         const right = v_lines[r * (gridSize + 1) + (c + 1)];
 
@@ -70,13 +70,24 @@ export default function DotsAndBoxes({ game, currentUserId, onAcceptGame, onQuit
                     }
                 }
                 
-                let newTurn = (boxesCompletedThisTurn > 0) ? authUser.uid : partnerId;
+                const partnerId = Object.keys(freshGame.players).find(id => id !== authUser.uid)!;
+                let newTurn: string | null = (boxesCompletedThisTurn > 0) ? authUser.uid : partnerId;
                 const totalBoxes = gridSize * gridSize;
                 const currentTotalScore = Object.values(scores).reduce((a, b) => a + b, 0);
 
                 let newStatus: 'active' | 'finished' | 'draw' = 'active';
+                let newWinner: string | null = null;
+
                 if (currentTotalScore === totalBoxes) {
-                    newStatus = scores[authUser.uid] === scores[partnerId] ? 'draw' : 'finished';
+                    if (scores[authUser.uid] > scores[partnerId]) {
+                         newStatus = 'finished';
+                         newWinner = authUser.uid;
+                    } else if (scores[authUser.uid] < scores[partnerId]) {
+                        newStatus = 'finished';
+                        newWinner = partnerId;
+                    } else {
+                        newStatus = 'draw';
+                    }
                     newTurn = null;
                 }
 
@@ -87,7 +98,7 @@ export default function DotsAndBoxes({ game, currentUserId, onAcceptGame, onQuit
                     'game.scores': scores,
                     'game.turn': newTurn,
                     'game.status': newStatus,
-                    'game.winner': newStatus === 'finished' ? (scores[authUser.uid] > scores[partnerId] ? authUser.uid : partnerId) : null,
+                    'game.winner': newWinner,
                 });
             });
         } catch (e) {
@@ -140,7 +151,7 @@ export default function DotsAndBoxes({ game, currentUserId, onAcceptGame, onQuit
                      Array.from({length: game.gridSize * 2 + 1}).map((_, c) => {
                         // Dot
                         if(r % 2 === 0 && c % 2 === 0) {
-                            return <div key={`${r}-${c}`} className="w-3 h-3 bg-muted rounded-full"/>
+                            return <div key={`${r}-${c}`} className="w-4 h-4 bg-muted rounded-full"/>
                         }
                         // Horizontal Line
                         if(r % 2 === 0 && c % 2 !== 0) {
@@ -152,7 +163,7 @@ export default function DotsAndBoxes({ game, currentUserId, onAcceptGame, onQuit
                                 key={`${r}-${c}`}
                                 onClick={() => handleLineClick('h', lineIndex)}
                                 disabled={!!ownerId || !isMyTurn || game.status !== 'active'}
-                                className={cn("h-3 mx-1 flex-1 bg-secondary hover:bg-primary/30 disabled:cursor-not-allowed", ownerClass)} 
+                                className={cn("h-4 mx-1 flex-1 bg-secondary hover:bg-primary/30 disabled:cursor-not-allowed rounded-sm", ownerClass)} 
                             />
                            )
                         }
@@ -166,7 +177,7 @@ export default function DotsAndBoxes({ game, currentUserId, onAcceptGame, onQuit
                                 key={`${r}-${c}`}
                                 onClick={() => handleLineClick('v', lineIndex)}
                                 disabled={!!ownerId || !isMyTurn || game.status !== 'active'}
-                                className={cn("w-3 my-1 bg-secondary hover:bg-primary/30 disabled:cursor-not-allowed", ownerClass)}
+                                className={cn("w-4 my-1 bg-secondary hover:bg-primary/30 disabled:cursor-not-allowed rounded-sm", ownerClass)}
                              />
                            )
                         }
