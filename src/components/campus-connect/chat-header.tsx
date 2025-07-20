@@ -1,3 +1,4 @@
+
 "use client";
 
 import React from 'react';
@@ -12,11 +13,15 @@ import {
 } from "@/components/ui/dropdown-menu"
 import type { User, Chat } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
+import { Dialog, DialogTrigger } from '@/components/ui/dialog';
+import VideoCallView from './video-call-view';
+import { useAuth } from '@/hooks/use-auth';
 
 type ActiveView = 
   | { type: 'welcome' }
   | { type: 'ai' }
-  | { type: 'chat', data: { user: User, chat: Chat } };
+  | { type: 'chat', data: { user: User, chat: Chat } }
+  | { type: 'game', data: { user: User, chat: Chat } };
 
 interface ChatHeaderProps {
   activeView: ActiveView;
@@ -24,22 +29,25 @@ interface ChatHeaderProps {
   onLeaveChat: () => void;
   onAddFriend: (friendId: string) => void;
   onBlockUser: (userId: string) => void;
+  onStartGame: (gameType: 'ticTacToe') => void;
   isSearching: boolean;
   isFriend?: boolean;
   isGuest?: boolean;
 }
 
-export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSearching, onAddFriend, onBlockUser, isFriend, isGuest }: ChatHeaderProps) {
+export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSearching, onAddFriend, onBlockUser, isFriend, isGuest, onStartGame }: ChatHeaderProps) {
   const { toast } = useToast();
+  const { profile } = useAuth();
+  const [isVideoCallOpen, setVideoCallOpen] = React.useState(false);
 
   const handleAddFriendClick = () => {
-    if (activeView.type === 'chat') {
+    if (activeView.type === 'chat' || activeView.type === 'game') {
         onAddFriend(activeView.data.user.id);
     }
   }
 
   const handleBlockUserClick = () => {
-     if (activeView.type === 'chat') {
+     if (activeView.type === 'chat' || activeView.type === 'game') {
         onBlockUser(activeView.data.user.id);
      }
   }
@@ -47,6 +55,7 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSear
   const renderContent = () => {
     switch (activeView.type) {
       case 'chat':
+      case 'game':
         const { user } = activeView.data;
         return (
           <>
@@ -72,14 +81,19 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSear
                     {isFriend ? <UserCheck className="h-5 w-5 text-green-500" /> : <UserPlus className="h-5 w-5" /> }
                     <span className="sr-only">Add Friend</span>
                 </Button>
-                <Button variant="ghost" size="icon" className="rounded-full">
+                <Button variant="ghost" size="icon" className="rounded-full" onClick={() => onStartGame('ticTacToe')}>
                     <Gamepad2 className="h-5 w-5" />
                     <span className="sr-only">Play Game</span>
                 </Button>
-                <Button variant="ghost" size="icon" className="rounded-full">
-                    <Video className="h-5 w-5" />
-                    <span className="sr-only">Video Call</span>
-                </Button>
+                 <Dialog open={isVideoCallOpen} onOpenChange={setVideoCallOpen}>
+                    <DialogTrigger asChild>
+                    <Button variant="ghost" size="icon" className="rounded-full">
+                        <Video className="h-5 w-5" />
+                        <span className="sr-only">Video Call</span>
+                    </Button>
+                    </DialogTrigger>
+                    {profile && <VideoCallView user={user} currentUser={profile} onOpenChange={setVideoCallOpen} />}
+                </Dialog>
                  <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="rounded-full">

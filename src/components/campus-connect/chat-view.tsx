@@ -1,29 +1,29 @@
+
 "use client";
 
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, Video, Gamepad2 } from 'lucide-react';
+import { Send } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Card, CardHeader, CardContent, CardFooter } from '@/components/ui/card';
+import { Card, CardContent, CardFooter } from '@/components/ui/card';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Dialog, DialogTrigger } from '@/components/ui/dialog';
-import VideoCallView from './video-call-view';
-import TicTacToe from './tic-tac-toe';
 import { cn } from '@/lib/utils';
 import type { User, Chat, Message } from '@/lib/types';
 
 interface ChatViewProps {
-  user: User;
   chat: Chat;
   currentUser: User;
 }
 
-export default function ChatView({ user, chat, currentUser }: ChatViewProps) {
+export default function ChatView({ chat, currentUser }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>(chat.messages);
-  const [isVideoCallOpen, setVideoCallOpen] = useState(false);
-  const [isGameOpen, setGameOpen] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const partner = chat.users?.find(u => u.id !== currentUser.id) || { name: 'Chat', avatar: '' };
+
+  useEffect(() => {
+    setMessages(chat.messages);
+  }, [chat.messages]);
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -36,6 +36,7 @@ export default function ChatView({ user, chat, currentUser }: ChatViewProps) {
     const form = e.currentTarget;
     const textarea = form.querySelector<HTMLTextAreaElement>('textarea');
     if (textarea && textarea.value.trim() !== '') {
+      // This is a mock send message. In a real app this would call a backend.
       const newMessage: Message = {
         id: `msg-${Date.now()}`,
         senderId: currentUser.id,
@@ -48,39 +49,7 @@ export default function ChatView({ user, chat, currentUser }: ChatViewProps) {
   };
 
   return (
-    <Card className="h-full flex flex-col border-0 rounded-xl shadow-none">
-      <CardHeader className="flex flex-row items-center justify-between p-4 border-b">
-        <div className="flex items-center gap-3">
-          <Avatar className="h-10 w-10">
-            <AvatarImage src={user.avatar} alt={user.name} />
-            <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
-          </Avatar>
-          <div>
-            <h2 className="font-semibold text-lg">{user.name}</h2>
-            <p className="text-sm text-muted-foreground">{user.online ? 'Online' : 'Offline'}</p>
-          </div>
-        </div>
-        <div className="flex items-center gap-2">
-           <Dialog open={isGameOpen} onOpenChange={setGameOpen}>
-            <DialogTrigger asChild>
-              <Button variant="ghost" size="icon" className="rounded-full">
-                <Gamepad2 className="h-5 w-5" />
-                <span className="sr-only">Play Game</span>
-              </Button>
-            </DialogTrigger>
-            <TicTacToe onOpenChange={setGameOpen} />
-          </Dialog>
-          <Dialog open={isVideoCallOpen} onOpenChange={setVideoCallOpen}>
-            <DialogTrigger asChild>
-              <Button variant="ghost" size="icon" className="rounded-full">
-                <Video className="h-5 w-5" />
-                <span className="sr-only">Video Call</span>
-              </Button>
-            </DialogTrigger>
-            <VideoCallView user={user} currentUser={currentUser} onOpenChange={setVideoCallOpen} />
-          </Dialog>
-        </div>
-      </CardHeader>
+    <Card className="h-full flex flex-col border-0 rounded-none shadow-none">
       <CardContent className="flex-1 p-0">
         <ScrollArea className="h-full p-4" ref={scrollAreaRef}>
           <div className="space-y-4">
@@ -94,8 +63,8 @@ export default function ChatView({ user, chat, currentUser }: ChatViewProps) {
               >
                 {message.senderId !== currentUser.id && (
                   <Avatar className="h-8 w-8">
-                    <AvatarImage src={user.avatar} alt={user.name} />
-                    <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
+                    <AvatarImage src={partner.avatar} alt={partner.name} />
+                    <AvatarFallback>{partner.name.charAt(0)}</AvatarFallback>
                   </Avatar>
                 )}
                 <div

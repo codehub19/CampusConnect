@@ -1,98 +1,87 @@
+
 "use client";
 
-import React, { useState } from 'react';
-import {
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
-} from '@/components/ui/dialog';
+import React from 'react';
 import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
+import type { GameState } from '@/lib/types';
 
 interface TicTacToeProps {
-  onOpenChange: (open: boolean) => void;
+    game: GameState;
+    currentUserId: string;
+    onMakeMove: (index: number) => void;
+    onAcceptGame: () => void;
+    onQuitGame: () => void;
 }
 
-const calculateWinner = (squares: (string | null)[]) => {
-  const lines = [
-    [0, 1, 2], [3, 4, 5], [6, 7, 8],
-    [0, 3, 6], [1, 4, 7], [2, 5, 8],
-    [0, 4, 8], [2, 4, 6],
-  ];
-  for (let i = 0; i < lines.length; i++) {
-    const [a, b, c] = lines[i];
-    if (squares[a] && squares[a] === squares[b] && squares[a] === squares[c]) {
-      return squares[a];
-    }
-  }
-  return null;
-};
-
-const Square = ({ value, onSquareClick }: { value: string | null; onSquareClick: () => void }) => {
+const Square = ({ value, onSquareClick, disabled }: { value: string | null; onSquareClick: () => void, disabled: boolean }) => {
   return (
     <button
       className={cn(
-        "h-20 w-20 md:h-24 md:w-24 bg-secondary flex items-center justify-center rounded-lg shadow-md transition-all duration-150 ease-out hover:scale-105",
+        "h-20 w-20 md:h-24 md:w-24 bg-secondary flex items-center justify-center rounded-lg shadow-md transition-all duration-150 ease-out",
+        !disabled && "hover:scale-105 hover:bg-primary/20",
         value === 'X' ? 'text-primary' : 'text-accent'
       )}
       onClick={onSquareClick}
+      disabled={disabled}
     >
       {value && <span className="text-5xl font-bold">{value}</span>}
     </button>
   );
 };
 
-export default function TicTacToe({ onOpenChange }: TicTacToeProps) {
-  const [squares, setSquares] = useState<(string | null)[]>(Array(9).fill(null));
-  const [xIsNext, setXIsNext] = useState(true);
+export default function TicTacToe({ game, currentUserId, onMakeMove, onAcceptGame, onQuitGame }: TicTacToeProps) {
+  const isMyTurn = game.turn === currentUserId;
+  const mySymbol = game.players[currentUserId];
+  const partnerId = Object.keys(game.players).find(id => id !== currentUserId) || '';
 
-  const winner = calculateWinner(squares);
-  const isBoardFull = squares.every(Boolean);
-  
-  let status;
-  if (winner) {
-    status = `Winner: ${winner}!`;
-  } else if (isBoardFull) {
-    status = "It's a draw!";
-  } else {
-    status = `Next player: ${xIsNext ? 'X' : 'O'}`;
-  }
-
-  const handleClick = (i: number) => {
-    if (squares[i] || winner) {
-      return;
+  const getStatusText = () => {
+    if (game.status === 'pending') {
+        if (game.players[currentUserId] === 'O') { // The one who didn't initiate
+            return (
+                <div className="text-center space-y-4">
+                    <p>Your opponent has invited you to play Tic-Tac-Toe!</p>
+                    <Button onClick={onAcceptGame} className="w-full">Accept</Button>
+                </div>
+            )
+        }
+        return "Waiting for opponent to accept...";
     }
-    const nextSquares = squares.slice();
-    nextSquares[i] = xIsNext ? 'X' : 'O';
-    setSquares(nextSquares);
-    setXIsNext(!xIsNext);
+    if (game.status === 'finished') {
+        if (game.winner === 'draw') return "It's a draw!";
+        if (game.winner === currentUserId) return "You win!";
+        return "You lose!";
+    }
+    if (isMyTurn) return `Your turn (${mySymbol})`;
+    return "Opponent's turn";
   };
-  
-  const handleReset = () => {
-    setSquares(Array(9).fill(null));
-    setXIsNext(true);
-  };
+
 
   return (
-    <DialogContent>
-      <DialogHeader>
-        <DialogTitle>Tic-Tac-Toe</DialogTitle>
-        <DialogDescription>Challenge your friend to a game. May the best player win!</DialogDescription>
-      </DialogHeader>
-      <div className="flex flex-col items-center justify-center p-4">
-        <div className="text-lg font-medium mb-4">{status}</div>
+    <Card className="h-full flex flex-col border-0 rounded-none shadow-none">
+      <CardHeader>
+        <CardTitle>Tic-Tac-Toe</CardTitle>
+        <CardDescription>{getStatusText()}</CardDescription>
+      </CardHeader>
+      <CardContent className="flex-grow flex items-center justify-center">
         <div className="grid grid-cols-3 gap-2">
-          {squares.map((square, i) => (
-            <Square key={i} value={square} onSquareClick={() => handleClick(i)} />
+          {game.board.map((square, i) => (
+            <Square 
+                key={i} 
+                value={square} 
+                onSquareClick={() => onMakeMove(i)} 
+                disabled={game.status !== 'active' || !isMyTurn || square !== null}
+            />
           ))}
         </div>
-      </div>
-       <DialogFooter className="mt-4">
-        <Button variant="outline" onClick={handleReset}>Reset Game</Button>
-        <Button onClick={() => onOpenChange(false)}>Close</Button>
-      </DialogFooter>
-    </DialogContent>
+      </CardContent>
+       <CardFooter className="flex-col gap-2">
+         {game.status === 'finished' && (
+            <Button variant="secondary" className="w-full" onClick={() => { /* Implement play again */ }}>Play Again</Button>
+         )}
+        <Button variant="destructive" className="w-full" onClick={onQuitGame}>Quit Game</Button>
+      </CardFooter>
+    </Card>
   );
 }

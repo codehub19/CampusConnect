@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect } from 'react';
@@ -24,14 +25,16 @@ import WelcomeView from '@/components/campus-connect/welcome-view';
 import ChatHeader from '@/components/campus-connect/chat-header';
 import { useAuth } from '@/hooks/use-auth';
 import type { User, Chat, FriendRequest } from '@/lib/types';
-import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where, getDocs, deleteDoc, addDoc, updateDoc, serverTimestamp, arrayUnion, writeBatch, limit } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where, getDocs, deleteDoc, addDoc, updateDoc, serverTimestamp, arrayUnion, writeBatch, limit, runTransaction } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
+import TicTacToe from './tic-tac-toe';
 
 type ActiveView = 
   | { type: 'welcome' }
   | { type: 'ai' }
-  | { type: 'chat', data: { user: User, chat: Chat } };
+  | { type: 'chat', data: { user: User, chat: Chat } }
+  | { type: 'game', data: { user: User, chat: Chat } };
 
 export function MainLayout() {
   const { user, profile, logout, updateProfile } = useAuth();
@@ -85,6 +88,23 @@ export function MainLayout() {
     return () => unsubscribe();
   }, [user, db]);
 
+  // Cleanup waiting user on tab close
+  useEffect(() => {
+    const handleBeforeUnload = async (e: BeforeUnloadEvent) => {
+      if (user && isSearching) {
+        // This is a best-effort attempt. Most modern browsers will not wait for the async operation to complete.
+        // A more robust solution involves Cloud Functions and Firestore presence.
+        await deleteDoc(doc(db, 'waiting_users', user.uid));
+      }
+    };
+  
+    window.addEventListener('beforeunload', handleBeforeUnload);
+  
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [user, isSearching, db]);
+
 
   // Listen for matches
    useEffect(() => {
@@ -136,17 +156,22 @@ export function MainLayout() {
     const chatDocRef = doc(db, "chats", chatId);
 
     let chatDoc = await getDoc(chatDocRef);
+    let chatData: Chat;
+
     if (!chatDoc.exists()) {
       const newChat: Chat = {
         id: chatId,
         userIds: sortedIds,
         messages: [],
+        game: null,
       };
       await setDoc(chatDocRef, newChat);
-      chatDoc = await getDoc(chatDocRef);
+      chatData = newChat;
+    } else {
+        chatData = chatDoc.data() as Chat;
     }
     
-    setActiveView({ type: 'chat', data: { user: friend, chat: chatDoc.data() as Chat } });
+    setActiveView({ type: 'chat', data: { user: friend, chat: chatData } });
   };
 
   const handleSelectAi = () => {
@@ -169,22 +194,25 @@ export function MainLayout() {
     const waitingUsersRef = collection(db, 'waiting_users');
     const blockedByMe = profile.blockedUsers || [];
     
-    const q = query(waitingUsersRef, where('id', '!=', user.uid));
+    // We query for a limited number of users to avoid large reads.
+    const q = query(waitingUsersRef, where('id', '!=', user.uid), limit(10));
     const querySnapshot = await getDocs(q);
 
     let partner: User | null = null;
     let partnerWaitingDocId: string | null = null;
     
-    for (const partnerDoc of querySnapshot.docs) {
-        const waitingUser = partnerDoc.data() as User;
-        if (waitingUser.id === user.uid) continue;
-        const partnerProfileDoc = await getDoc(doc(db, 'users', waitingUser.id));
+    const potentialPartners = querySnapshot.docs.map(doc => ({ id: doc.id, data: doc.data() as User }));
+
+    for (const potentialPartner of potentialPartners) {
+        const partnerProfileDoc = await getDoc(doc(db, 'users', potentialPartner.id));
+        if (!partnerProfileDoc.exists()) continue;
+
         const partnerProfile = partnerProfileDoc.data() as User;
         const blockedMe = partnerProfile.blockedUsers || [];
 
-        if(!blockedByMe.includes(waitingUser.id) && !blockedMe.includes(user.uid)) {
-            partnerWaitingDocId = partnerDoc.id;
-            partner = waitingUser;
+        if(!blockedByMe.includes(potentialPartner.id) && !blockedMe.includes(user.uid)) {
+            partnerWaitingDocId = potentialPartner.id;
+            partner = potentialPartner.data;
             break;
         }
     }
@@ -192,10 +220,11 @@ export function MainLayout() {
 
     if (partner && partnerWaitingDocId) {
         const newChatRef = doc(collection(db, 'chats'));
-        const newChat: any = {
+        const newChat: Chat = {
             id: newChatRef.id,
             userIds: [user.uid, partner.id],
             messages: [],
+            game: null,
         };
         await setDoc(newChatRef, newChat);
 
@@ -276,6 +305,114 @@ export function MainLayout() {
       handleLeaveChat();
   }
 
+  const handleStartGame = async (gameType: 'ticTacToe') => {
+      if (activeView.type !== 'chat') return;
+
+      const { chat } = activeView.data;
+      const chatRef = doc(db, 'chats', chat.id);
+
+      const initialGameState: any = {
+        type: gameType,
+        status: 'pending',
+        board: Array(9).fill(null),
+        turn: activeView.data.user.id,
+        players: {
+            [user!.uid]: 'X',
+            [activeView.data.user.id]: 'O'
+        },
+        winner: null,
+      };
+
+      await updateDoc(chatRef, { game: initialGameState });
+      setActiveView({ ...activeView, type: 'game' });
+  };
+
+  const handleGameUpdate = (newGameData: any | null) => {
+    if (activeView.type === 'game' || activeView.type === 'chat') {
+        const newChatState = { ...activeView.data.chat, game: newGameData };
+        const newType = newGameData ? 'game' : 'chat';
+        setActiveView({ type: newType, data: { ...activeView.data, chat: newChatState } });
+    }
+  };
+  
+  const handleMakeMove = async (index: number) => {
+    if (activeView.type !== 'game') return;
+    const { chat, user: partner } = activeView.data;
+    const { game } = chat;
+    if (!game || game.status !== 'active' || game.turn !== user?.uid || game.board[index] !== null) {
+      return;
+    }
+    
+    const chatRef = doc(db, 'chats', chat.id);
+    
+    try {
+      await runTransaction(db, async (transaction) => {
+        const freshChatDoc = await transaction.get(chatRef);
+        if (!freshChatDoc.exists()) throw new Error("Chat does not exist");
+        
+        const freshGame = freshChatDoc.data().game;
+        if (!freshGame || freshGame.turn !== user?.uid || freshGame.board[index] !== null) return;
+
+        const newBoard = [...freshGame.board];
+        newBoard[index] = freshGame.players[user!.uid];
+
+        const calculateWinner = (squares: any[]) => {
+            const lines = [
+              [0, 1, 2], [3, 4, 5], [6, 7, 8],
+              [0, 3, 6], [1, 4, 7], [2, 5, 8],
+              [0, 4, 8], [2, 4, 6],
+            ];
+            for (let i = 0; i < lines.length; i++) {
+              const [a, b, c] = lines[i];
+              if (squares[a] && squares[a] === squares[b] && squares[a] === squares[c]) {
+                return squares[a];
+              }
+            }
+            return null;
+        };
+        
+        const winnerSymbol = calculateWinner(newBoard);
+        const isDraw = newBoard.every(cell => cell !== null);
+        let newStatus = freshGame.status;
+        let newWinner = null;
+        
+        if (winnerSymbol) {
+            newStatus = 'finished';
+            newWinner = Object.keys(freshGame.players).find(key => freshGame.players[key] === winnerSymbol) || null;
+        } else if (isDraw) {
+            newStatus = 'finished';
+            newWinner = 'draw';
+        }
+
+        const newGameData = {
+          ...freshGame,
+          board: newBoard,
+          turn: newStatus === 'finished' ? null : partner.id,
+          status: newStatus,
+          winner: newWinner,
+        };
+
+        transaction.update(chatRef, { game: newGameData });
+      });
+    } catch (e) {
+      console.error("Game move transaction failed:", e);
+      toast({ variant: 'destructive', title: "Error", description: "Could not make move." });
+    }
+  };
+
+  const handleAcceptGame = async () => {
+    if (activeView.type !== 'game') return;
+    const chatRef = doc(db, 'chats', activeView.data.chat.id);
+    await updateDoc(chatRef, { 'game.status': 'active' });
+  };
+  
+  const handleQuitGame = async () => {
+      if (activeView.type !== 'game') return;
+      const chatRef = doc(db, 'chats', activeView.data.chat.id);
+      await updateDoc(chatRef, { game: null });
+  };
+
+
   if (!user || !profile) {
     return null; 
   }
@@ -283,7 +420,25 @@ export function MainLayout() {
   const renderView = () => {
     switch (activeView.type) {
       case 'chat':
-        return activeView.data ? <ChatView user={activeView.data.user} chat={activeView.data.chat} currentUser={profile} /> : <WelcomeView onFindChat={handleFindChat} />;
+        return activeView.data ? <ChatView chat={activeView.data.chat} currentUser={profile} /> : <WelcomeView onFindChat={handleFindChat} />;
+      case 'game':
+        if (!activeView.data.chat.game) return <WelcomeView onFindChat={handleFindChat} />;
+        return (
+            <div className="h-full flex flex-col md:flex-row">
+                <div className="flex-1 min-h-0">
+                    <ChatView chat={activeView.data.chat} currentUser={profile} />
+                </div>
+                <div className="md:w-1/3 md:border-l">
+                    <TicTacToe 
+                        game={activeView.data.chat.game} 
+                        currentUserId={user.uid}
+                        onMakeMove={handleMakeMove}
+                        onAcceptGame={handleAcceptGame}
+                        onQuitGame={handleQuitGame}
+                    />
+                </div>
+            </div>
+        )
       case 'ai':
         return <AiAssistantView />;
       case 'welcome':
@@ -374,7 +529,7 @@ export function MainLayout() {
                     <SidebarMenuItem key={friend.id}>
                       <SidebarMenuButton
                         onClick={() => handleSelectChat(friend)}
-                        isActive={activeView.type === 'chat' && activeView.data?.user.id === friend.id}
+                        isActive={(activeView.type === 'chat' || activeView.type === 'game') && activeView.data?.user.id === friend.id}
                         tooltip={friend.name}
                       >
                         <Avatar className="h-6 w-6 relative flex items-center justify-center">
@@ -410,8 +565,9 @@ export function MainLayout() {
               isSearching={isSearching}
               onAddFriend={handleAddFriend}
               onBlockUser={handleBlockUser}
-              isFriend={activeView.type === 'chat' ? profile.friends?.includes(activeView.data.user.id) : false}
-              isGuest={profile.isGuest || (activeView.type === 'chat' && activeView.data.user.isGuest)}
+              onStartGame={() => handleStartGame('ticTacToe')}
+              isFriend={(activeView.type === 'chat' || activeView.type === 'game') ? profile.friends?.includes(activeView.data.user.id) : false}
+              isGuest={profile.isGuest || ((activeView.type === 'chat' || activeView.type === 'game') && activeView.data.user.isGuest)}
             />
             <div className="flex-1 min-h-0">
               {renderView()}

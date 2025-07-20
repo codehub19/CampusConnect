@@ -1,3 +1,4 @@
+
 export interface User {
   id: string;
   name: string;
@@ -17,10 +18,21 @@ export interface Message {
   timestamp: Date;
 }
 
+export interface GameState {
+    type: 'ticTacToe';
+    status: 'pending' | 'active' | 'finished';
+    board: (string | null)[];
+    turn: string;
+    players: { [key: string]: 'X' | 'O' };
+    winner: string | null | 'draw';
+}
+
 export interface Chat {
   id: string;
   userIds: string[];
   messages: Message[];
+  game: GameState | null;
+  users?: User[]; // Optional: for client-side convenience
 }
 
 export interface FriendRequest {
