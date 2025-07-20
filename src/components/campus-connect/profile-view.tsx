@@ -58,12 +58,25 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
     const eventsUnsub = onSnapshot(eventsQuery, (snapshot) => {
         const userEvents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CampusEvent));
         // Sort by date on the client side to avoid composite index
-        userEvents.sort((a, b) => b.date.toDate().getTime() - a.date.toDate().getTime());
+        userEvents.sort((a, b) => {
+          const dateA = a.date?.toDate?.()?.getTime() || 0;
+          const dateB = b.date?.toDate?.()?.getTime() || 0;
+          return dateB - dateA;
+        });
         setMyEvents(userEvents);
     });
 
-    const postsQuery = query(collection(db, 'missed_connections'), where('authorId', '==', user.id), orderBy('timestamp', 'desc'));
-    const postsUnsub = onSnapshot(postsQuery, (snapshot) => setMyPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MissedConnectionPost))));
+    const postsQuery = query(collection(db, 'missed_connections'), where('authorId', '==', user.id));
+    const postsUnsub = onSnapshot(postsQuery, (snapshot) => {
+        const userPosts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MissedConnectionPost));
+        // Sort by timestamp on the client side
+        userPosts.sort((a, b) => {
+            const dateA = a.timestamp?.toDate?.().getTime() || 0;
+            const dateB = b.timestamp?.toDate?.().getTime() || 0;
+            return dateB - dateA;
+        });
+        setMyPosts(userPosts);
+    });
 
     const chatsQuery = query(collection(db, 'chats'), where('userIds', 'array-contains', user.id), orderBy('lastMessageTimestamp', 'desc'), limit(5));
     const chatsUnsub = onSnapshot(chatsQuery, async (snapshot) => {
