@@ -3,15 +3,15 @@
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, Newspaper, ArrowRight } from "lucide-react";
+import { Users, CalendarDays, ArrowRight } from "lucide-react";
 
 interface HomeViewProps {
   onNavigateTo1v1Chat: () => void;
-  onNavigateToMissedConnections: () => void;
+  onNavigateToEvents: () => void;
   userName: string;
 }
 
-export default function HomeView({ onNavigateTo1v1Chat, onNavigateToMissedConnections, userName }: HomeViewProps) {
+export default function HomeView({ onNavigateTo1v1Chat, onNavigateToEvents, userName }: HomeViewProps) {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4 sm:p-6">
       <div className="text-center mb-10">
@@ -46,25 +46,25 @@ export default function HomeView({ onNavigateTo1v1Chat, onNavigateToMissedConnec
         
         <Card 
           className="bg-card/80 border-border shadow-lg hover:shadow-accent/20 hover:border-accent/50 transition-all duration-300 transform hover:-translate-y-1 flex flex-col cursor-pointer"
-          onClick={onNavigateToMissedConnections}
+          onClick={onNavigateToEvents}
         >
           <CardHeader>
             <div className="flex items-center gap-4">
               <div className="p-3 bg-accent/10 rounded-lg">
-                <Newspaper className="h-8 w-8 text-accent" />
+                <CalendarDays className="h-8 w-8 text-accent" />
               </div>
               <div>
-                <CardTitle className="text-2xl font-bold">Missed Connections</CardTitle>
-                <CardDescription>Post anonymously about someone you saw on campus.</CardDescription>
+                <CardTitle className="text-2xl font-bold">Campus Events</CardTitle>
+                <CardDescription>Find events and join group chats.</CardDescription>
               </div>
             </div>
           </CardHeader>
           <CardContent className="flex-grow flex flex-col justify-between">
             <p className="text-muted-foreground mb-6">
-              Ever see someone you wanted to talk to but didn't get the chance? Post about it here and see what happens.
+              Discover what's happening on campus, from club fairs to concerts, and chat with other attendees.
             </p>
             <Button variant="secondary" className="w-full font-bold text-lg py-6">
-              View Board <ArrowRight className="ml-2 h-5 w-5" />
+              View Events <ArrowRight className="ml-2 h-5 w-5" />
             </Button>
           </CardContent>
         </Card>

@@ -1,4 +1,5 @@
 
+
 export interface User {
   id: string;
   name: string;
@@ -33,14 +34,14 @@ export interface TicTacToeState extends BaseGameState {
     type: 'ticTacToe';
     board: (string | null)[];
     turn: string | null;
-    players: { [key: string]: 'X' | 'O' };
+    players: { [key:string]: 'X' | 'O' };
 }
 
 export interface ConnectFourState extends BaseGameState {
     type: 'connectFour';
     board: (number | null)[];
     turn: string | null;
-    players: { [key: string]: 1 | 2 };
+    players: { [key:string]: 1 | 2 };
 }
 
 export interface DotsAndBoxesState extends BaseGameState {
@@ -74,6 +75,11 @@ export interface Chat {
           online: boolean;
       }
   }
+  // Group Chat specific fields
+  isGroupChat?: boolean;
+  groupName?: string;
+  groupAvatar?: string;
+  groupDescription?: string;
 }
 
 export interface FriendRequest {
@@ -96,4 +102,15 @@ export interface MissedConnectionPost {
   authorName: string;
   timestamp: any;
   status: 'pending' | 'approved' | 'rejected';
+}
+
+export interface CampusEvent {
+  id: string;
+  title: string;
+  description: string;
+  location: string;
+  date: any; // Firestore Timestamp
+  organizer: string;
+  imageUrl: string;
+  chatId: string; // Link to the associated group chat
 }

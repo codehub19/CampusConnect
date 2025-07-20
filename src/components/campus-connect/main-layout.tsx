@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Bot, MessageSquare, Home } from 'lucide-react';
+import { Bot, MessageSquare, Home, CalendarDays } from 'lucide-react';
 import {
   SidebarProvider,
   Sidebar,
