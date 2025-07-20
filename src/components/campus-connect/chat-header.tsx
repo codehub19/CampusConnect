@@ -3,7 +3,7 @@
 
 import React from 'react';
 import { Button } from '@/components/ui/button';
-import { Loader2, MessageSquarePlus, LogOut, Video, Gamepad2, UserPlus, ShieldAlert, MoreVertical, UserCheck } from 'lucide-react';
+import { Loader2, MessageSquarePlus, LogOut, Video, Gamepad2, UserPlus, ShieldAlert, MoreVertical, UserCheck, Menu } from 'lucide-react';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import {
   DropdownMenu,
@@ -16,6 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Dialog, DialogTrigger } from '@/components/ui/dialog';
 import VideoCallView from './video-call-view';
 import { useAuth } from '@/hooks/use-auth';
+import { SidebarTrigger } from '@/components/ui/sidebar';
 
 type ActiveView = 
   | { type: 'welcome' }
@@ -60,6 +61,11 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSear
         return (
           <>
             <div className="flex items-center gap-3">
+                <div className="md:hidden">
+                    <SidebarTrigger>
+                        <Menu />
+                    </SidebarTrigger>
+                </div>
                 <Avatar className="h-10 w-10">
                     <AvatarImage src={user.avatar} alt={user.name} />
                     <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
@@ -122,6 +128,11 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSear
         return (
             <>
                 <div className="flex items-center gap-3">
+                    <div className="md:hidden">
+                        <SidebarTrigger>
+                            <Menu />
+                        </SidebarTrigger>
+                    </div>
                     <h2 className="font-semibold text-lg">AI Assistant</h2>
                 </div>
                  <Button onClick={onLeaveChat} variant="outline" size="sm">
@@ -133,7 +144,14 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSear
       default:
         return (
           <>
-            <h2 className="font-semibold text-lg">Welcome</h2>
+            <div className="flex items-center gap-3">
+              <div className="md:hidden">
+                  <SidebarTrigger>
+                      <Menu />
+                  </SidebarTrigger>
+              </div>
+              <h2 className="font-semibold text-lg">Welcome</h2>
+            </div>
             <Button onClick={onFindChat} disabled={isSearching}>
               {isSearching ? (
                 <>

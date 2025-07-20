@@ -10,6 +10,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import type { User, Chat, Message } from '@/lib/types';
+import { getFirestore, onSnapshot, collection, query, orderBy, addDoc, serverTimestamp, updateDoc, doc } from 'firebase/firestore';
+import { firebaseApp } from '@/lib/firebase';
 
 interface ChatViewProps {
   chat: Chat;
@@ -17,13 +19,27 @@ interface ChatViewProps {
 }
 
 export default function ChatView({ chat, currentUser }: ChatViewProps) {
-  const [messages, setMessages] = useState<Message[]>(chat.messages);
+  const [messages, setMessages] = useState<Message[]>([]);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const partner = chat.users?.find(u => u.id !== currentUser.id) || { name: 'Chat', avatar: '' };
+  const db = getFirestore(firebaseApp);
 
   useEffect(() => {
-    setMessages(chat.messages);
-  }, [chat.messages]);
+    if (!chat.id) return;
+
+    const messagesRef = collection(db, "chats", chat.id, "messages");
+    const q = query(messagesRef, orderBy("timestamp", "asc"));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const fetchedMessages: Message[] = [];
+      snapshot.forEach((doc) => {
+        fetchedMessages.push({ id: doc.id, ...doc.data() } as Message);
+      });
+      setMessages(fetchedMessages);
+    });
+
+    return () => unsubscribe();
+  }, [chat.id, db]);
 
   useEffect(() => {
     if (scrollAreaRef.current) {
@@ -31,20 +47,24 @@ export default function ChatView({ chat, currentUser }: ChatViewProps) {
     }
   }, [messages]);
 
-  const handleSendMessage = (e: React.FormEvent<HTMLFormElement>) => {
+  const handleSendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const form = e.currentTarget;
     const textarea = form.querySelector<HTMLTextAreaElement>('textarea');
-    if (textarea && textarea.value.trim() !== '') {
-      // This is a mock send message. In a real app this would call a backend.
-      const newMessage: Message = {
-        id: `msg-${Date.now()}`,
-        senderId: currentUser.id,
-        text: textarea.value.trim(),
-        timestamp: new Date(),
-      };
-      setMessages([...messages, newMessage]);
-      textarea.value = '';
+    const text = textarea?.value.trim();
+
+    if (text && chat.id) {
+        const messagesRef = collection(db, "chats", chat.id, "messages");
+        await addDoc(messagesRef, {
+            senderId: currentUser.id,
+            text: text,
+            timestamp: serverTimestamp(),
+        });
+        
+        const chatRef = doc(db, 'chats', chat.id);
+        await updateDoc(chatRef, { lastMessageTimestamp: serverTimestamp() });
+
+        if(textarea) textarea.value = '';
     }
   };
 
@@ -76,9 +96,11 @@ export default function ChatView({ chat, currentUser }: ChatViewProps) {
                   )}
                 >
                   <p>{message.text}</p>
-                  <p className={cn("text-xs mt-1", message.senderId === currentUser.id ? 'text-primary-foreground/70' : 'text-muted-foreground/70' )}>
-                    {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                  </p>
+                   {message.timestamp && (
+                    <p className={cn("text-xs mt-1", message.senderId === currentUser.id ? 'text-primary-foreground/70' : 'text-muted-foreground/70' )}>
+                        {new Date((message.timestamp as any).toDate()).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                   )}
                 </div>
               </div>
             ))}
