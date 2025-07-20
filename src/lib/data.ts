@@ -3,7 +3,7 @@ import type { User, Chat, Message } from './types';
 export const currentUser: User = {
   id: 'user-0',
   name: 'You',
-  avatar: '/avatars/0.png',
+  avatar: 'https://placehold.co/100x100',
   online: true,
   gender: 'Prefer not to say',
   interests: ['Gaming', 'Music', 'Sports'],
