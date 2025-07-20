@@ -1,3 +1,4 @@
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -22,8 +23,8 @@
     --muted: 216, 28%, 14%;
     --muted-foreground: 0 0% 63.9%;
 
-    --accent: 210 40% 96.1%; /* light gray */
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 0 0% 100% / 0.1; /* semi-transparent white */
+    --accent-foreground: 0 0% 98%; /* foreground for accent */
 
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
@@ -44,7 +45,7 @@
     --sidebar-foreground: 0 0% 95.9%;
     --sidebar-primary: 243 83% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 216 28% 14%;
+    --sidebar-accent: 0 0% 100% / 0.1;
     --sidebar-accent-foreground: 0 0% 95.9%;
     --sidebar-border: 216 28% 14%;
     --sidebar-ring: 243 83% 60%;
@@ -69,8 +70,8 @@
     --muted: 216, 28%, 14%;
     --muted-foreground: 0 0% 63.9%;
 
-    --accent: 210 40% 96.1%; /* light gray */
-    --accent-foreground: 222.2 47.4% 11.2%;
+    --accent: 0 0% 100% / 0.1; /* semi-transparent white */
+    --accent-foreground: 0 0% 98%; /* foreground for accent */
 
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 0 0% 98%;
@@ -90,7 +91,7 @@
     --sidebar-foreground: 0 0% 95.9%;
     --sidebar-primary: 243 83% 60%;
     --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 216 28% 14%;
+    --sidebar-accent: 0 0% 100% / 0.1;
     --sidebar-accent-foreground: 0 0% 95.9%;
     --sidebar-border: 216 28% 14%;
     --sidebar-ring: 243 83% 60%;
