@@ -1,5 +1,6 @@
 // This file is machine-generated - edit at your own risk.
 import { initializeApp, getApp, getApps } from "firebase/app";
+import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
 
 // Your web app's Firebase configuration
 // IMPORTANT: DO NOT COMMIT THIS FILE WITH KEYS TO PUBLIC REPOSITORIES
@@ -14,3 +15,17 @@ const firebaseConfig = {
 
 // Initialize Firebase
 export const firebaseApp = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+
+// Enable offline persistence
+const db = getFirestore(firebaseApp);
+if (typeof window !== 'undefined') {
+  try {
+    enableIndexedDbPersistence(db);
+  } catch (err) {
+    if (err.code === 'failed-precondition') {
+      console.warn('Firestore persistence failed: Multiple tabs open');
+    } else if (err.code === 'unimplemented') {
+      console.warn('Firestore persistence not available in this browser');
+    }
+  }
+}
