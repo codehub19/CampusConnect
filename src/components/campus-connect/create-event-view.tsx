@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -21,19 +21,21 @@ import { Calendar } from '@/components/ui/calendar';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { format } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
-import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { cn } from '@/lib/utils';
 import { generateEventImage } from '@/ai/flows/generate-event-image-flow';
+import type { CampusEvent } from '@/lib/types';
 
 
 interface CreateEventViewProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
+  eventToEdit?: CampusEvent | null;
 }
 
-export default function CreateEventView({ isOpen, onOpenChange }: CreateEventViewProps) {
+export default function CreateEventView({ isOpen, onOpenChange, eventToEdit }: CreateEventViewProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
@@ -43,6 +45,20 @@ export default function CreateEventView({ isOpen, onOpenChange }: CreateEventVie
   const { toast } = useToast();
   const { user, profile } = useAuth();
   const db = getFirestore(firebaseApp);
+  
+  const isEditMode = !!eventToEdit;
+
+  useEffect(() => {
+    if (isEditMode && eventToEdit) {
+      setTitle(eventToEdit.title);
+      setDescription(eventToEdit.description);
+      setLocation(eventToEdit.location);
+      setDate(eventToEdit.date?.toDate ? eventToEdit.date.toDate() : new Date(eventToEdit.date));
+    } else {
+      clearForm();
+    }
+  }, [eventToEdit, isEditMode]);
+
 
   const clearForm = () => {
     setTitle('');
@@ -65,41 +81,55 @@ export default function CreateEventView({ isOpen, onOpenChange }: CreateEventVie
     setIsSubmitting(true);
 
     try {
-      // 1. Generate an image URL for the event based on the title/description
-       const imageResult = await generateEventImage({
+      if(isEditMode && eventToEdit) {
+        // Update existing event
+        const eventRef = doc(db, 'campus_events', eventToEdit.id);
+        await updateDoc(eventRef, {
             title,
-            description
-       });
-       
-      // 2. Create the new event object
-      const newEvent = {
-        title,
-        description,
-        location,
-        date,
-        organizer: profile.name,
-        authorId: user.uid,
-        imageUrl: imageResult.imageUrl,
-        chatId: `event-${Date.now()}-${Math.random()}`, // Placeholder chat ID
-        timestamp: serverTimestamp(),
-      };
-      
-      // 3. Add the event to Firestore
-      await addDoc(collection(db, 'campus_events'), newEvent);
-      
-      toast({
-        title: 'Event Created!',
-        description: 'Your event has been added to the campus feed.',
-      });
+            description,
+            location,
+            date,
+        });
+        toast({
+            title: 'Event Updated!',
+            description: 'Your event details have been saved.',
+        });
+
+      } else {
+        // Create new event
+        const imageResult = await generateEventImage({
+              title,
+              description
+        });
+        
+        const newEvent = {
+          title,
+          description,
+          location,
+          date,
+          organizer: profile.name,
+          authorId: user.uid,
+          imageUrl: imageResult.imageUrl,
+          chatId: `event-${Date.now()}-${Math.random()}`,
+          timestamp: serverTimestamp(),
+        };
+        
+        await addDoc(collection(db, 'campus_events'), newEvent);
+        
+        toast({
+          title: 'Event Created!',
+          description: 'Your event has been added to the campus feed.',
+        });
+      }
       
       onOpenChange(false);
       clearForm();
     } catch (error) {
-      console.error("Error creating event:", error);
+      console.error("Error creating/updating event:", error);
       toast({
         variant: 'destructive',
-        title: 'Event Creation Error',
-        description: 'Could not create your event. Please try again.',
+        title: 'Submission Error',
+        description: `Could not ${isEditMode ? 'update' : 'create'} your event. Please try again.`,
       });
     } finally {
       setIsSubmitting(false);
@@ -111,9 +141,9 @@ export default function CreateEventView({ isOpen, onOpenChange }: CreateEventVie
       <DialogContent className="sm:max-w-[525px]">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
-            <DialogTitle>Create a New Campus Event</DialogTitle>
+            <DialogTitle>{isEditMode ? 'Edit' : 'Create a New'} Campus Event</DialogTitle>
             <DialogDescription>
-              Fill in the details below. An AI-generated image will be created for your event banner.
+             {isEditMode ? 'Update the details for your event below.' : 'Fill in the details below. An AI-generated image will be created for your event banner.'}
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
@@ -163,7 +193,7 @@ export default function CreateEventView({ isOpen, onOpenChange }: CreateEventVie
             </DialogClose>
             <Button type="submit" disabled={isSubmitting}>
               {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Create Event
+              {isEditMode ? 'Save Changes' : 'Create Event'}
             </Button>
           </DialogFooter>
         </form>
