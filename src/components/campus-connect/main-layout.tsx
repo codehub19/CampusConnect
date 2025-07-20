@@ -556,7 +556,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     }
   };
   
-  const isFriend = (activeView.type === 'chat') ? profile.friends?.includes(activeView.data.user.id) : false;
+  const isFriend = (activeView.type === 'chat') ? !!activeChat?.isFriendChat : false;
 
   return (
     <SidebarProvider>
