@@ -1,7 +1,7 @@
 
 "use client";
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -35,7 +35,13 @@ const Square = ({ value, onSquareClick, disabled }: { value: string | null; onSq
   );
 };
 
-export default function TicTacToe({ game, currentUserId, onAcceptGame, onQuitGame, chatId }: TicTacToeProps) {
+export default function TicTacToe({ game: gameProp, currentUserId, onAcceptGame, onQuitGame, chatId }: TicTacToeProps) {
+  const [game, setGame] = useState(gameProp);
+
+  useEffect(() => {
+    setGame(gameProp);
+  }, [gameProp]);
+  
   const isMyTurn = game.turn === currentUserId;
   const mySymbol = game.players[currentUserId];
   const { toast } = useToast();
@@ -43,7 +49,20 @@ export default function TicTacToe({ game, currentUserId, onAcceptGame, onQuitGam
   const { user: authUser } = useAuth();
   
   const handleMakeMove = async (index: number) => {
-    if (!authUser) return;
+    if (!authUser || !isMyTurn || game.board[index] !== null || game.status !== 'active') return;
+    
+    const partnerId = Object.keys(game.players).find(id => id !== authUser.uid)!;
+
+    // Optimistic UI update
+    const newBoard = [...game.board];
+    newBoard[index] = game.players[authUser.uid];
+
+    setGame(prevGame => ({
+        ...prevGame,
+        board: newBoard,
+        turn: partnerId // Tentatively switch turns
+    }));
+
     const chatRef = doc(db, 'chats', chatId);
 
     try {
@@ -52,10 +71,15 @@ export default function TicTacToe({ game, currentUserId, onAcceptGame, onQuitGam
         if (!freshChatDoc.exists()) throw new Error("Chat does not exist");
         
         const freshGame = freshChatDoc.data().game as TicTacToeState;
-        if (!freshGame || freshGame.turn !== authUser.uid || freshGame.board[index] !== null || freshGame.status !== 'active') return;
+        // Re-verify the move against the fresh game state
+        if (!freshGame || freshGame.turn !== authUser.uid || freshGame.board[index] !== null || freshGame.status !== 'active') {
+            // If the optimistic update was wrong, revert the state
+            setGame(freshGame);
+            throw new Error("Move is no longer valid.");
+        }
 
-        const newBoard = [...freshGame.board];
-        newBoard[index] = freshGame.players[authUser.uid];
+        const boardAfterMove = [...freshGame.board];
+        boardAfterMove[index] = freshGame.players[authUser.uid];
 
         const calculateWinner = (squares: any[]) => {
             const lines = [
@@ -70,9 +94,8 @@ export default function TicTacToe({ game, currentUserId, onAcceptGame, onQuitGam
             return null;
         };
         
-        const partnerId = Object.keys(freshGame.players).find(id => id !== authUser.uid)!;
-        const winnerSymbol = calculateWinner(newBoard);
-        const isDraw = newBoard.every(cell => cell !== null);
+        const winnerSymbol = calculateWinner(boardAfterMove);
+        const isDraw = boardAfterMove.every(cell => cell !== null);
         let newStatus: 'active' | 'finished' | 'draw' = 'active';
         let newWinner: string | null = null;
         
@@ -85,7 +108,7 @@ export default function TicTacToe({ game, currentUserId, onAcceptGame, onQuitGam
 
         const newGameData = {
           ...freshGame,
-          board: newBoard,
+          board: boardAfterMove,
           turn: newStatus === 'active' ? partnerId : null,
           status: newStatus,
           winner: newWinner,
@@ -93,9 +116,10 @@ export default function TicTacToe({ game, currentUserId, onAcceptGame, onQuitGam
 
         transaction.update(chatRef, { game: newGameData });
       });
-    } catch (e) {
+    } catch (e: any) {
       console.error("Game move transaction failed:", e);
-      toast({ variant: 'destructive', title: "Error", description: "Could not make move." });
+      toast({ variant: 'destructive', title: "Error", description: e.message || "Could not make move." });
+      // The useEffect listening to gameProp will automatically handle reverting state if needed.
     }
   };
 

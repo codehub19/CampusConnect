@@ -1,7 +1,7 @@
 
 "use client";
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -28,7 +28,13 @@ const Cell = ({ player }: { player: number | null }) => {
 };
 
 
-export default function ConnectFour({ game, currentUserId, onAcceptGame, onQuitGame, chatId }: ConnectFourProps) {
+export default function ConnectFour({ game: gameProp, currentUserId, onAcceptGame, onQuitGame, chatId }: ConnectFourProps) {
+    const [game, setGame] = useState(gameProp);
+
+    useEffect(() => {
+      setGame(gameProp);
+    }, [gameProp]);
+    
     const isMyTurn = game.turn === currentUserId;
     const mySymbol = game.players[currentUserId];
     const { toast } = useToast();
@@ -36,32 +42,56 @@ export default function ConnectFour({ game, currentUserId, onAcceptGame, onQuitG
     const { user: authUser } = useAuth();
 
     const handleMove = async (colIndex: number) => {
-        if (!authUser) return;
+        if (!authUser || !isMyTurn || game.status !== 'active') return;
         
+        const partnerId = Object.keys(game.players).find(id => id !== authUser.uid)!;
+        
+        // Optimistic UI update
+        let landingRow = -1;
+        const tempBoard = [...game.board];
+        for (let r = 5; r >= 0; r--) {
+            if (tempBoard[colIndex + r * 7] === null) {
+                landingRow = r;
+                break;
+            }
+        }
+        if (landingRow === -1) {
+            toast({variant: 'destructive', title: 'Invalid Move', description: 'This column is full.'});
+            return; // Column is full
+        }
+        tempBoard[colIndex + landingRow * 7] = game.players[authUser.uid];
+        setGame(prevGame => ({
+            ...prevGame,
+            board: tempBoard,
+            turn: partnerId
+        }));
+        
+        // Firebase Transaction
         const chatRef = doc(db, 'chats', chatId);
-
         try {
             await runTransaction(db, async (transaction) => {
                 const freshChatDoc = await transaction.get(chatRef);
                 if (!freshChatDoc.exists()) throw new Error("Chat does not exist");
                 
                 const freshGame = freshChatDoc.data().game as ConnectFourState;
-                if (!freshGame || freshGame.turn !== authUser.uid || freshGame.status !== 'active') return;
+                if (!freshGame || freshGame.turn !== authUser.uid || freshGame.status !== 'active') {
+                    setGame(freshGame); // Revert if state is out of sync
+                    throw new Error("Move is no longer valid.");
+                }
 
                 const newBoard = [...freshGame.board];
-                let landingRow = -1;
+                let moveLandingRow = -1;
                 for (let r = 5; r >= 0; r--) {
                     if (newBoard[colIndex + r * 7] === null) {
-                        landingRow = r;
+                        moveLandingRow = r;
                         break;
                     }
                 }
-                if (landingRow === -1) {
-                    toast({variant: 'destructive', title: 'Invalid Move', description: 'This column is full.'})
-                    return;
+                if (moveLandingRow === -1) {
+                    throw new Error('This column is full.');
                 }
 
-                newBoard[colIndex + landingRow * 7] = freshGame.players[authUser.uid];
+                newBoard[colIndex + moveLandingRow * 7] = freshGame.players[authUser.uid];
 
                 const checkWinner = (board: (number | null)[], player: 1 | 2): boolean => {
                     const R = 6, C = 7;
@@ -78,8 +108,6 @@ export default function ConnectFour({ game, currentUserId, onAcceptGame, onQuitG
                 const isDraw = newBoard.every(cell => cell !== null);
                 let newStatus: 'active' | 'finished' | 'draw' = 'active';
                 let newWinner: string | null = null;
-                
-                const partnerId = Object.keys(freshGame.players).find(id => id !== authUser.uid)!;
 
                 if (winnerFound) {
                     newStatus = 'finished';
@@ -97,9 +125,9 @@ export default function ConnectFour({ game, currentUserId, onAcceptGame, onQuitG
                 };
                 transaction.update(chatRef, { game: newGameData });
             });
-        } catch (e) {
+        } catch (e: any) {
           console.error("Connect Four move transaction failed:", e);
-          toast({ variant: 'destructive', title: "Error", description: "Could not make move." });
+          toast({ variant: 'destructive', title: "Error", description: e.message || "Could not make move." });
         }
     };
     

@@ -1,7 +1,7 @@
 
 "use client";
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -20,7 +20,13 @@ interface DotsAndBoxesProps {
 }
 
 
-export default function DotsAndBoxes({ game, currentUserId, onAcceptGame, onQuitGame, chatId }: DotsAndBoxesProps) {
+export default function DotsAndBoxes({ game: gameProp, currentUserId, onAcceptGame, onQuitGame, chatId }: DotsAndBoxesProps) {
+    const [game, setGame] = useState(gameProp);
+
+    useEffect(() => {
+        setGame(gameProp);
+    }, [gameProp]);
+    
     const isMyTurn = game.turn === currentUserId;
     const { toast } = useToast();
     const db = getFirestore(firebaseApp);
@@ -29,18 +35,34 @@ export default function DotsAndBoxes({ game, currentUserId, onAcceptGame, onQuit
     const partnerId = Object.keys(game.players).find(id => id !== currentUserId)!;
 
     const handleLineClick = async (type: 'h' | 'v', index: number) => {
-        if (!isMyTurn || game.status !== 'active' || !authUser) return;
+        if (!isMyTurn || !authUser || game.status !== 'active') return;
+        if ((type === 'h' && game.h_lines[index]) || (type === 'v' && game.v_lines[index])) return;
 
+        // Optimistic UI Update
+        const tempGame = JSON.parse(JSON.stringify(game)); // Deep copy
+        if (type === 'h') tempGame.h_lines[index] = authUser.uid;
+        else tempGame.v_lines[index] = authUser.uid;
+        
+        // Simplified optimistic turn logic. Real logic is in transaction.
+        tempGame.turn = partnerId; 
+        setGame(tempGame);
+
+        // Firebase Transaction
         const chatRef = doc(db, 'chats', chatId);
-
         try {
             await runTransaction(db, async (transaction) => {
                 const freshChatDoc = await transaction.get(chatRef);
                 if (!freshChatDoc.exists()) throw "Chat does not exist!";
                 
                 const freshGame = freshChatDoc.data().game as DotsAndBoxesState | null;
-                if (!freshGame || freshGame.type !== 'dotsAndBoxes' || freshGame.status !== 'active' || freshGame.turn !== authUser.uid) return;
-                if ((type === 'h' && freshGame.h_lines[index]) || (type === 'v' && freshGame.v_lines[index])) return;
+                if (!freshGame || freshGame.type !== 'dotsAndBoxes' || freshGame.status !== 'active' || freshGame.turn !== authUser.uid) {
+                    setGame(freshGame!); // Revert state
+                    throw new Error("Move is no longer valid.");
+                }
+                if ((type === 'h' && freshGame.h_lines[index]) || (type === 'v' && freshGame.v_lines[index])) {
+                    setGame(freshGame); // Revert state
+                    return; // Line already taken
+                }
 
                 const { gridSize } = freshGame;
                 const h_lines = [...freshGame.h_lines];
@@ -101,9 +123,9 @@ export default function DotsAndBoxes({ game, currentUserId, onAcceptGame, onQuit
                     'game.winner': newWinner,
                 });
             });
-        } catch (e) {
+        } catch (e: any) {
             console.error("Dots and Boxes move failed:", e);
-            toast({ variant: "destructive", title: "Error", description: "Could not make move." });
+            toast({ variant: "destructive", title: "Error", description: e.message || "Could not make move." });
         }
     };
 
