@@ -154,14 +154,19 @@ export default function ChatView({ chat, currentUser }: ChatViewProps) {
         toast({ variant: 'destructive', title: 'Upload failed', description: 'Could not upload your file. Please try again.' });
         setIsUploading(false);
       },
-      async () => {
-        const downloadURL = await getDownloadURL(uploadTask.snapshot.ref);
-        let type: 'image' | 'video' | 'file' = 'file';
-        if (file.type.startsWith('image/')) type = 'image';
-        if (file.type.startsWith('video/')) type = 'video';
-        
-        await sendNewMessage({ type, value: { url: downloadURL, name: file.name }});
-        setIsUploading(false);
+      () => {
+        getDownloadURL(uploadTask.snapshot.ref).then(async (downloadURL) => {
+            let type: 'image' | 'video' | 'file' = 'file';
+            if (file.type.startsWith('image/')) type = 'image';
+            if (file.type.startsWith('video/')) type = 'video';
+            
+            await sendNewMessage({ type, value: { url: downloadURL, name: file.name }});
+            setIsUploading(false);
+        }).catch((error) => {
+            console.error("Error getting download URL:", error);
+            toast({ variant: 'destructive', title: 'Upload failed', description: 'Could not process your file. Please try again.' });
+            setIsUploading(false);
+        });
       }
     );
   };

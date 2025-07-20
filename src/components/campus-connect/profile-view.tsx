@@ -13,12 +13,12 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import type { User, Chat, CampusEvent, MissedConnectionPost } from '@/lib/types';
-import { getFirestore, collection, query, where, getDocs, orderBy, limit, onSnapshot, doc, deleteDoc, updateDoc, arrayRemove } from 'firebase/firestore';
+import type { User, CampusEvent, MissedConnectionPost } from '@/lib/types';
+import { getFirestore, collection, query, where, onSnapshot, doc, deleteDoc, updateDoc, arrayRemove } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { format } from 'date-fns';
-import { Pencil, Trash2, Users, MessageSquareText, Newspaper, Calendar, UserMinus } from 'lucide-react';
+import { Pencil, Trash2, Users, Newspaper, Calendar, UserMinus } from 'lucide-react';
 import CreateEventView from './create-event-view';
 
 interface ProfileViewProps {
@@ -34,7 +34,6 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
   const { toast } = useToast();
   const [formData, setFormData] = useState<User>(user);
   const [friends, setFriends] = useState<User[]>([]);
-  const [recentChats, setRecentChats] = useState<{user: User, lastMessage: string}[]>([]);
   const [myEvents, setMyEvents] = useState<CampusEvent[]>([]);
   const [myPosts, setMyPosts] = useState<MissedConnectionPost[]>([]);
   const [eventToEdit, setEventToEdit] = useState<CampusEvent | null>(null);
@@ -57,7 +56,6 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
     const eventsQuery = query(collection(db, 'campus_events'), where('authorId', '==', user.id));
     const eventsUnsub = onSnapshot(eventsQuery, (snapshot) => {
         const userEvents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CampusEvent));
-        // Sort by date on the client side to avoid composite index
         userEvents.sort((a, b) => {
           const dateA = a.date?.toDate?.().getTime() || 0;
           const dateB = b.date?.toDate?.().getTime() || 0;
@@ -69,7 +67,6 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
     const postsQuery = query(collection(db, 'missed_connections'), where('authorId', '==', user.id));
     const postsUnsub = onSnapshot(postsQuery, (snapshot) => {
         const userPosts = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MissedConnectionPost));
-        // Sort by timestamp on the client side
         userPosts.sort((a, b) => {
             const dateA = a.timestamp?.toDate?.().getTime() || 0;
             const dateB = b.timestamp?.toDate?.().getTime() || 0;
@@ -78,39 +75,9 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
         setMyPosts(userPosts);
     });
 
-    const chatsQuery = query(collection(db, 'chats'), where('userIds', 'array-contains', user.id));
-    const chatsUnsub = onSnapshot(chatsQuery, async (snapshot) => {
-        const allUserChats = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()} as Chat));
-
-        allUserChats.sort((a, b) => {
-            const timeA = a.lastMessageTimestamp?.toDate?.().getTime() || 0;
-            const timeB = b.lastMessageTimestamp?.toDate?.().getTime() || 0;
-            return timeB - timeA;
-        });
-        
-        const recentChatsDocs = allUserChats.slice(0, 5);
-
-        const chatsData: {user: User, lastMessage: string}[] = [];
-        for (const chat of recentChatsDocs) {
-            const partnerId = chat.userIds.find(id => id !== user.id);
-            if(partnerId) {
-                const userDoc = await getDocs(query(collection(db, 'users'), where('id', '==', partnerId)));
-                if(!userDoc.empty) {
-                    const partnerUser = userDoc.docs[0].data() as User;
-                    const messagesQuery = query(collection(db, 'chats', chat.id, 'messages'), orderBy('timestamp', 'desc'), limit(1));
-                    const lastMessageSnap = await getDocs(messagesQuery);
-                    const lastMessage = lastMessageSnap.empty ? "No messages yet" : lastMessageSnap.docs[0].data().text;
-                    chatsData.push({user: partnerUser, lastMessage });
-                }
-            }
-        }
-        setRecentChats(chatsData);
-    });
-
     return () => {
         eventsUnsub();
         postsUnsub();
-        chatsUnsub();
     }
   }, [user, isOpen, db]);
   
@@ -170,7 +137,7 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="p-0 max-w-3xl">
         <ScrollArea className="max-h-[90vh]">
-          <div className="p-6">
+          <div className="p-4 sm:p-6">
             <DialogHeader className="mb-6">
                 <DialogTitle className="text-2xl">Profile & Settings</DialogTitle>
                 <DialogDescription>Manage your profile, content, and social connections.</DialogDescription>
@@ -182,137 +149,125 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
                 <TabsTrigger value="content">My Content</TabsTrigger>
                 <TabsTrigger value="social">Social</TabsTrigger>
               </TabsList>
-
-              <TabsContent value="profile">
-                <form onSubmit={handleSubmit}>
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>Edit Profile</CardTitle>
-                            <CardDescription>Update your public information.</CardDescription>
-                        </CardHeader>
-                        <CardContent className="space-y-6">
-                            <div className="flex items-center gap-4">
-                                <Avatar className="h-20 w-20">
-                                    <AvatarImage src={formData.avatar} alt={formData.name} data-ai-hint="profile avatar" />
-                                    <AvatarFallback>{formData.name.charAt(0)}</AvatarFallback>
-                                </Avatar>
-                                <p className="text-sm text-muted-foreground">Avatars are currently assigned. Custom uploads coming soon!</p>
-                            </div>
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <Label htmlFor="name">Name</Label>
-                                    <Input id="name" value={formData.name} onChange={handleInputChange} />
-                                </div>
-                                <div className="space-y-2">
-                                    <Label htmlFor="gender">Gender</Label>
-                                    <Select value={formData.gender} onValueChange={handleGenderChange}>
-                                        <SelectTrigger id="gender"><SelectValue placeholder="Select gender" /></SelectTrigger>
-                                        <SelectContent>
-                                            <SelectItem value="Male">Male</SelectItem>
-                                            <SelectItem value="Female">Female</SelectItem>
-                                            <SelectItem value="Other">Other</SelectItem>
-                                            <SelectItem value="Prefer not to say">Prefer not to say</SelectItem>
-                                        </SelectContent>
-                                    </Select>
-                                </div>
-                            </div>
-                            <div className="space-y-2">
-                                <Label>Interests</Label>
-                                <div className="grid grid-cols-3 gap-2 pt-1">
-                                    {allInterests.map(interest => (
-                                    <div key={interest} className="flex items-center gap-2">
-                                        <Checkbox id={`interest-${interest}`} checked={formData.interests?.includes(interest)} onCheckedChange={(checked) => handleInterestChange(interest, !!checked)} />
-                                        <Label htmlFor={`interest-${interest}`} className="font-normal">{interest}</Label>
-                                    </div>
-                                    ))}
-                                </div>
-                            </div>
-                        </CardContent>
-                        <CardFooter>
-                            <Button type="submit" className="ml-auto">Save Changes</Button>
-                        </CardFooter>
-                    </Card>
-                </form>
-              </TabsContent>
-
-              <TabsContent value="content" className="space-y-6">
-                <Card>
-                  <CardHeader><CardTitle>My Campus Events</CardTitle></CardHeader>
-                  <CardContent className="space-y-3">
-                      {myEvents.length > 0 ? myEvents.map(event => (
-                          <div key={event.id} className="flex items-center gap-3 p-2 rounded-md bg-secondary/50">
-                              <Calendar className="h-5 w-5 text-muted-foreground" />
-                              <div className="flex-grow">
-                                <p className="font-medium">{event.title}</p>
-                                <p className="text-xs text-muted-foreground">{format(event.date.toDate(), 'PPP')}</p>
+              
+              <div className="min-h-[450px]">
+                <TabsContent value="profile">
+                  <form onSubmit={handleSubmit}>
+                      <Card>
+                          <CardHeader>
+                              <CardTitle>Edit Profile</CardTitle>
+                              <CardDescription>Update your public information.</CardDescription>
+                          </CardHeader>
+                          <CardContent className="space-y-6">
+                              <div className="flex items-center gap-4">
+                                  <Avatar className="h-20 w-20">
+                                      <AvatarImage src={formData.avatar} alt={formData.name} data-ai-hint="profile avatar" />
+                                      <AvatarFallback>{formData.name.charAt(0)}</AvatarFallback>
+                                  </Avatar>
+                                  <p className="text-sm text-muted-foreground">Avatars are currently assigned. Custom uploads coming soon!</p>
                               </div>
-                              <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleEditEvent(event)}><Pencil className="h-4 w-4" /></Button>
-                              <AlertDialog><AlertDialogTrigger asChild><Button variant="destructive" size="icon" className="h-8 w-8"><Trash2 className="h-4 w-4" /></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete your event.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteEvent(event.id)}>Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
-                          </div>
-                      )) : <p className="text-sm text-muted-foreground px-2">You haven't created any events yet.</p>}
-                  </CardContent>
-                </Card>
-                <Card>
-                  <CardHeader><CardTitle>My Missed Connections</CardTitle></CardHeader>
-                  <CardContent className="space-y-3">
-                      {myPosts.length > 0 ? myPosts.map(post => (
-                          <div key={post.id} className="flex items-center gap-3 p-2 rounded-md bg-secondary/50">
-                              <Newspaper className="h-5 w-5 text-muted-foreground"/>
-                              <div className="flex-grow">
-                                <p className="font-medium truncate">{post.title}</p>
-                                <p className="text-xs text-muted-foreground">Status: <span className={post.status === 'approved' ? 'text-green-500' : 'text-yellow-500'}>{post.status}</span></p>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                  <div className="space-y-2">
+                                      <Label htmlFor="name">Name</Label>
+                                      <Input id="name" value={formData.name} onChange={handleInputChange} />
+                                  </div>
+                                  <div className="space-y-2">
+                                      <Label htmlFor="gender">Gender</Label>
+                                      <Select value={formData.gender} onValueChange={handleGenderChange}>
+                                          <SelectTrigger id="gender"><SelectValue placeholder="Select gender" /></SelectTrigger>
+                                          <SelectContent>
+                                              <SelectItem value="Male">Male</SelectItem>
+                                              <SelectItem value="Female">Female</SelectItem>
+                                              <SelectItem value="Other">Other</SelectItem>
+                                              <SelectItem value="Prefer not to say">Prefer not to say</SelectItem>
+                                          </SelectContent>
+                                      </Select>
+                                  </div>
                               </div>
-                               <AlertDialog><AlertDialogTrigger asChild><Button variant="destructive" size="icon" className="h-8 w-8"><Trash2 className="h-4 w-4" /></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete your post.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeletePost(post.id)}>Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
-                          </div>
-                      )) : <p className="text-sm text-muted-foreground px-2">You haven't created any posts yet.</p>}
-                  </CardContent>
-                </Card>
-              </TabsContent>
+                              <div className="space-y-2">
+                                  <Label>Interests</Label>
+                                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-1">
+                                      {allInterests.map(interest => (
+                                      <div key={interest} className="flex items-center gap-2">
+                                          <Checkbox id={`interest-${interest}`} checked={formData.interests?.includes(interest)} onCheckedChange={(checked) => handleInterestChange(interest, !!checked)} />
+                                          <Label htmlFor={`interest-${interest}`} className="font-normal">{interest}</Label>
+                                      </div>
+                                      ))}
+                                  </div>
+                              </div>
+                          </CardContent>
+                          <CardFooter>
+                              <Button type="submit" className="ml-auto">Save Changes</Button>
+                          </CardFooter>
+                      </Card>
+                  </form>
+                </TabsContent>
 
-              <TabsContent value="social" className="space-y-6">
-                <Card>
-                    <CardHeader><CardTitle>Friends ({friends.length})</CardTitle></CardHeader>
+                <TabsContent value="content" className="space-y-6">
+                  <Card>
+                    <CardHeader><CardTitle>My Campus Events</CardTitle></CardHeader>
                     <CardContent className="space-y-3">
-                        {friends.length > 0 ? friends.map(friend => (
-                            <div key={friend.id} className="flex items-center gap-3 p-2 rounded-md bg-secondary/50">
-                                <Avatar className="h-9 w-9"><AvatarImage src={friend.avatar} alt={friend.name} /><AvatarFallback>{friend.name.charAt(0)}</AvatarFallback></Avatar>
-                                <span className="font-medium flex-grow">{friend.name}</span>
-                                <AlertDialog>
-                                    <AlertDialogTrigger asChild>
-                                        <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive">
-                                            <UserMinus className="h-4 w-4" />
-                                        </Button>
-                                    </AlertDialogTrigger>
-                                    <AlertDialogContent>
-                                        <AlertDialogHeader>
-                                            <AlertDialogTitle>Remove Friend?</AlertDialogTitle>
-                                            <AlertDialogDescription>Are you sure you want to remove {friend.name} from your friends?</AlertDialogDescription>
-                                        </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                            <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                            <AlertDialogAction onClick={() => handleRemoveFriend(friend.id)}>Remove</AlertDialogAction>
-                                        </AlertDialogFooter>
-                                    </AlertDialogContent>
-                                </AlertDialog>
-                            </div>
-                        )) : <p className="text-sm text-muted-foreground px-2">No friends yet. Start chatting to add some!</p>}
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader><CardTitle>Recent Chats</CardTitle></CardHeader>
-                    <CardContent className="space-y-4">
-                        {recentChats.length > 0 ? recentChats.map(chat => (
-                            <div key={chat.user.id} className="flex items-start gap-3 p-2 rounded-md bg-secondary/50">
-                                <Avatar className="h-9 w-9"><AvatarImage src={chat.user.avatar} alt={chat.user.name} /><AvatarFallback>{chat.user.name.charAt(0)}</AvatarFallback></Avatar>
-                                <div className="min-w-0">
-                                <p className="font-medium truncate">{chat.user.name}</p>
-                                <p className="text-sm text-muted-foreground truncate italic">"{chat.lastMessage}"</p>
+                        {myEvents.length > 0 ? myEvents.map(event => (
+                            <div key={event.id} className="flex items-center gap-3 p-2 rounded-md bg-secondary/50">
+                                <Calendar className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+                                <div className="flex-grow min-w-0">
+                                  <p className="font-medium truncate">{event.title}</p>
+                                  <p className="text-xs text-muted-foreground">{format(event.date.toDate(), 'PPP')}</p>
                                 </div>
+                                <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0" onClick={() => handleEditEvent(event)}><Pencil className="h-4 w-4" /></Button>
+                                <AlertDialog><AlertDialogTrigger asChild><Button variant="destructive" size="icon" className="h-8 w-8 flex-shrink-0"><Trash2 className="h-4 w-4" /></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete your event.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteEvent(event.id)}>Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
                             </div>
-                        )) : <p className="text-sm text-muted-foreground px-2">No recent conversations.</p>}
+                        )) : <p className="text-sm text-muted-foreground px-2">You haven't created any events yet.</p>}
                     </CardContent>
-                </Card>
-              </TabsContent>
+                  </Card>
+                  <Card>
+                    <CardHeader><CardTitle>My Missed Connections</CardTitle></CardHeader>
+                    <CardContent className="space-y-3">
+                        {myPosts.length > 0 ? myPosts.map(post => (
+                            <div key={post.id} className="flex items-center gap-3 p-2 rounded-md bg-secondary/50">
+                                <Newspaper className="h-5 w-5 text-muted-foreground flex-shrink-0"/>
+                                <div className="flex-grow min-w-0">
+                                  <p className="font-medium truncate">{post.title}</p>
+                                  <p className="text-xs text-muted-foreground">Status: <span className={post.status === 'approved' ? 'text-green-500' : 'text-yellow-500'}>{post.status}</span></p>
+                                </div>
+                                 <AlertDialog><AlertDialogTrigger asChild><Button variant="destructive" size="icon" className="h-8 w-8 flex-shrink-0"><Trash2 className="h-4 w-4" /></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete your post.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeletePost(post.id)}>Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
+                            </div>
+                        )) : <p className="text-sm text-muted-foreground px-2">You haven't created any posts yet.</p>}
+                    </CardContent>
+                  </Card>
+                </TabsContent>
+
+                <TabsContent value="social" className="space-y-6">
+                  <Card>
+                      <CardHeader><CardTitle>Friends ({friends.length})</CardTitle></CardHeader>
+                      <CardContent className="space-y-3">
+                          {friends.length > 0 ? friends.map(friend => (
+                              <div key={friend.id} className="flex items-center gap-3 p-2 rounded-md bg-secondary/50">
+                                  <Avatar className="h-9 w-9"><AvatarImage src={friend.avatar} alt={friend.name} /><AvatarFallback>{friend.name.charAt(0)}</AvatarFallback></Avatar>
+                                  <span className="font-medium flex-grow">{friend.name}</span>
+                                  <AlertDialog>
+                                      <AlertDialogTrigger asChild>
+                                          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive">
+                                              <UserMinus className="h-4 w-4" />
+                                          </Button>
+                                      </AlertDialogTrigger>
+                                      <AlertDialogContent>
+                                          <AlertDialogHeader>
+                                              <AlertDialogTitle>Remove Friend?</AlertDialogTitle>
+                                              <AlertDialogDescription>Are you sure you want to remove {friend.name} from your friends?</AlertDialogDescription>
+                                          </AlertDialogHeader>
+                                          <AlertDialogFooter>
+                                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                              <AlertDialogAction onClick={() => handleRemoveFriend(friend.id)}>Remove</AlertDialogAction>
+                                          </AlertDialogFooter>
+                                      </AlertDialogContent>
+                                  </AlertDialog>
+                              </div>
+                          )) : <p className="text-sm text-muted-foreground px-2">No friends yet. Start chatting to add some!</p>}
+                      </CardContent>
+                  </Card>
+                </TabsContent>
+              </div>
             </Tabs>
           </div>
         </ScrollArea>
