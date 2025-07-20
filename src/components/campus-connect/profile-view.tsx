@@ -59,8 +59,8 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
         const userEvents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CampusEvent));
         // Sort by date on the client side to avoid composite index
         userEvents.sort((a, b) => {
-          const dateA = a.date?.toDate?.()?.getTime() || 0;
-          const dateB = b.date?.toDate?.()?.getTime() || 0;
+          const dateA = a.date?.toDate?.().getTime() || 0;
+          const dateB = b.date?.toDate?.().getTime() || 0;
           return dateB - dateA;
         });
         setMyEvents(userEvents);
@@ -78,11 +78,20 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
         setMyPosts(userPosts);
     });
 
-    const chatsQuery = query(collection(db, 'chats'), where('userIds', 'array-contains', user.id), orderBy('lastMessageTimestamp', 'desc'), limit(5));
+    const chatsQuery = query(collection(db, 'chats'), where('userIds', 'array-contains', user.id));
     const chatsUnsub = onSnapshot(chatsQuery, async (snapshot) => {
+        const allUserChats = snapshot.docs.map(doc => ({id: doc.id, ...doc.data()} as Chat));
+
+        allUserChats.sort((a, b) => {
+            const timeA = a.lastMessageTimestamp?.toDate?.().getTime() || 0;
+            const timeB = b.lastMessageTimestamp?.toDate?.().getTime() || 0;
+            return timeB - timeA;
+        });
+        
+        const recentChatsDocs = allUserChats.slice(0, 5);
+
         const chatsData: {user: User, lastMessage: string}[] = [];
-        for (const docSnap of snapshot.docs) {
-            const chat = docSnap.data() as Chat;
+        for (const chat of recentChatsDocs) {
             const partnerId = chat.userIds.find(id => id !== user.id);
             if(partnerId) {
                 const userDoc = await getDocs(query(collection(db, 'users'), where('id', '==', partnerId)));
