@@ -1,12 +1,10 @@
 
 "use client";
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Bot } from 'lucide-react';
+import React, { useState, useRef, useEffect, UIEvent } from 'react';
+import { Send, Bot, ArrowDown } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardFooter } from '@/components/ui/card';
-import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import type { User, Chat, Message } from '@/lib/types';
@@ -23,6 +21,14 @@ export default function ChatView({ chat, currentUser }: ChatViewProps) {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const partner = chat.users?.find(u => u.id !== currentUser.id) || { name: 'Chat', avatar: '' };
   const db = getFirestore(firebaseApp);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const isAtBottomRef = useRef(true);
+
+  const scrollToBottom = (behavior: 'smooth' | 'auto' = 'auto') => {
+    if (scrollAreaRef.current) {
+        scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior });
+    }
+  };
 
   useEffect(() => {
     if (!chat.id) return;
@@ -42,10 +48,21 @@ export default function ChatView({ chat, currentUser }: ChatViewProps) {
   }, [chat.id, db]);
 
   useEffect(() => {
-    if (scrollAreaRef.current) {
-      scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight });
+    if (isAtBottomRef.current) {
+        scrollToBottom();
+    } else {
+        setShowScrollToBottom(true);
     }
   }, [messages]);
+
+  const handleScroll = (e: UIEvent<HTMLDivElement>) => {
+    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 10;
+    isAtBottomRef.current = isAtBottom;
+    if (isAtBottom) {
+      setShowScrollToBottom(false);
+    }
+  };
 
   const handleSendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -65,12 +82,13 @@ export default function ChatView({ chat, currentUser }: ChatViewProps) {
         await updateDoc(chatRef, { lastMessageTimestamp: serverTimestamp() });
 
         if(textarea) textarea.value = '';
+        scrollToBottom('smooth');
     }
   };
 
   return (
-    <div className="h-full flex flex-col">
-        <ScrollArea className="flex-grow p-4" ref={scrollAreaRef}>
+    <div className="h-full flex flex-col relative">
+        <ScrollArea className="flex-grow p-4" ref={scrollAreaRef} onScroll={handleScroll}>
           <div className="space-y-4">
             {messages.map((message) => (
               <div
@@ -115,11 +133,21 @@ export default function ChatView({ chat, currentUser }: ChatViewProps) {
             ))}
           </div>
         </ScrollArea>
+        {showScrollToBottom && (
+            <Button
+                onClick={() => scrollToBottom('smooth')}
+                variant="secondary"
+                size="icon"
+                className="absolute bottom-20 right-4 rounded-full h-10 w-10 shadow-lg animate-bounce"
+            >
+                <ArrowDown className="h-5 w-5" />
+            </Button>
+        )}
         <div className="p-4 border-t">
             <form onSubmit={handleSendMessage} className="flex w-full items-center gap-2">
-            <Textarea
+            <textarea
                 placeholder="Type a message..."
-                className="flex-1 resize-none bg-background focus-visible:ring-1 focus-visible:ring-offset-0"
+                className="flex-1 resize-none bg-background focus-visible:ring-1 focus-visible:ring-offset-0 flex min-h-[40px] w-full rounded-md border border-input px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
                 rows={1}
                 onKeyDown={(e) => {
                 if (e.key === 'Enter' && !e.shiftKey) {

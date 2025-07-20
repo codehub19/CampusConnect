@@ -3,18 +3,29 @@
 
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, CalendarDays, ArrowRight, HeartCrack } from "lucide-react";
+import { Users, CalendarDays, ArrowRight, HeartCrack, User as UserIcon } from "lucide-react";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 interface HomeViewProps {
   onNavigateTo1v1Chat: () => void;
   onNavigateToEvents: () => void;
   onNavigateToMissedConnections: () => void;
   userName: string;
+  onOpenProfile: () => void;
+  userAvatar?: string;
 }
 
-export default function HomeView({ onNavigateTo1v1Chat, onNavigateToEvents, onNavigateToMissedConnections, userName }: HomeViewProps) {
+export default function HomeView({ onNavigateTo1v1Chat, onNavigateToEvents, onNavigateToMissedConnections, userName, onOpenProfile, userAvatar }: HomeViewProps) {
   return (
     <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4 sm:p-6">
+      <div className="absolute top-4 right-4">
+        <Button onClick={onOpenProfile} variant="ghost" size="icon" className="rounded-full h-12 w-12">
+            <Avatar className="h-10 w-10">
+                <AvatarImage src={userAvatar} alt={userName} data-ai-hint="profile avatar" />
+                <AvatarFallback>{userName.charAt(0)}</AvatarFallback>
+            </Avatar>
+        </Button>
+      </div>
       <div className="text-center mb-10">
         <h1 className="text-4xl sm:text-5xl font-bold text-foreground">Welcome, {userName}!</h1>
         <p className="text-lg text-muted-foreground mt-2">Choose how you want to connect today.</p>

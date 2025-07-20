@@ -18,7 +18,6 @@ import {
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
-import ProfileView from '@/components/campus-connect/profile-view';
 import ChatView from '@/components/campus-connect/chat-view';
 import AiAssistantView from '@/components/campus-connect/ai-assistant-view';
 import WelcomeView from '@/components/campus-connect/welcome-view';
@@ -46,10 +45,9 @@ interface MainLayoutProps {
 }
 
 export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: MainLayoutProps) {
-  const { user, profile, logout, updateProfile } = useAuth();
+  const { user, profile, logout } = useAuth();
   const [activeView, setActiveView] = useState<ActiveView>({ type: 'welcome' });
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
-  const [isProfileOpen, setProfileOpen] = useState(false);
   const [isGameCenterOpen, setGameCenterOpen] = useState(false);
   const [friends, setFriends] = useState<User[]>([]);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
@@ -185,18 +183,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
   }, [activeView, user, db, isVideoCallOpen, incomingCall, toast]);
 
-
-  const handleProfileUpdate = async (updatedUser: User) => {
-    await updateProfile(updatedUser);
-    if(profile) {
-       setActiveView(prev => {
-        if(prev.type === 'chat' && prev.data.user.id === updatedUser.id) {
-          return { ...prev, data: { ...prev.data, user: updatedUser } }
-        }
-        return prev;
-      });
-    }
-  };
 
   const addIcebreakerMessage = async (chatId: string, currentUser: User, partnerUser: User) => {
     try {
@@ -582,21 +568,15 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         <SidebarContent>
           <SidebarMenu>
             <SidebarMenuItem>
-              <Dialog open={isProfileOpen} onOpenChange={setProfileOpen}>
-                <DialogTrigger asChild>
-                  <Button variant="ghost" className="w-full justify-start gap-2">
-                    <Avatar className="h-8 w-8">
-                       <AvatarImage src={profile.avatar} alt={profile.name} data-ai-hint="profile avatar" />
-                       <AvatarFallback>{profile.name.charAt(0)}</AvatarFallback>
-                    </Avatar>
-                    <div className="flex flex-col items-start">
-                      <span className="font-medium">{profile.name}</span>
-                      <span className="text-xs text-muted-foreground">My Profile</span>
-                    </div>
-                  </Button>
-                </DialogTrigger>
-                <ProfileView user={profile} onOpenChange={setProfileOpen} onProfileUpdate={handleProfileUpdate} />
-              </Dialog>
+              <div className="w-full justify-start gap-2 flex items-center p-2">
+                <Avatar className="h-8 w-8">
+                    <AvatarImage src={profile.avatar} alt={profile.name} data-ai-hint="profile avatar" />
+                    <AvatarFallback>{profile.name.charAt(0)}</AvatarFallback>
+                </Avatar>
+                <div className="flex flex-col items-start">
+                    <span className="font-medium">{profile.name}</span>
+                </div>
+              </div>
             </SidebarMenuItem>
           </SidebarMenu>
 

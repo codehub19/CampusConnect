@@ -10,11 +10,13 @@ import ProfileSetupView from '@/components/campus-connect/profile-setup-view';
 import HomeView from '@/components/campus-connect/home-view';
 import EventsView from '@/components/campus-connect/events-view';
 import MissedConnectionsView from '@/components/campus-connect/missed-connections-view';
+import ProfileView from '@/components/campus-connect/profile-view';
 
 type AppState = 'policy' | 'auth' | 'profile_setup' | 'home' | 'chat' | 'events' | 'missed_connections';
 
 function AppContent() {
-  const { user, loading, profile } = useAuth();
+  const { user, loading, profile, updateProfile } = useAuth();
+  const [isProfileOpen, setProfileOpen] = useState(false);
   
   const getInitialState = (): AppState => {
     if (loading) return 'auth'; // Show loader, but logically it's part of auth flow
@@ -55,24 +57,39 @@ function AppContent() {
 
   const navigateTo = (state: AppState) => setAppState(state);
 
-  switch (appState) {
-    case 'policy':
-      return <PolicyView onAgree={handleAgree} />;
-    case 'auth':
-      return <AuthView />;
-    case 'profile_setup':
-      return <ProfileSetupView />;
-    case 'home':
-      return <HomeView onNavigateTo1v1Chat={() => navigateTo('chat')} onNavigateToEvents={() => navigateTo('events')} onNavigateToMissedConnections={() => navigateTo('missed_connections')} userName={profile?.name || 'User'} />;
-    case 'chat':
-      return <MainLayout onNavigateHome={() => navigateTo('home')} onNavigateToMissedConnections={() => navigateTo('missed_connections')} />;
-    case 'events':
-      return <EventsView onNavigateHome={() => navigateTo('home')} />;
-    case 'missed_connections':
-      return <MissedConnectionsView onNavigateHome={() => navigateTo('home')} />;
-    default:
-       return <AuthView />;
-  }
+  return (
+    <>
+      {profile && <ProfileView user={profile} isOpen={isProfileOpen} onOpenChange={setProfileOpen} onProfileUpdate={updateProfile} />}
+
+      {(() => {
+        switch (appState) {
+          case 'policy':
+            return <PolicyView onAgree={handleAgree} />;
+          case 'auth':
+            return <AuthView />;
+          case 'profile_setup':
+            return <ProfileSetupView />;
+          case 'home':
+            return <HomeView 
+              onNavigateTo1v1Chat={() => navigateTo('chat')} 
+              onNavigateToEvents={() => navigateTo('events')} 
+              onNavigateToMissedConnections={() => navigateTo('missed_connections')} 
+              userName={profile?.name || 'User'}
+              onOpenProfile={() => setProfileOpen(true)}
+              userAvatar={profile?.avatar}
+            />;
+          case 'chat':
+            return <MainLayout onNavigateHome={() => navigateTo('home')} onNavigateToMissedConnections={() => navigateTo('missed_connections')} />;
+          case 'events':
+            return <EventsView onNavigateHome={() => navigateTo('home')} />;
+          case 'missed_connections':
+            return <MissedConnectionsView onNavigateHome={() => navigateTo('home')} />;
+          default:
+            return <AuthView />;
+        }
+      })()}
+    </>
+  )
 }
 
 export default function Home() {
