@@ -15,7 +15,7 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import type { User, Chat } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { getFirestore, doc, updateDoc, setDoc, onSnapshot, collection, addDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { getFirestore, doc, updateDoc, getDoc, onSnapshot, collection, addDoc, getDocs, writeBatch } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 
 interface VideoCallViewProps {
@@ -213,48 +213,51 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
   };
 
   return (
-    <DialogContent className="max-w-4xl h-[90vh] bg-background p-0 flex flex-col">
-      <DialogHeader className="p-4 border-b">
+    <DialogContent className="w-full max-w-4xl h-full sm:h-[90vh] bg-background p-0 flex flex-col">
+      <DialogHeader className="p-4 border-b shrink-0">
         <DialogTitle className="flex items-center gap-2">
           <Video className="h-5 w-5 text-primary" />
           <span>Video Call with {user.name}</span>
         </DialogTitle>
       </DialogHeader>
-      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2 p-2 relative">
-        <div className="relative rounded-lg overflow-hidden bg-secondary flex items-center justify-center">
-            <video ref={remoteVideoRef} className="w-full h-full object-cover" autoPlay playsInline />
-            <div className="absolute bottom-2 left-2 bg-black/50 text-white text-sm px-2 py-1 rounded">
-                {user.name}
-            </div>
+      
+      <div className="flex-1 relative bg-secondary overflow-hidden">
+        {/* Remote Video */}
+        <video ref={remoteVideoRef} className="w-full h-full object-cover" autoPlay playsInline />
+        <div className="absolute bottom-2 left-2 bg-black/50 text-white text-sm px-2 py-1 rounded">
+            {user.name}
         </div>
-        <div className="relative rounded-lg overflow-hidden bg-secondary flex items-center justify-center">
-            <video ref={localVideoRef} className={cn("w-full h-full object-cover", { 'hidden': !isCameraOn || hasCameraPermission === false })} autoPlay muted playsInline />
-            {(!isCameraOn || hasCameraPermission === false) && (
-               <div className="w-full h-full bg-card flex items-center justify-center flex-col gap-4">
-                 <Avatar className="h-32 w-32">
+        
+        {/* Local Video (Picture-in-Picture) */}
+        <div className="absolute top-4 right-4 w-32 h-48 sm:w-40 sm:h-56 rounded-lg overflow-hidden border-2 border-border bg-card shadow-lg">
+             <video ref={localVideoRef} className={cn("w-full h-full object-cover", { 'hidden': !isCameraOn || hasCameraPermission === false })} autoPlay muted playsInline />
+             {(!isCameraOn || hasCameraPermission === false) && (
+               <div className="w-full h-full bg-card flex items-center justify-center flex-col gap-4 p-2">
+                 <Avatar className="h-16 w-16 sm:h-20 sm:w-20">
                    <AvatarImage src={currentUser.avatar} data-ai-hint="profile avatar" />
                    <AvatarFallback>{currentUser.name.charAt(0)}</AvatarFallback>
                  </Avatar>
                  {hasCameraPermission === false && (
-                    <Alert variant="destructive" className="w-auto">
-                        <AlertTitle>Media Access Required</AlertTitle>
+                    <Alert variant="destructive" className="w-auto text-xs text-center">
+                        <AlertTitle>Media Required</AlertTitle>
                         <AlertDescription>
-                            Please allow camera & mic access to use this feature.
+                            Please allow camera & mic access.
                         </AlertDescription>
                     </Alert>
                  )}
                </div>
             )}
-          <div className="absolute bottom-2 left-2 bg-black/50 text-white text-sm px-2 py-1 rounded">
-            You
-          </div>
+             <div className="absolute bottom-1 left-1 bg-black/50 text-white text-xs px-1 py-0.5 rounded">
+                You
+            </div>
         </div>
       </div>
-      <div className="flex justify-center items-center gap-4 p-4 border-t bg-card">
+      
+      <div className="flex justify-center items-center gap-4 p-4 border-t bg-card shrink-0">
         <Button
           variant={isMicOn ? 'secondary' : 'destructive'}
           size="icon"
-          className="rounded-full h-14 w-14"
+          className="rounded-full h-12 w-12 sm:h-14 sm:w-14"
           onClick={handleToggleMic}
           disabled={hasCameraPermission === false}
         >
@@ -263,7 +266,7 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
         <Button
           variant={isCameraOn ? 'secondary' : 'destructive'}
           size="icon"
-          className="rounded-full h-14 w-14"
+          className="rounded-full h-12 w-12 sm:h-14 sm:w-14"
           onClick={handleToggleCamera}
           disabled={hasCameraPermission === false}
         >
@@ -272,7 +275,7 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
         <Button
           variant="destructive"
           size="icon"
-          className="rounded-full h-14 w-14"
+          className="rounded-full h-12 w-12 sm:h-14 sm:w-14"
           onClick={hangUp}
         >
           <PhoneOff className="h-6 w-6" />
