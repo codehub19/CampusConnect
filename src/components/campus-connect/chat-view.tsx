@@ -169,6 +169,8 @@ export default function ChatView({ chat, currentUser }: ChatViewProps) {
         });
       }
     );
+    // Reset file input
+    if(e.target) e.target.value = '';
   };
 
   return (

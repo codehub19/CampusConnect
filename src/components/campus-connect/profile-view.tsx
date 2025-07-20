@@ -14,7 +14,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import type { User, CampusEvent, MissedConnectionPost } from '@/lib/types';
-import { getFirestore, collection, query, where, onSnapshot, doc, deleteDoc, updateDoc, arrayRemove } from 'firebase/firestore';
+import { getFirestore, collection, query, where, onSnapshot, doc, deleteDoc, updateDoc, arrayRemove, getDocs } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { format } from 'date-fns';
