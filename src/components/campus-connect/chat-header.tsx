@@ -13,9 +13,6 @@ import {
 } from "@/components/ui/dropdown-menu"
 import type { User, Chat } from '@/lib/types';
 import { useToast } from '@/hooks/use-toast';
-import { Dialog, DialogTrigger } from '@/components/ui/dialog';
-import VideoCallView from './video-call-view';
-import { useAuth } from '@/hooks/use-auth';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 
 type ActiveView = 
@@ -31,15 +28,14 @@ interface ChatHeaderProps {
   onAddFriend: (friendId: string) => void;
   onBlockUser: (userId: string) => void;
   onStartGame: (gameType: 'ticTacToe') => void;
+  onVideoCall: () => void;
   isSearching: boolean;
   isFriend?: boolean;
   isGuest?: boolean;
 }
 
-export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSearching, onAddFriend, onBlockUser, isFriend, isGuest, onStartGame }: ChatHeaderProps) {
+export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSearching, onAddFriend, onBlockUser, isFriend, isGuest, onStartGame, onVideoCall }: ChatHeaderProps) {
   const { toast } = useToast();
-  const { profile } = useAuth();
-  const [isVideoCallOpen, setVideoCallOpen] = React.useState(false);
 
   const handleAddFriendClick = () => {
     if (activeView.type === 'chat' || activeView.type === 'game') {
@@ -60,7 +56,7 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSear
         const { user } = activeView.data;
         return (
           <>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 min-w-0">
                 <div className="md:hidden">
                     <SidebarTrigger>
                         <Menu />
@@ -70,12 +66,12 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSear
                     <AvatarImage src={user.avatar} alt={user.name} />
                     <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
                 </Avatar>
-                <div>
-                    <h2 className="font-semibold text-lg">{user.name}</h2>
+                <div className="min-w-0">
+                    <h2 className="font-semibold text-lg truncate">{user.name}</h2>
                     <p className="text-sm text-muted-foreground">{user.online ? 'Online' : 'Offline'}</p>
                 </div>
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1 flex-shrink-0">
                  <Button 
                     variant="ghost" 
                     size="icon" 
@@ -91,15 +87,10 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSear
                     <Gamepad2 className="h-5 w-5" />
                     <span className="sr-only">Play Game</span>
                 </Button>
-                 <Dialog open={isVideoCallOpen} onOpenChange={setVideoCallOpen}>
-                    <DialogTrigger asChild>
-                    <Button variant="ghost" size="icon" className="rounded-full">
-                        <Video className="h-5 w-5" />
-                        <span className="sr-only">Video Call</span>
-                    </Button>
-                    </DialogTrigger>
-                    {profile && <VideoCallView user={user} currentUser={profile} onOpenChange={setVideoCallOpen} />}
-                </Dialog>
+                <Button variant="ghost" size="icon" className="rounded-full" onClick={onVideoCall}>
+                    <Video className="h-5 w-5" />
+                    <span className="sr-only">Video Call</span>
+                </Button>
                  <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="rounded-full">

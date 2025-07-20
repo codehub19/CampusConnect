@@ -13,60 +13,182 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import type { User } from '@/lib/types';
+import type { User, Chat } from '@/lib/types';
 import { cn } from '@/lib/utils';
+import { getFirestore, doc, updateDoc, setDoc, onSnapshot, collection, addDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { firebaseApp } from '@/lib/firebase';
 
 interface VideoCallViewProps {
-  user: User;
+  user: User; // The person being called
   currentUser: User;
+  chat: Chat;
   onOpenChange: (open: boolean) => void;
 }
 
-export default function VideoCallView({ user, currentUser, onOpenChange }: VideoCallViewProps) {
+const servers = {
+  iceServers: [
+    {
+      urls: ['stun:stun1.l.google.com:19302', 'stun:stun2.l.google.com:19302'],
+    },
+  ],
+  iceCandidatePoolSize: 10,
+};
+
+export default function VideoCallView({ user, currentUser, chat, onOpenChange }: VideoCallViewProps) {
   const [isMicOn, setMicOn] = useState(true);
   const [isCameraOn, setCameraOn] = useState(true);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
+  
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const pc = useRef<RTCPeerConnection | null>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+
   const { toast } = useToast();
+  const db = getFirestore(firebaseApp);
+  
+  const hangUp = async () => {
+    if (pc.current) {
+      pc.current.close();
+    }
 
-  useEffect(() => {
-    const getCameraPermission = async () => {
-      // If permission is already granted or denied, don't ask again.
-      if (hasCameraPermission !== null) return;
-      
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-        setHasCameraPermission(true);
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop());
+    }
 
-        if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-        }
-      } catch (error) {
-        console.error('Error accessing camera:', error);
-        setHasCameraPermission(false);
-        toast({
-          variant: 'destructive',
-          title: 'Camera Access Denied',
-          description: 'Please enable camera permissions in your browser settings to use this feature.',
-        });
-      }
-    };
+    if(chat.id) {
+       const chatRef = doc(db, 'chats', chat.id);
+       await updateDoc(chatRef, { call: null });
 
-    getCameraPermission();
+       const callCandidates = collection(chatRef, 'callCandidates');
+       const answerCandidates = collection(chatRef, 'answerCandidates');
+       
+       const callCandidatesSnapshot = await getDocs(callCandidates);
+       const answerCandidatesSnapshot = await getDocs(answerCandidates);
+
+       const batch = writeBatch(db);
+       callCandidatesSnapshot.forEach(doc => batch.delete(doc.ref));
+       answerCandidatesSnapshot.forEach(doc => batch.delete(doc.ref));
+       await batch.commit();
+    }
     
-    // Cleanup function to stop the video stream when the component unmounts
-    return () => {
-        if (videoRef.current && videoRef.current.srcObject) {
-            const stream = videoRef.current.srcObject as MediaStream;
-            stream.getTracks().forEach(track => track.stop());
+    onOpenChange(false);
+  };
+  
+  useEffect(() => {
+    pc.current = new RTCPeerConnection(servers);
+    
+    const startStreams = async () => {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+            localStreamRef.current = stream;
+            
+            stream.getTracks().forEach(track => {
+                pc.current?.addTrack(track, stream);
+            });
+            
+            if (localVideoRef.current) {
+                localVideoRef.current.srcObject = stream;
+            }
+            setHasCameraPermission(true);
+
+        } catch (error) {
+            console.error('Error accessing camera:', error);
+            setHasCameraPermission(false);
+            toast({
+              variant: 'destructive',
+              title: 'Media Access Denied',
+              description: 'Please enable camera & mic permissions in your browser.',
+            });
+            return;
+        }
+
+        const remoteStream = new MediaStream();
+        pc.current.ontrack = (event) => {
+            event.streams[0].getTracks().forEach(track => {
+                remoteStream.addTrack(track);
+            });
+        };
+
+        if (remoteVideoRef.current) {
+            remoteVideoRef.current.srcObject = remoteStream;
+        }
+
+        // --- Caller logic ---
+        if (chat.call && chat.call.callerId === currentUser.id) {
+            const callCandidates = collection(db, 'chats', chat.id, 'callCandidates');
+            pc.current.onicecandidate = event => {
+                event.candidate && addDoc(callCandidates, event.candidate.toJSON());
+            };
+            
+            const offerDescription = await pc.current.createOffer();
+            await pc.current.setLocalDescription(offerDescription);
+            
+            await updateDoc(doc(db, 'chats', chat.id), { call: { ...chat.call, offer: offerDescription.toJSON() }});
+        }
+        
+        // --- Answerer logic ---
+        if (chat.call && chat.call.callerId !== currentUser.id && chat.call.offer) {
+            const answerCandidates = collection(db, 'chats', chat.id, 'answerCandidates');
+            pc.current.onicecandidate = event => {
+                event.candidate && addDoc(answerCandidates, event.candidate.toJSON());
+            };
+
+            await pc.current.setRemoteDescription(new RTCSessionDescription(chat.call.offer));
+            
+            const answerDescription = await pc.current.createAnswer();
+            await pc.current.setLocalDescription(answerDescription);
+
+            await updateDoc(doc(db, 'chats', chat.id), { call: { ...chat.call, answer: answerDescription.toJSON() } });
         }
     };
-  }, [hasCameraPermission, toast]);
+
+    startStreams();
+
+    const chatRef = doc(db, 'chats', chat.id);
+    const unsubscribe = onSnapshot(chatRef, (docSnap) => {
+        const data = docSnap.data();
+        if (!data?.call) {
+            if(pc.current?.connectionState === 'connected'){
+                hangUp();
+                toast({ title: 'Call Ended', description: `${user.name} has ended the call.` });
+            }
+            return;
+        }
+        // Answer logic for caller
+        if (pc.current && !pc.current.currentRemoteDescription && data.call.answer) {
+             pc.current.setRemoteDescription(new RTCSessionDescription(data.call.answer));
+        }
+    });
+
+    const callCandidatesUnsub = onSnapshot(collection(chatRef, 'callCandidates'), (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+                pc.current?.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+            }
+        });
+    });
+
+    const answerCandidatesUnsub = onSnapshot(collection(chatRef, 'answerCandidates'), (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+                pc.current?.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+            }
+        });
+    });
+
+    return () => {
+        hangUp();
+        unsubscribe();
+        callCandidatesUnsub();
+        answerCandidatesUnsub();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const toggleMediaStream = (type: 'video' | 'audio', state: boolean) => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      const track = type === 'video' ? stream.getVideoTracks()[0] : stream.getAudioTracks()[0];
+    if (localStreamRef.current) {
+      const track = type === 'video' ? localStreamRef.current.getVideoTracks()[0] : localStreamRef.current.getAudioTracks()[0];
       if (track) {
         track.enabled = state;
       }
@@ -85,7 +207,6 @@ export default function VideoCallView({ user, currentUser, onOpenChange }: Video
     toggleMediaStream('audio', newState);
   };
 
-
   return (
     <DialogContent className="max-w-4xl h-[90vh] bg-background p-0 flex flex-col">
       <DialogHeader className="p-4 border-b">
@@ -95,15 +216,15 @@ export default function VideoCallView({ user, currentUser, onOpenChange }: Video
         </DialogTitle>
       </DialogHeader>
       <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2 p-2 relative">
-        <div className="relative rounded-lg overflow-hidden bg-secondary">
-          <Image src={user.avatar} alt="Remote person's video" layout="fill" objectFit="cover" data-ai-hint="person video call" />
-          <div className="absolute bottom-2 left-2 bg-black/50 text-white text-sm px-2 py-1 rounded">
-            {user.name}
-          </div>
+        <div className="relative rounded-lg overflow-hidden bg-secondary flex items-center justify-center">
+            <video ref={remoteVideoRef} className="w-full h-full object-cover" autoPlay playsInline />
+            <div className="absolute bottom-2 left-2 bg-black/50 text-white text-sm px-2 py-1 rounded">
+                {user.name}
+            </div>
         </div>
         <div className="relative rounded-lg overflow-hidden bg-secondary flex items-center justify-center">
-            <video ref={videoRef} className={cn("w-full aspect-auto h-full object-cover", { 'hidden': !isCameraOn || !hasCameraPermission })} autoPlay muted />
-            {(!isCameraOn || !hasCameraPermission) && (
+            <video ref={localVideoRef} className={cn("w-full h-full object-cover", { 'hidden': !isCameraOn || !hasCameraPermission })} autoPlay muted />
+            {(!isCameraOn || hasCameraPermission === false) && (
                <div className="w-full h-full bg-card flex items-center justify-center flex-col gap-4">
                  <Avatar className="h-32 w-32">
                    <AvatarImage src={currentUser.avatar} data-ai-hint="profile avatar" />
@@ -111,9 +232,9 @@ export default function VideoCallView({ user, currentUser, onOpenChange }: Video
                  </Avatar>
                  {hasCameraPermission === false && (
                     <Alert variant="destructive" className="w-auto">
-                        <AlertTitle>Camera Access Required</AlertTitle>
+                        <AlertTitle>Media Access Required</AlertTitle>
                         <AlertDescription>
-                            Please allow camera access to use this feature.
+                            Please allow camera & mic access to use this feature.
                         </AlertDescription>
                     </Alert>
                  )}
@@ -147,7 +268,7 @@ export default function VideoCallView({ user, currentUser, onOpenChange }: Video
           variant="destructive"
           size="icon"
           className="rounded-full h-14 w-14"
-          onClick={() => onOpenChange(false)}
+          onClick={hangUp}
         >
           <PhoneOff className="h-6 w-6" />
         </Button>

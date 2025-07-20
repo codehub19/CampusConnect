@@ -15,14 +15,14 @@ export interface Message {
   id: string;
   senderId: string;
   text: string;
-  timestamp: Date;
+  timestamp: any;
 }
 
 export interface GameState {
     type: 'ticTacToe';
     status: 'pending' | 'active' | 'finished';
     board: (string | null)[];
-    turn: string;
+    turn: string | null;
     players: { [key: string]: 'X' | 'O' };
     winner: string | null | 'draw';
 }
@@ -30,9 +30,14 @@ export interface GameState {
 export interface Chat {
   id: string;
   userIds: string[];
-  messages: Message[];
-  game: GameState | null;
   users?: User[]; // Optional: for client-side convenience
+  game: GameState | null;
+  lastMessageTimestamp?: any;
+  call?: {
+    offer: any;
+    answer?: any;
+    callerId: string;
+  }
 }
 
 export interface FriendRequest {
@@ -42,5 +47,5 @@ export interface FriendRequest {
     fromName: string;
     fromAvatar: string;
     status: 'pending' | 'accepted' | 'declined';
-    timestamp: Date;
+    timestamp: any;
 }

@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Dialog, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import ProfileView from '@/components/campus-connect/profile-view';
 import ChatView from '@/components/campus-connect/chat-view';
 import AiAssistantView from '@/components/campus-connect/ai-assistant-view';
@@ -29,6 +29,7 @@ import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where
 import { firebaseApp } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import TicTacToe from './tic-tac-toe';
+import VideoCallView from './video-call-view';
 
 type ActiveView = 
   | { type: 'welcome' }
@@ -43,8 +44,10 @@ export function MainLayout() {
   const [friends, setFriends] = useState<User[]>([]);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [incomingCall, setIncomingCall] = useState<{ chat: Chat, from: User } | null>(null);
+  const [isVideoCallOpen, setVideoCallOpen] = useState(false);
+  
   const { toast } = useToast();
-
   const db = getFirestore(firebaseApp);
 
   // Listen for friends
@@ -90,18 +93,17 @@ export function MainLayout() {
 
   // Cleanup waiting user on tab close
   useEffect(() => {
-    const handleBeforeUnload = async (e: BeforeUnloadEvent) => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
       if (user && isSearching) {
-        // This is a best-effort attempt. Most modern browsers will not wait for the async operation to complete.
-        // A more robust solution involves Cloud Functions and Firestore presence.
-        await deleteDoc(doc(db, 'waiting_users', user.uid));
+        deleteDoc(doc(db, 'waiting_users', user.uid));
       }
     };
-  
     window.addEventListener('beforeunload', handleBeforeUnload);
-  
     return () => {
       window.removeEventListener('beforeunload', handleBeforeUnload);
+      if (user && isSearching) {
+         deleteDoc(doc(db, 'waiting_users', user.uid));
+      }
     };
   }, [user, isSearching, db]);
 
@@ -119,7 +121,7 @@ export function MainLayout() {
         const chatDocRef = doc(db, 'chats', matchedChatId);
         const chatDoc = await getDoc(chatDocRef);
         if(chatDoc.exists()) {
-          const chatData = chatDoc.data() as any;
+          const chatData = { id: chatDoc.id, ...chatDoc.data() } as Chat;
           const partnerId = chatData.userIds.find((id:string) => id !== user.uid);
           if (partnerId) {
              const partnerDoc = await getDoc(doc(db, 'users', partnerId));
@@ -134,13 +136,60 @@ export function MainLayout() {
     });
 
     return () => unsubscribe();
-  }, [user, isSearching, db]);
+  }, [user, isSearching, db, profile]);
+  
+  // Listen for incoming calls on the active chat
+  useEffect(() => {
+    if (activeView.type !== 'chat' && activeView.type !== 'game') return;
+
+    const { chat } = activeView.data;
+    const chatRef = doc(db, 'chats', chat.id);
+
+    const unsubscribe = onSnapshot(chatRef, (docSnap) => {
+      if (!docSnap.exists()) return;
+      const chatData = { id: docSnap.id, ...docSnap.data() } as Chat;
+      
+      // Update local chat state
+      setActiveView(prev => {
+        if ((prev.type === 'chat' || prev.type === 'game') && prev.data.chat.id === chatData.id) {
+            const newType = chatData.game ? 'game' : 'chat';
+            return { type: newType, data: { ...prev.data, chat: chatData } };
+        }
+        return prev;
+      });
+      
+      if (chatData.call && chatData.call.callerId !== user?.uid && !isVideoCallOpen) {
+          const partner = activeView.data.user;
+          setIncomingCall({ chat: chatData, from: partner });
+      } else if (!chatData.call && incomingCall?.chat.id === chatData.id) {
+          // Caller hung up before answering
+          setIncomingCall(null);
+      }
+
+      // Partner leaves chat notification
+      if (chatData.userIds.includes(user!.uid) && chatData.userIds.includes(activeView.data.user.id)) {
+        const partnerId = activeView.data.user.id;
+        const partnerDocInChat = (chatData as any).usersData?.[partnerId];
+        if (partnerDocInChat && !partnerDocInChat.online) {
+            toast({
+                title: 'User Left',
+                description: `${activeView.data.user.name} has left the chat.`,
+            });
+            handleLeaveChat();
+        }
+      }
+    });
+    
+    return () => unsubscribe();
+
+  }, [activeView, user, db, isVideoCallOpen, incomingCall, toast]);
+
 
   const handleProfileUpdate = async (updatedUser: User) => {
     await updateProfile(updatedUser);
     if(profile) {
        setActiveView(prev => {
-        if(prev.type === 'chat' && prev.data.user.id === updatedUser.id) {
+        if((prev.type === 'chat' || prev.type === 'game') && prev.data.user.id === updatedUser.id) {
           return { ...prev, data: { ...prev.data, user: updatedUser } }
         }
         return prev;
@@ -162,13 +211,12 @@ export function MainLayout() {
       const newChat: Chat = {
         id: chatId,
         userIds: sortedIds,
-        messages: [],
         game: null,
       };
       await setDoc(chatDocRef, newChat);
       chatData = newChat;
     } else {
-        chatData = chatDoc.data() as Chat;
+        chatData = {id: chatDoc.id, ...chatDoc.data()} as Chat;
     }
     
     setActiveView({ type: 'chat', data: { user: friend, chat: chatData } });
@@ -194,7 +242,6 @@ export function MainLayout() {
     const waitingUsersRef = collection(db, 'waiting_users');
     const blockedByMe = profile.blockedUsers || [];
     
-    // We query for a limited number of users to avoid large reads.
     const q = query(waitingUsersRef, where('id', '!=', user.uid), limit(10));
     const querySnapshot = await getDocs(q);
 
@@ -212,7 +259,7 @@ export function MainLayout() {
 
         if(!blockedByMe.includes(potentialPartner.id) && !blockedMe.includes(user.uid)) {
             partnerWaitingDocId = potentialPartner.id;
-            partner = potentialPartner.data;
+            partner = partnerProfile; // Use the full profile
             break;
         }
     }
@@ -222,16 +269,14 @@ export function MainLayout() {
         const newChatRef = doc(collection(db, 'chats'));
         const newChat: Chat = {
             id: newChatRef.id,
-            userIds: [user.uid, partner.id],
-            messages: [],
+            userIds: [user.uid, partner.id].sort(),
             game: null,
         };
         await setDoc(newChatRef, newChat);
 
         await updateDoc(doc(db, 'waiting_users', partnerWaitingDocId), { matchedChatId: newChatRef.id });
         
-        const partnerProfile = (await getDoc(doc(db, 'users', partner.id))).data() as User;
-        setActiveView({type: 'chat', data: { user: partnerProfile, chat: newChat }});
+        setActiveView({type: 'chat', data: { user: partner, chat: newChat }});
         setIsSearching(false);
         toast({ title: "Chat found!", description: `You've been connected with ${partner.name}.` });
     } else {
@@ -247,7 +292,12 @@ export function MainLayout() {
     }
   };
   
-  const handleLeaveChat = () => {
+  const handleLeaveChat = async () => {
+    if ((activeView.type === 'chat' || activeView.type === 'game') && user) {
+        const { chat } = activeView.data;
+        const userRef = doc(db, 'users', user.uid);
+        await updateDoc(userRef, { online: false, lastSeen: serverTimestamp() });
+    }
     setActiveView({ type: 'welcome' });
     toast({ title: "You left the chat."});
   }
@@ -307,6 +357,7 @@ export function MainLayout() {
 
   const handleStartGame = async (gameType: 'ticTacToe') => {
       if (activeView.type !== 'chat') return;
+      if (!user) return;
 
       const { chat } = activeView.data;
       const chatRef = doc(db, 'chats', chat.id);
@@ -317,24 +368,15 @@ export function MainLayout() {
         board: Array(9).fill(null),
         turn: activeView.data.user.id,
         players: {
-            [user!.uid]: 'X',
+            [user.uid]: 'X',
             [activeView.data.user.id]: 'O'
         },
         winner: null,
       };
 
       await updateDoc(chatRef, { game: initialGameState });
-      setActiveView({ ...activeView, type: 'game' });
   };
 
-  const handleGameUpdate = (newGameData: any | null) => {
-    if (activeView.type === 'game' || activeView.type === 'chat') {
-        const newChatState = { ...activeView.data.chat, game: newGameData };
-        const newType = newGameData ? 'game' : 'chat';
-        setActiveView({ type: newType, data: { ...activeView.data, chat: newChatState } });
-    }
-  };
-  
   const handleMakeMove = async (index: number) => {
     if (activeView.type !== 'game') return;
     const { chat, user: partner } = activeView.data;
@@ -374,7 +416,7 @@ export function MainLayout() {
         const winnerSymbol = calculateWinner(newBoard);
         const isDraw = newBoard.every(cell => cell !== null);
         let newStatus = freshGame.status;
-        let newWinner = null;
+        let newWinner: string | null = null;
         
         if (winnerSymbol) {
             newStatus = 'finished';
@@ -403,13 +445,34 @@ export function MainLayout() {
   const handleAcceptGame = async () => {
     if (activeView.type !== 'game') return;
     const chatRef = doc(db, 'chats', activeView.data.chat.id);
-    await updateDoc(chatRef, { 'game.status': 'active' });
+    await updateDoc(chatRef, { 
+        'game.status': 'active',
+        'game.turn': activeView.data.user.id, // Initiator's turn
+    });
   };
   
   const handleQuitGame = async () => {
       if (activeView.type !== 'game') return;
       const chatRef = doc(db, 'chats', activeView.data.chat.id);
       await updateDoc(chatRef, { game: null });
+  };
+  
+  const handleAnswerCall = () => {
+    if (!incomingCall) return;
+    setActiveView({ type: 'chat', data: { user: incomingCall.from, chat: incomingCall.chat } });
+    setVideoCallOpen(true);
+    setIncomingCall(null);
+  };
+
+  const handleDeclineCall = async () => {
+    if (!incomingCall) return;
+    const chatRef = doc(db, 'chats', incomingCall.chat.id);
+    await updateDoc(chatRef, { call: null });
+    setIncomingCall(null);
+    toast({
+      title: 'Call Declined',
+      description: 'You declined the call.',
+    });
   };
 
 
@@ -418,17 +481,30 @@ export function MainLayout() {
   }
 
   const renderView = () => {
+    if (isVideoCallOpen && (activeView.type === 'chat' || activeView.type === 'game')) {
+        return (
+            <Dialog open={isVideoCallOpen} onOpenChange={setVideoCallOpen}>
+              <VideoCallView 
+                user={activeView.data.user} 
+                currentUser={profile} 
+                chat={activeView.data.chat}
+                onOpenChange={setVideoCallOpen} 
+              />
+            </Dialog>
+        )
+    }
+
     switch (activeView.type) {
       case 'chat':
-        return activeView.data ? <ChatView chat={activeView.data.chat} currentUser={profile} /> : <WelcomeView onFindChat={handleFindChat} />;
+        return <ChatView chat={activeView.data.chat} currentUser={profile} />;
       case 'game':
-        if (!activeView.data.chat.game) return <WelcomeView onFindChat={handleFindChat} />;
+        if (!activeView.data.chat.game) return <ChatView chat={activeView.data.chat} currentUser={profile} />;
         return (
             <div className="h-full flex flex-col md:flex-row">
                 <div className="flex-1 min-h-0">
                     <ChatView chat={activeView.data.chat} currentUser={profile} />
                 </div>
-                <div className="md:w-1/3 md:border-l">
+                <div className="md:w-[400px] md:border-l">
                     <TicTacToe 
                         game={activeView.data.chat.game} 
                         currentUserId={user.uid}
@@ -449,6 +525,23 @@ export function MainLayout() {
 
   return (
     <SidebarProvider>
+       {incomingCall && (
+        <Dialog open={!!incomingCall} onOpenChange={() => setIncomingCall(null)}>
+            <DialogContent>
+                <DialogHeader>
+                    <DialogTitle>Incoming Call</DialogTitle>
+                    <DialogDescription>
+                        You have an incoming video call from {incomingCall.from.name}.
+                    </DialogDescription>
+                </DialogHeader>
+                <DialogFooter>
+                    <Button variant="outline" onClick={handleDeclineCall}>Decline</Button>
+                    <Button onClick={handleAnswerCall}>Accept</Button>
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+      )}
+
       <Sidebar>
         <SidebarHeader>
           <div className="flex items-center gap-2">
@@ -557,7 +650,7 @@ export function MainLayout() {
         </SidebarHeader>
       </Sidebar>
       <SidebarInset>
-        <div className="h-screen flex flex-col">
+        <div className="h-screen flex flex-col bg-card">
             <ChatHeader 
               activeView={activeView} 
               onFindChat={handleFindChat} 
@@ -566,6 +659,7 @@ export function MainLayout() {
               onAddFriend={handleAddFriend}
               onBlockUser={handleBlockUser}
               onStartGame={() => handleStartGame('ticTacToe')}
+              onVideoCall={() => setVideoCallOpen(true)}
               isFriend={(activeView.type === 'chat' || activeView.type === 'game') ? profile.friends?.includes(activeView.data.user.id) : false}
               isGuest={profile.isGuest || ((activeView.type === 'chat' || activeView.type === 'game') && activeView.data.user.isGuest)}
             />

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import type { GameState } from '@/lib/types';
+import { useAuth } from '@/hooks/use-auth';
 
 interface TicTacToeProps {
     game: GameState;
@@ -34,11 +35,11 @@ const Square = ({ value, onSquareClick, disabled }: { value: string | null; onSq
 export default function TicTacToe({ game, currentUserId, onMakeMove, onAcceptGame, onQuitGame }: TicTacToeProps) {
   const isMyTurn = game.turn === currentUserId;
   const mySymbol = game.players[currentUserId];
-  const partnerId = Object.keys(game.players).find(id => id !== currentUserId) || '';
-
+  
   const getStatusText = () => {
     if (game.status === 'pending') {
-        if (game.players[currentUserId] === 'O') { // The one who didn't initiate
+        // If the current user is not the one who started the game
+        if (game.players[currentUserId] === 'O') {
             return (
                 <div className="text-center space-y-4">
                     <p>Your opponent has invited you to play Tic-Tac-Toe!</p>
@@ -59,10 +60,12 @@ export default function TicTacToe({ game, currentUserId, onMakeMove, onAcceptGam
 
 
   return (
-    <Card className="h-full flex flex-col border-0 rounded-none shadow-none">
+    <Card className="h-full flex flex-col border-0 rounded-none shadow-none bg-background">
       <CardHeader>
         <CardTitle>Tic-Tac-Toe</CardTitle>
-        <CardDescription>{getStatusText()}</CardDescription>
+        <CardDescription className="min-h-[40px] flex items-center justify-center text-center">
+            {getStatusText()}
+        </CardDescription>
       </CardHeader>
       <CardContent className="flex-grow flex items-center justify-center">
         <div className="grid grid-cols-3 gap-2">
@@ -78,9 +81,11 @@ export default function TicTacToe({ game, currentUserId, onMakeMove, onAcceptGam
       </CardContent>
        <CardFooter className="flex-col gap-2">
          {game.status === 'finished' && (
-            <Button variant="secondary" className="w-full" onClick={() => { /* Implement play again */ }}>Play Again</Button>
+            <Button variant="secondary" className="w-full" onClick={onQuitGame}>Back to Chat</Button>
          )}
-        <Button variant="destructive" className="w-full" onClick={onQuitGame}>Quit Game</Button>
+         {game.status !== 'finished' && (
+            <Button variant="destructive" className="w-full" onClick={onQuitGame}>Quit Game</Button>
+         )}
       </CardFooter>
     </Card>
   );
