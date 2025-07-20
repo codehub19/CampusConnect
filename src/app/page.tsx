@@ -61,7 +61,7 @@ function AppContent() {
     case 'home':
       return <HomeView onNavigateTo1v1Chat={() => setAppState('chat')} userName={profile?.name || 'User'} />;
     case 'chat':
-      return <MainLayout />;
+      return <MainLayout onNavigateHome={() => setAppState('home')} />;
     default:
        return <AuthView />;
   }

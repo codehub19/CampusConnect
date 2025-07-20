@@ -16,10 +16,11 @@ interface DotsAndBoxesProps {
     currentUserId: string;
     onAcceptGame: () => void;
     onQuitGame: () => void;
+    chatId: string;
 }
 
 
-export default function DotsAndBoxes({ game, currentUserId, onAcceptGame, onQuitGame }: DotsAndBoxesProps) {
+export default function DotsAndBoxes({ game, currentUserId, onAcceptGame, onQuitGame, chatId }: DotsAndBoxesProps) {
     const isMyTurn = game.turn === currentUserId;
     const { toast } = useToast();
     const db = getFirestore(firebaseApp);
@@ -30,7 +31,6 @@ export default function DotsAndBoxes({ game, currentUserId, onAcceptGame, onQuit
     const handleLineClick = async (type: 'h' | 'v', index: number) => {
         if (!isMyTurn || game.status !== 'active' || !authUser) return;
 
-        const chatId = [currentUserId, partnerId].sort().join('_');
         const chatRef = doc(db, 'chats', chatId);
 
         try {
@@ -188,4 +188,3 @@ export default function DotsAndBoxes({ game, currentUserId, onAcceptGame, onQuit
         </Card>
     );
 }
-

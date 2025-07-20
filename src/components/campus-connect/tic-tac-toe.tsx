@@ -16,6 +16,7 @@ interface TicTacToeProps {
     currentUserId: string;
     onAcceptGame: () => void;
     onQuitGame: () => void;
+    chatId: string;
 }
 
 const Square = ({ value, onSquareClick, disabled }: { value: string | null; onSquareClick: () => void, disabled: boolean }) => {
@@ -34,7 +35,7 @@ const Square = ({ value, onSquareClick, disabled }: { value: string | null; onSq
   );
 };
 
-export default function TicTacToe({ game, currentUserId, onAcceptGame, onQuitGame }: TicTacToeProps) {
+export default function TicTacToe({ game, currentUserId, onAcceptGame, onQuitGame, chatId }: TicTacToeProps) {
   const isMyTurn = game.turn === currentUserId;
   const mySymbol = game.players[currentUserId];
   const { toast } = useToast();
@@ -43,8 +44,6 @@ export default function TicTacToe({ game, currentUserId, onAcceptGame, onQuitGam
   
   const handleMakeMove = async (index: number) => {
     if (!authUser) return;
-    const partnerId = Object.keys(game.players).find(id => id !== authUser.uid)!;
-    const chatId = [authUser.uid, partnerId].sort().join('_');
     const chatRef = doc(db, 'chats', chatId);
 
     try {
@@ -71,6 +70,7 @@ export default function TicTacToe({ game, currentUserId, onAcceptGame, onQuitGam
             return null;
         };
         
+        const partnerId = Object.keys(freshGame.players).find(id => id !== authUser.uid)!;
         const winnerSymbol = calculateWinner(newBoard);
         const isDraw = newBoard.every(cell => cell !== null);
         let newStatus: 'active' | 'finished' | 'draw' = 'active';

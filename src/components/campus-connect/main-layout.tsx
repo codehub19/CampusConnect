@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Bot, MessageSquare } from 'lucide-react';
+import { Bot, MessageSquare, Home } from 'lucide-react';
 import {
   SidebarProvider,
   Sidebar,
@@ -38,8 +38,12 @@ type ActiveView =
   | { type: 'welcome' }
   | { type: 'ai' }
   | { type: 'chat', data: { user: User, chat: Chat } };
+  
+interface MainLayoutProps {
+  onNavigateHome: () => void;
+}
 
-export function MainLayout() {
+export function MainLayout({ onNavigateHome }: MainLayoutProps) {
   const { user, profile, logout, updateProfile } = useAuth();
   const [activeView, setActiveView] = useState<ActiveView>({ type: 'welcome' });
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
@@ -465,14 +469,14 @@ export function MainLayout() {
   }
 
   const renderGameView = () => {
-      if (!activeChat?.game) return null;
+      if (!activeChat?.game || !activeChat?.id) return null;
       switch (activeChat.game.type) {
           case 'ticTacToe':
-              return <TicTacToe game={activeChat.game} currentUserId={user.uid} onAcceptGame={handleAcceptGame} onQuitGame={handleQuitGame} />;
+              return <TicTacToe game={activeChat.game} currentUserId={user.uid} onAcceptGame={handleAcceptGame} onQuitGame={handleQuitGame} chatId={activeChat.id} />;
           case 'connectFour':
-              return <ConnectFour game={activeChat.game} currentUserId={user.uid} onAcceptGame={handleAcceptGame} onQuitGame={handleQuitGame} />;
+              return <ConnectFour game={activeChat.game} currentUserId={user.uid} onAcceptGame={handleAcceptGame} onQuitGame={handleQuitGame} chatId={activeChat.id} />;
           case 'dotsAndBoxes':
-              return <DotsAndBoxes game={activeChat.game} currentUserId={user.uid} onAcceptGame={handleAcceptGame} onQuitGame={handleQuitGame} />;
+              return <DotsAndBoxes game={activeChat.game} currentUserId={user.uid} onAcceptGame={handleAcceptGame} onQuitGame={handleQuitGame} chatId={activeChat.id} />;
           default:
               return null;
       }
@@ -573,6 +577,15 @@ export function MainLayout() {
           <SidebarSeparator />
           <SidebarGroup>
             <SidebarMenu>
+              <SidebarMenuItem>
+                <SidebarMenuButton
+                  onClick={onNavigateHome}
+                  tooltip="Home"
+                >
+                  <Home />
+                  <span>Home</span>
+                </SidebarMenuButton>
+              </SidebarMenuItem>
               <SidebarMenuItem>
                 <SidebarMenuButton
                   onClick={handleSelectAi}

@@ -6,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import type { ConnectFourState } from '@/lib/types';
-import { getFirestore, doc, updateDoc, runTransaction } from 'firebase/firestore';
+import { getFirestore, doc, runTransaction } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
@@ -16,6 +16,7 @@ interface ConnectFourProps {
     currentUserId: string;
     onAcceptGame: () => void;
     onQuitGame: () => void;
+    chatId: string;
 }
 
 const Cell = ({ player }: { player: number | null }) => {
@@ -27,7 +28,7 @@ const Cell = ({ player }: { player: number | null }) => {
 };
 
 
-export default function ConnectFour({ game, currentUserId, onAcceptGame, onQuitGame }: ConnectFourProps) {
+export default function ConnectFour({ game, currentUserId, onAcceptGame, onQuitGame, chatId }: ConnectFourProps) {
     const isMyTurn = game.turn === currentUserId;
     const mySymbol = game.players[currentUserId];
     const { toast } = useToast();
@@ -37,7 +38,6 @@ export default function ConnectFour({ game, currentUserId, onAcceptGame, onQuitG
     const handleMove = async (colIndex: number) => {
         if (!authUser) return;
         
-        const chatId = [game.players[1] === 1 ? Object.keys(game.players)[0] : Object.keys(game.players)[1], game.players[2] === 2 ? Object.keys(game.players)[1] : Object.keys(game.players)[0]].sort().join('_')
         const chatRef = doc(db, 'chats', chatId);
 
         try {
@@ -165,4 +165,3 @@ export default function ConnectFour({ game, currentUserId, onAcceptGame, onQuitG
         </Card>
     );
 }
-
