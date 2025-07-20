@@ -57,11 +57,11 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSear
                     <p className="text-sm text-muted-foreground">{user.online ? 'Online' : 'Offline'}</p>
                 </div>
             </div>
-            <div className="flex items-center gap-1 flex-shrink-0">
+            <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
                  <Button 
                     variant="ghost" 
                     size="icon" 
-                    className="rounded-full" 
+                    className="rounded-full hidden sm:inline-flex" 
                     onClick={onAddFriend} 
                     disabled={isFriend || isGuest}
                     title={isGuest ? "Sign up to add friends" : (isFriend ? "Already friends" : "Add friend")}
@@ -86,6 +86,14 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSear
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem 
+                        className="sm:hidden"
+                        onSelect={onAddFriend} 
+                        disabled={isFriend || isGuest}
+                    >
+                        {isFriend ? <UserCheck className="mr-2 h-4 w-4 text-green-500" /> : <UserPlus className="mr-2 h-4 w-4" /> }
+                        <span>{isFriend ? "Already friends" : "Add friend"}</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem 
                         className="text-destructive focus:text-destructive-foreground focus:bg-destructive"
                         onSelect={onBlockUser}
                     >
@@ -94,7 +102,7 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, isSear
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                <Button onClick={onLeaveChat} variant="destructive" size="sm" className="ml-2">
+                <Button onClick={onLeaveChat} variant="destructive" size="sm" className="ml-2 hidden sm:inline-flex">
                     <LogOut className="mr-2 h-4 w-4" />
                     Leave
                 </Button>

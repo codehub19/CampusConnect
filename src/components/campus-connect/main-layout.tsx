@@ -33,6 +33,7 @@ import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where
 import { firebaseApp } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import VideoCallView from './video-call-view';
+import { SheetTitle } from '../ui/sheet';
 
 type ActiveView = 
   | { type: 'welcome' }
@@ -143,21 +144,32 @@ export function MainLayout() {
     return () => unsubscribe();
   }, [user, isSearching, db, profile]);
   
-  // Listen for incoming calls and game state on the active chat
+  // Listen for incoming calls, game state, and partner leaving on the active chat
   useEffect(() => {
-    if (activeView.type !== 'chat') return;
+    if (activeView.type !== 'chat' || !user) return;
 
-    const { chat } = activeView.data;
+    const { chat, user: partner } = activeView.data;
     const chatRef = doc(db, 'chats', chat.id);
 
     const unsubscribe = onSnapshot(chatRef, (docSnap) => {
-      if (!docSnap.exists()) return;
+      if (!docSnap.exists()) {
+          toast({ variant: 'destructive', title: "Chat deleted" });
+          setActiveView({ type: 'welcome' });
+          setActiveChat(null);
+          return;
+      }
       const chatData = { id: docSnap.id, ...docSnap.data() } as Chat;
       
       setActiveChat(chatData); // Keep the active chat state updated
       
+      // Handle partner leaving
+      const partnerUserData = chatData.usersData?.[partner.id];
+      if (partnerUserData && !partnerUserData.online && !chatData.isFriendChat) {
+        toast({ title: "Partner Left", description: `${partner.name} has left the chat.` });
+        handleLeaveChat(true); // silent leave, just update UI
+      }
+      
       if (chatData.call && chatData.call.callerId !== user?.uid && !isVideoCallOpen) {
-          const partner = activeView.data.user;
           setIncomingCall({ chat: chatData, from: partner });
       } else if (!chatData.call && incomingCall?.chat.id === chatData.id) {
           setIncomingCall(null);
@@ -196,11 +208,19 @@ export function MainLayout() {
         id: chatId,
         userIds: sortedIds,
         game: null,
+        isFriendChat: true,
+        usersData: {
+            [user.uid]: { online: true },
+            [friend.id]: { online: friend.online }
+        }
       };
       await setDoc(chatDocRef, newChat);
       chatData = newChat;
     } else {
         chatData = {id: chatDoc.id, ...chatDoc.data()} as Chat;
+        if (!chatData.usersData?.[user.uid]?.online) {
+            await updateDoc(chatDocRef, { [`usersData.${user.uid}.online`]: true });
+        }
     }
     
     setActiveChat(chatData);
@@ -257,6 +277,11 @@ export function MainLayout() {
             id: newChatRef.id,
             userIds: [user.uid, partner.id].sort(),
             game: null,
+            isFriendChat: false,
+            usersData: {
+                [user.uid]: { online: true },
+                [partner.id]: { online: true }
+            }
         };
         await setDoc(newChatRef, newChat);
 
@@ -279,14 +304,14 @@ export function MainLayout() {
     }
   };
   
-  const handleLeaveChat = async () => {
+  const handleLeaveChat = async (isSilent = false) => {
     if (activeView.type === 'chat' && user) {
       const { chat } = activeView.data;
       const chatRef = doc(db, 'chats', chat.id);
       
       const chatSnap = await getDoc(chatRef);
-      if(chatSnap.exists() && !chatSnap.data().isFriendChat) {
-         // For non-friend chats, mark the user as inactive
+      if(chatSnap.exists()) {
+         // Mark the user as inactive
         await updateDoc(chatRef, {
             [`usersData.${user.uid}.online`]: false
         });
@@ -294,7 +319,9 @@ export function MainLayout() {
     }
     setActiveView({ type: 'welcome' });
     setActiveChat(null);
-    toast({ title: "You left the chat."});
+    if (!isSilent) {
+        toast({ title: "You left the chat."});
+    }
   }
 
   const handleAddFriend = async (friendId: string) => {
@@ -470,7 +497,7 @@ export function MainLayout() {
       case 'chat':
         return (
              <div className="h-full flex flex-col md:flex-row">
-                <div className="flex-1 min-h-0">
+                <div className="flex-1 min-h-0 flex flex-col">
                     <ChatView chat={activeView.data.chat} currentUser={profile} />
                 </div>
                 {activeChat?.game && (
@@ -516,6 +543,7 @@ export function MainLayout() {
 
       <Sidebar>
         <SidebarHeader>
+          <SheetTitle className="sr-only">CampusConnect</SheetTitle>
           <div className="flex items-center gap-2">
             <Button variant="ghost" size="icon" className="h-8 w-8 bg-primary text-primary-foreground rounded-full">
               <MessageSquare className="h-4 w-4" />
@@ -626,7 +654,7 @@ export function MainLayout() {
             <ChatHeader 
               activeView={activeView} 
               onFindChat={handleFindChat} 
-              onLeaveChat={handleLeaveChat}
+              onLeaveChat={() => handleLeaveChat(false)}
               isSearching={isSearching}
               onAddFriend={(activeView.type === 'chat') ? () => handleAddFriend(activeView.data.user.id) : () => {}}
               onBlockUser={(activeView.type === 'chat') ? () => handleBlockUser(activeView.data.user.id) : () => {}}

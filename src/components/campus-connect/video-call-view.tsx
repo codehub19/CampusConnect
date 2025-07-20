@@ -58,7 +58,10 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
 
     if(chat.id) {
        const chatRef = doc(db, 'chats', chat.id);
-       await updateDoc(chatRef, { call: null });
+       const chatSnap = await getDoc(chatRef);
+       if (chatSnap.exists() && chatSnap.data().call) {
+         await updateDoc(chatRef, { call: null });
+       }
 
        const callCandidates = collection(chatRef, 'callCandidates');
        const answerCandidates = collection(chatRef, 'answerCandidates');
@@ -66,10 +69,12 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
        const callCandidatesSnapshot = await getDocs(callCandidates);
        const answerCandidatesSnapshot = await getDocs(answerCandidates);
 
-       const batch = writeBatch(db);
-       callCandidatesSnapshot.forEach(doc => batch.delete(doc.ref));
-       answerCandidatesSnapshot.forEach(doc => batch.delete(doc.ref));
-       await batch.commit();
+       if (!callCandidatesSnapshot.empty || !answerCandidatesSnapshot.empty) {
+            const batch = writeBatch(db);
+            callCandidatesSnapshot.forEach(doc => batch.delete(doc.ref));
+            answerCandidatesSnapshot.forEach(doc => batch.delete(doc.ref));
+            await batch.commit();
+       }
     }
     
     onOpenChange(false);
@@ -223,7 +228,7 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
             </div>
         </div>
         <div className="relative rounded-lg overflow-hidden bg-secondary flex items-center justify-center">
-            <video ref={localVideoRef} className={cn("w-full h-full object-cover", { 'hidden': !isCameraOn || !hasCameraPermission })} autoPlay muted />
+            <video ref={localVideoRef} className={cn("w-full h-full object-cover", { 'hidden': !isCameraOn || hasCameraPermission === false })} autoPlay muted playsInline />
             {(!isCameraOn || hasCameraPermission === false) && (
                <div className="w-full h-full bg-card flex items-center justify-center flex-col gap-4">
                  <Avatar className="h-32 w-32">

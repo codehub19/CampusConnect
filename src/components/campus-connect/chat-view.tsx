@@ -69,9 +69,8 @@ export default function ChatView({ chat, currentUser }: ChatViewProps) {
   };
 
   return (
-    <Card className="h-full flex flex-col border-0 rounded-none shadow-none">
-      <CardContent className="flex-1 p-0">
-        <ScrollArea className="h-full p-4" ref={scrollAreaRef}>
+    <div className="h-full flex flex-col">
+        <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
           <div className="space-y-4">
             {messages.map((message) => (
               <div
@@ -106,26 +105,25 @@ export default function ChatView({ chat, currentUser }: ChatViewProps) {
             ))}
           </div>
         </ScrollArea>
-      </CardContent>
-      <CardFooter className="p-4 border-t">
-        <form onSubmit={handleSendMessage} className="flex w-full items-center gap-2">
-          <Textarea
-            placeholder="Type a message..."
-            className="flex-1 resize-none bg-background focus-visible:ring-1 focus-visible:ring-offset-0"
-            rows={1}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                (e.target as HTMLTextAreaElement).form?.requestSubmit();
-              }
-            }}
-          />
-          <Button type="submit" size="icon" className="rounded-full flex-shrink-0">
-            <Send className="h-5 w-5" />
-            <span className="sr-only">Send</span>
-          </Button>
-        </form>
-      </CardFooter>
-    </Card>
+        <div className="p-4 border-t">
+            <form onSubmit={handleSendMessage} className="flex w-full items-center gap-2">
+            <Textarea
+                placeholder="Type a message..."
+                className="flex-1 resize-none bg-background focus-visible:ring-1 focus-visible:ring-offset-0"
+                rows={1}
+                onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    (e.target as HTMLTextAreaElement).form?.requestSubmit();
+                }
+                }}
+            />
+            <Button type="submit" size="icon" className="rounded-full flex-shrink-0">
+                <Send className="h-5 w-5" />
+                <span className="sr-only">Send</span>
+            </Button>
+            </form>
+      </div>
+    </div>
   );
 }
