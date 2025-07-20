@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { getFirestore, collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { moderateMissedConnection } from '@/ai/flows/moderate-missed-connection';
@@ -26,13 +26,12 @@ import { moderateMissedConnection } from '@/ai/flows/moderate-missed-connection'
 interface CreatePostViewProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  onPostCreated: () => void;
 }
 
 const locations = ["Library", "Cafeteria", "Student Union", "Gym", "Quad", "Bookstore", "Lecture Hall", "Coffee Shop", "Other"];
 const times = ["Morning", "Afternoon", "Evening", "Night"];
 
-export default function CreatePostView({ isOpen, onOpenChange, onPostCreated }: CreatePostViewProps) {
+export default function CreatePostView({ isOpen, onOpenChange }: CreatePostViewProps) {
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
   const [location, setLocation] = useState('');
@@ -41,9 +40,43 @@ export default function CreatePostView({ isOpen, onOpenChange, onPostCreated }: 
   const { toast } = useToast();
   const { user, profile } = useAuth();
   const db = getFirestore(firebaseApp);
+  const [isRestricted, setIsRestricted] = useState(false);
+  const [restrictionEnds, setRestrictionEnds] = useState<Date | null>(null);
+
+  useEffect(() => {
+    if (!user || !isOpen) return;
+
+    const checkRestriction = async () => {
+      const restrictionRef = doc(db, 'post_restrictions', user.uid);
+      const restrictionSnap = await getDoc(restrictionRef);
+      if (restrictionSnap.exists()) {
+        const restrictionData = restrictionSnap.data();
+        const expires = restrictionData.expires.toDate();
+        if (expires > new Date()) {
+          setIsRestricted(true);
+          setRestrictionEnds(expires);
+        } else {
+           setIsRestricted(false);
+        }
+      } else {
+        setIsRestricted(false);
+      }
+    };
+
+    checkRestriction();
+  }, [user, isOpen, db]);
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    if (isRestricted) {
+       toast({
+        variant: 'destructive',
+        title: 'Posting Restricted',
+        description: `You cannot create a new post for another ${restrictionEnds ? formatDistanceToNow(restrictionEnds) : '24 hours'}.`,
+      });
+      return;
+    }
+
     if (!user || !profile || !title || !content || !location || !timeOfDay) {
       toast({
         variant: 'destructive',
@@ -67,6 +100,7 @@ export default function CreatePostView({ isOpen, onOpenChange, onPostCreated }: 
         authorName: profile.isGuest ? 'A Guest' : profile.name,
         timestamp: serverTimestamp(),
         status: moderationResult.decision, // 'approved' or 'rejected'
+        reportCount: 0,
       };
 
       await addDoc(collection(db, 'missed_connections'), newPost);
@@ -83,8 +117,7 @@ export default function CreatePostView({ isOpen, onOpenChange, onPostCreated }: 
           description: `Your post could not be approved. Reason: ${moderationResult.reason}`,
         });
       }
-
-      onPostCreated();
+      
       onOpenChange(false);
       setTitle('');
       setContent('');
@@ -101,6 +134,24 @@ export default function CreatePostView({ isOpen, onOpenChange, onPostCreated }: 
       setIsSubmitting(false);
     }
   };
+  
+   if (isRestricted) {
+    return (
+      <Dialog open={isOpen} onOpenChange={onOpenChange}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Posting Restricted</DialogTitle>
+            <DialogDescription>
+              Your account has been restricted from creating new posts due to community guideline violations. This restriction will be lifted in {restrictionEnds ? formatDistanceToNow(restrictionEnds) : '24 hours'}.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button onClick={() => onOpenChange(false)}>Close</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    )
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>

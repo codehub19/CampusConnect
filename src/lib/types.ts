@@ -1,5 +1,6 @@
 
 
+
 export interface User {
   id: string;
   name: string;
@@ -92,6 +93,13 @@ export interface FriendRequest {
     timestamp: any;
 }
 
+export interface MissedConnectionComment {
+  id: string;
+  authorId: string;
+  text: string;
+  timestamp: any;
+}
+
 export interface MissedConnectionPost {
   id: string;
   title: string;
@@ -99,10 +107,17 @@ export interface MissedConnectionPost {
   location: string;
   timeOfDay: string;
   authorId: string;
-  authorName: string;
+  authorName: string; // Keep for internal reference, but don't display
   timestamp: any;
   status: 'pending' | 'approved' | 'rejected';
+  reportCount?: number;
 }
+
+export interface PostRestriction {
+  userId: string;
+  expires: any; // Firestore Timestamp
+}
+
 
 export interface CampusEvent {
   id: string;
