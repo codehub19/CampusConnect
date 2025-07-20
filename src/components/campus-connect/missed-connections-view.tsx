@@ -123,15 +123,18 @@ export default function MissedConnectionsView({ onNavigateHome }: MissedConnecti
     const postsRef = collection(db, 'missed_connections');
     const q = query(
         postsRef, 
-        where('status', '==', 'approved'), 
-        where('timestamp', '>', fortyEightHoursAgo),
-        orderBy('timestamp', 'desc')
+        orderBy('timestamp', 'desc'),
+        where('timestamp', '>', fortyEightHoursAgo)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedPosts: MissedConnectionPost[] = [];
       snapshot.forEach(doc => {
-        fetchedPosts.push({ id: doc.id, ...doc.data() } as MissedConnectionPost);
+        const post = { id: doc.id, ...doc.data() } as MissedConnectionPost;
+        // Filter for approved posts on the client side
+        if (post.status === 'approved') {
+          fetchedPosts.push(post);
+        }
       });
       setPosts(fetchedPosts);
       setIsLoading(false);
