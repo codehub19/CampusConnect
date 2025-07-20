@@ -70,7 +70,7 @@ export default function ChatView({ chat, currentUser }: ChatViewProps) {
 
   return (
     <div className="h-full flex flex-col">
-        <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
+        <ScrollArea className="flex-grow p-4" ref={scrollAreaRef}>
           <div className="space-y-4">
             {messages.map((message) => (
               <div
