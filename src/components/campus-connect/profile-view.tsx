@@ -54,8 +54,13 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
         setFriends([]);
     }
 
-    const eventsQuery = query(collection(db, 'campus_events'), where('authorId', '==', user.id), orderBy('date', 'desc'));
-    const eventsUnsub = onSnapshot(eventsQuery, (snapshot) => setMyEvents(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CampusEvent))));
+    const eventsQuery = query(collection(db, 'campus_events'), where('authorId', '==', user.id));
+    const eventsUnsub = onSnapshot(eventsQuery, (snapshot) => {
+        const userEvents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CampusEvent));
+        // Sort by date on the client side to avoid composite index
+        userEvents.sort((a, b) => b.date.toDate().getTime() - a.date.toDate().getTime());
+        setMyEvents(userEvents);
+    });
 
     const postsQuery = query(collection(db, 'missed_connections'), where('authorId', '==', user.id), orderBy('timestamp', 'desc'));
     const postsUnsub = onSnapshot(postsQuery, (snapshot) => setMyPosts(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as MissedConnectionPost))));
