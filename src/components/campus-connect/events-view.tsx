@@ -9,6 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import EventCard from './event-card';
 import type { CampusEvent } from '@/lib/types';
 import CreateEventView from './create-event-view';
+import GroupChatView from './group-chat-view'; // Import the new component
 import { getFirestore, collection, query, orderBy, onSnapshot, where } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
@@ -37,8 +38,9 @@ export default function EventsView({ onNavigateHome }: EventsViewProps) {
   const [events, setEvents] = useState<CampusEvent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateEventOpen, setCreateEventOpen] = useState(false);
+  const [activeEventChat, setActiveEventChat] = useState<CampusEvent | null>(null);
   const db = getFirestore(firebaseApp);
-  const { profile } = useAuth();
+  const { profile, user } = useAuth();
 
   useEffect(() => {
     const eventsRef = collection(db, 'campus_events');
@@ -65,6 +67,24 @@ export default function EventsView({ onNavigateHome }: EventsViewProps) {
   
   const handleCreateEventClick = () => {
     setCreateEventOpen(true);
+  }
+
+  const handleJoinChat = (event: CampusEvent) => {
+    setActiveEventChat(event);
+  };
+
+  const handleLeaveChat = () => {
+    setActiveEventChat(null);
+  }
+
+  if (activeEventChat && user && profile) {
+    return (
+      <GroupChatView 
+        event={activeEventChat}
+        currentUser={profile}
+        onLeaveChat={handleLeaveChat}
+      />
+    )
   }
 
   return (
@@ -94,7 +114,7 @@ export default function EventsView({ onNavigateHome }: EventsViewProps) {
                 Array.from({ length: 3 }).map((_, i) => <EventSkeleton key={i} />)
               ) : events.length > 0 ? (
                 events.map(event => (
-                  <EventCard key={event.id} event={event} />
+                  <EventCard key={event.id} event={event} onJoinChat={handleJoinChat} />
                 ))
               ) : (
                 <div className="text-center py-20 col-span-full">

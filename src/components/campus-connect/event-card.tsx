@@ -7,22 +7,13 @@ import { Card, CardContent, CardFooter, CardHeader, CardTitle, CardDescription }
 import { Calendar, Pin, MessageSquare } from 'lucide-react';
 import type { CampusEvent } from '@/lib/types';
 import { format } from 'date-fns';
-import { useToast } from '@/hooks/use-toast';
 
 interface EventCardProps {
   event: CampusEvent;
+  onJoinChat: (event: CampusEvent) => void;
 }
 
-export default function EventCard({ event }: EventCardProps) {
-  const { toast } = useToast();
-
-  const handleJoinChat = () => {
-    toast({
-      title: "Coming Soon!",
-      description: "Group chat functionality is currently under development.",
-    });
-  }
-  
+export default function EventCard({ event, onJoinChat }: EventCardProps) {
   const eventDate = event.date?.toDate ? event.date.toDate() : new Date(event.date);
 
   return (
@@ -52,7 +43,7 @@ export default function EventCard({ event }: EventCardProps) {
         <CardDescription>{event.description}</CardDescription>
       </CardContent>
       <CardFooter className="p-6 pt-0 bg-card/50 flex-col items-stretch gap-4">
-        <Button className="w-full" onClick={handleJoinChat}>
+        <Button className="w-full" onClick={() => onJoinChat(event)}>
           <MessageSquare className="mr-2 h-4 w-4" />
           Join Group Chat
         </Button>

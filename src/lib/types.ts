@@ -11,6 +11,7 @@ export interface User {
   friends?: string[];
   blockedUsers?: string[];
   profileComplete?: boolean;
+  groupName?: string; // For displaying name in group chats
 }
 
 export type MessageContent = 
