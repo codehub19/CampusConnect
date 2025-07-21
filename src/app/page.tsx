@@ -30,10 +30,6 @@ function AppContent() {
     if (!profile.profileComplete && !profile.isGuest) {
       return 'profile_setup';
     }
-     // Check for persisted chat state
-    if (typeof window !== 'undefined' && localStorage.getItem('activeChatId')) {
-      return 'chat';
-    }
     return 'home';
   };
   
@@ -59,10 +55,6 @@ function AppContent() {
   }
 
   const navigateTo = (state: AppState) => {
-     // Clear persisted chat when navigating away
-    if (state !== 'chat' && typeof window !== 'undefined') {
-      localStorage.removeItem('activeChatId');
-    }
     setAppState(state);
   }
 

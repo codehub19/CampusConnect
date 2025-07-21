@@ -60,43 +60,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   const { toast } = useToast();
   const db = getFirestore(firebaseApp);
 
-  // Restore chat state on load
-  useEffect(() => {
-    if (activeView.type !== 'welcome') return;
-    const persistedChatId = typeof window !== 'undefined' ? localStorage.getItem('activeChatId') : null;
-    if (persistedChatId && user && profile) {
-        const restoreChat = async () => {
-            const chatRef = doc(db, 'chats', persistedChatId);
-            const chatSnap = await getDoc(chatRef);
-            if (chatSnap.exists()) {
-                const chatData = { id: chatSnap.id, ...chatSnap.data() } as Chat;
-                const partnerId = chatData.userIds.find(id => id !== user.uid);
-                if (partnerId) {
-                    const partnerRef = doc(db, 'users', partnerId);
-                    const partnerSnap = await getDoc(partnerRef);
-                    if (partnerSnap.exists()) {
-                        const partnerData = partnerSnap.data() as User;
-                        setActiveChat(chatData);
-                        setActiveView({ type: 'chat', data: { user: partnerData, chat: chatData } });
-                    }
-                }
-            } else {
-                localStorage.removeItem('activeChatId');
-            }
-        };
-        restoreChat();
-    }
-  }, [user, profile, db, activeView.type]);
-
-  // Persist active chat to localStorage
-  useEffect(() => {
-    if (activeChat?.id && typeof window !== 'undefined') {
-        localStorage.setItem('activeChatId', activeChat.id);
-    } else if (!activeChat && typeof window !== 'undefined') {
-        localStorage.removeItem('activeChatId');
-    }
-  }, [activeChat]);
-
   // Listen for friends
   useEffect(() => {
     if (!user || !profile?.friends) return;
@@ -138,11 +101,22 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     return () => unsubscribe();
   }, [user, db]);
   
-  // Cleanup waiting user on component unmount or tab close
+  // Cleanup waiting user and active chats on component unmount or tab close
   useEffect(() => {
     const cleanup = async () => {
-      if (user && isSearching) {
-        await deleteDoc(doc(db, 'waiting_users', user.uid));
+      if (user) {
+        if (isSearching) {
+            await deleteDoc(doc(db, 'waiting_users', user.uid));
+        }
+        if (activeChat && !activeChat.isFriendChat) {
+             const chatRef = doc(db, 'chats', activeChat.id);
+             const chatSnap = await getDoc(chatRef);
+             if(chatSnap.exists() && !chatSnap.data().isFriendChat) {
+                await updateDoc(chatRef, {
+                    [`usersData.${user.uid}.online`]: false
+                });
+             }
+        }
       }
     };
   
@@ -150,10 +124,9 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   
     return () => {
       window.removeEventListener('beforeunload', cleanup);
-      // Also cleanup if component unmounts for any other reason
       cleanup(); 
     };
-  }, [user, isSearching, db]);
+  }, [user, isSearching, activeChat, db]);
 
   // Listen for matches while searching
    useEffect(() => {
@@ -162,11 +135,11 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     const waitingDocRef = doc(db, 'waiting_users', user.uid);
     const unsubscribe = onSnapshot(waitingDocRef, async (docSnap) => {
         if (isSearching && docSnap.exists() && docSnap.data().matchedChatId) {
-            // Found a match, clean up and switch
+            const matchedChatId = docSnap.data().matchedChatId;
             setIsSearching(false);
             await deleteDoc(waitingDocRef);
             
-            const chatRef = doc(db, 'chats', docSnap.data().matchedChatId);
+            const chatRef = doc(db, 'chats', matchedChatId);
             const chatSnap = await getDoc(chatRef);
             if (chatSnap.exists()) {
                 const chatData = { id: chatSnap.id, ...chatSnap.data() } as Chat;
@@ -293,19 +266,13 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         return;
     }
     
-    // This is the key fix. We reset the state fully before starting the search.
-    setActiveChat(null);
-    if(typeof window !== 'undefined') {
-        localStorage.removeItem('activeChatId');
-    }
-    setActiveView({ type: 'welcome' });
+    handleLeaveChat(true);
 
     setIsSearching(true);
     toast({ title: 'Searching for a chat...' });
     
     const blockedUsers = profile.blockedUsers || [];
     
-    // Use a transaction to find and claim a partner atomically
     try {
         const waitingUsersRef = collection(db, 'waiting_users');
         const q = query(waitingUsersRef, where("id", "!=", user.uid), limit(20));
@@ -334,11 +301,9 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
             await runTransaction(db, async (transaction) => {
                 const partnerWaitingDoc = await transaction.get(partnerWaitingRef);
                 if (!partnerWaitingDoc.exists()) {
-                    // Partner was already matched, so we'll just add ourselves to waitlist
                     return; 
                 }
 
-                // Match found! Create chat and update partner's waiting doc.
                 const newChatRef = doc(collection(db, 'chats'));
                 const newChat: Omit<Chat, 'id'> = {
                     userIds: [user.uid, partner.id].sort(),
@@ -354,7 +319,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
                 transaction.set(newChatRef, newChat);
                 transaction.update(partnerWaitingRef, { matchedChatId: newChatRef.id });
 
-                // We are the initiator, so we can transition directly
                 setActiveChat({ id: newChatRef.id, ...newChat });
                 setActiveView({ type: 'chat', data: { user: partner, chat: { id: newChatRef.id, ...newChat } } });
                 matchMade = true;
@@ -362,7 +326,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         }
         
         if (!matchMade) {
-            // No partners found or match failed, add myself to the waiting list
             await setDoc(doc(db, 'waiting_users', user.uid), {
                 id: user.uid,
                 name: profile.name,
@@ -820,7 +783,3 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     </SidebarProvider>
   );
 }
-
-    
-
-    
