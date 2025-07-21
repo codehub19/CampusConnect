@@ -15,9 +15,10 @@ interface HomeViewProps {
   userName: string;
   onOpenProfile: () => void;
   userAvatar?: string;
+  onlineCount: number | null;
 }
 
-export default function HomeView({ onNavigateTo1v1Chat, onNavigateToEvents, onNavigateToMissedConnections, userName, onOpenProfile, userAvatar }: HomeViewProps) {
+export default function HomeView({ onNavigateTo1v1Chat, onNavigateToEvents, onNavigateToMissedConnections, userName, onOpenProfile, userAvatar, onlineCount }: HomeViewProps) {
   const [isSuggestionOpen, setSuggestionOpen] = useState(false);
 
   return (
@@ -38,6 +39,15 @@ export default function HomeView({ onNavigateTo1v1Chat, onNavigateToEvents, onNa
         <div className="text-center mb-10">
             <h1 className="text-4xl sm:text-5xl font-bold text-foreground">Welcome, {userName}!</h1>
             <p className="text-lg text-muted-foreground mt-2">Choose how you want to connect today.</p>
+            {onlineCount !== null && (
+                <div className="flex justify-center items-center gap-2 mt-4">
+                    <span className="relative flex h-3 w-3">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                    </span>
+                    <span className="text-sm font-medium text-green-400">{onlineCount} {onlineCount === 1 ? 'user' : 'users'} online</span>
+                </div>
+            )}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-6xl">
             <Card 

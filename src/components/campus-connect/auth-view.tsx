@@ -1,14 +1,12 @@
 
 "use client";
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
-import { getFirestore, collection, query, where, onSnapshot } from 'firebase/firestore';
-import { firebaseApp } from '@/lib/firebase';
 
 const GoogleIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 48 48">
@@ -19,31 +17,18 @@ const GoogleIcon = () => (
     </svg>
 );
 
-export default function AuthView() {
+interface AuthViewProps {
+    onlineCount: number | null;
+}
+
+export default function AuthView({ onlineCount }: AuthViewProps) {
     const [view, setView] = useState('options'); // 'options', 'guest', 'signup', 'login'
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [guestName, setGuestName] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const [onlineCount, setOnlineCount] = useState<number | null>(null);
     const { signInWithGoogle, signUpWithEmail, signInWithEmail, signInAsGuest } = useAuth();
     const { toast } = useToast();
-    const db = getFirestore(firebaseApp);
-
-    useEffect(() => {
-        const usersRef = collection(db, 'users');
-        const q = query(usersRef, where('online', '==', true));
-    
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-          setOnlineCount(snapshot.size);
-        }, (error) => {
-          console.error("Error fetching online user count:", error);
-          setOnlineCount(0);
-        });
-    
-        return () => unsubscribe();
-      }, [db]);
-
 
     const handleAuthAction = async (action: Function, ...args: any[]) => {
         setIsLoading(true);
