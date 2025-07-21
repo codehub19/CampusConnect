@@ -111,14 +111,22 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
             }
             setHasCameraPermission(true);
 
-        } catch (error) {
+        } catch (error: any) {
             console.error('Error accessing media devices:', error);
             setHasCameraPermission(false);
-            toast({
-              variant: 'destructive',
-              title: 'Media Access Denied',
-              description: 'Please enable camera & mic permissions in your browser.',
-            });
+             if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+                toast({
+                    variant: 'destructive',
+                    title: 'No Camera/Mic Found',
+                    description: 'Could not find a camera or microphone. Please check your hardware.',
+                });
+            } else {
+                 toast({
+                    variant: 'destructive',
+                    title: 'Media Access Denied',
+                    description: 'Please enable camera & mic permissions in your browser settings.',
+                });
+            }
             hangUp();
             return;
         }
