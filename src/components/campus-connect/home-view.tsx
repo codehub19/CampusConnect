@@ -75,14 +75,14 @@ export default function HomeView({ onNavigateTo1v1Chat, onNavigateToEvents, onNa
                     <CalendarDays className="h-8 w-8 text-accent" />
                 </div>
                 <div>
-                    <CardTitle className="text-2xl font-bold">Campus Events</CardTitle>
+                    <CardTitle className="text-2xl font-bold">Events</CardTitle>
                     <CardDescription>Find events and join group chats.</CardDescription>
                 </div>
                 </div>
             </CardHeader>
             <CardContent className="flex-grow flex flex-col justify-between">
                 <p className="text-muted-foreground mb-6">
-                Discover what's happening on campus, from club fairs to concerts, and chat with other attendees.
+                Discover what's happening around you, from club fairs to trips, and chat with other attendees.
                 </p>
                 <Button variant="secondary" className="w-full font-bold text-lg py-6 mt-auto">
                 View Events <ArrowRight className="ml-2 h-5 w-5" />

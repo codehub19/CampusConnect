@@ -13,7 +13,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
-import type { User, CampusEvent, MissedConnectionPost } from '@/lib/types';
+import type { User, Event, MissedConnectionPost } from '@/lib/types';
 import { getFirestore, collection, query, where, onSnapshot, doc, deleteDoc, updateDoc, arrayRemove, getDocs } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -34,9 +34,9 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
   const { toast } = useToast();
   const [formData, setFormData] = useState<User>(user);
   const [friends, setFriends] = useState<User[]>([]);
-  const [myEvents, setMyEvents] = useState<CampusEvent[]>([]);
+  const [myEvents, setMyEvents] = useState<Event[]>([]);
   const [myPosts, setMyPosts] = useState<MissedConnectionPost[]>([]);
-  const [eventToEdit, setEventToEdit] = useState<CampusEvent | null>(null);
+  const [eventToEdit, setEventToEdit] = useState<Event | null>(null);
   const [isEditEventOpen, setIsEditEventOpen] = useState(false);
   
   const db = getFirestore(firebaseApp);
@@ -53,9 +53,9 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
         setFriends([]);
     }
 
-    const eventsQuery = query(collection(db, 'campus_events'), where('authorId', '==', user.id));
+    const eventsQuery = query(collection(db, 'events'), where('authorId', '==', user.id));
     const eventsUnsub = onSnapshot(eventsQuery, (snapshot) => {
-        const userEvents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as CampusEvent));
+        const userEvents = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Event));
         userEvents.sort((a, b) => {
           const dateA = a.date?.toDate?.().getTime() || 0;
           const dateB = b.date?.toDate?.().getTime() || 0;
@@ -81,14 +81,14 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
     }
   }, [user, isOpen, db]);
   
-  const handleEditEvent = (event: CampusEvent) => {
+  const handleEditEvent = (event: Event) => {
     setEventToEdit(event);
     setIsEditEventOpen(true);
   };
   
   const handleDeleteEvent = async (eventId: string) => {
     try {
-        await deleteDoc(doc(db, 'campus_events', eventId));
+        await deleteDoc(doc(db, 'events', eventId));
         toast({ title: "Event Deleted" });
     } catch (error) {
         toast({ variant: 'destructive', title: "Error", description: "Could not delete the event." });
@@ -205,7 +205,7 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
 
                 <TabsContent value="content" className="space-y-6">
                   <Card>
-                    <CardHeader><CardTitle>My Campus Events</CardTitle></CardHeader>
+                    <CardHeader><CardTitle>My Events</CardTitle></CardHeader>
                     <CardContent className="space-y-3">
                         {myEvents.length > 0 ? myEvents.map(event => (
                             <div key={event.id} className="flex items-center gap-3 p-2 rounded-md bg-secondary/50">

@@ -1,7 +1,7 @@
 
 'use server';
 /**
- * @fileOverview A flow to generate an image for a campus event.
+ * @fileOverview A flow to generate an image for an event.
  *
  * - generateEventImage - Generates an image URL based on event details.
  * - GenerateEventImageInput - The input type for the function.
@@ -12,8 +12,8 @@ import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const GenerateEventImageInputSchema = z.object({
-  title: z.string().describe('The title of the campus event.'),
-  description: z.string().describe('The description of the campus event.'),
+  title: z.string().describe('The title of the event.'),
+  description: z.string().describe('The description of the event.'),
 });
 export type GenerateEventImageInput = z.infer<typeof GenerateEventImageInputSchema>;
 
@@ -44,11 +44,11 @@ const generateEventImageFlow = ai.defineFlow(
     
     if (keywords.includes('music') || keywords.includes('festival') || keywords.includes('concert')) {
         theme = 'f59e0b/ffffff'; // Yellow
-    } else if (keywords.includes('tech') || keywords.includes('startup') || keywords.includes('code')) {
+    } else if (keywords.includes('tech') || keywords.includes('startup') || keywords.includes('code') || keywords.includes('study')) {
         theme = '10b981/ffffff'; // Green
     } else if (keywords.includes('art') || keywords.includes('gallery') || keywords.includes('design')) {
         theme = 'ec4899/ffffff'; // Pink
-    } else if (keywords.includes('sports') || keywords.includes('game') || keywords.includes('match')) {
+    } else if (keywords.includes('sports') || keywords.includes('game') || keywords.includes('match') || keywords.includes('trip')) {
         theme = '3b82f6/ffffff'; // Blue
     }
     

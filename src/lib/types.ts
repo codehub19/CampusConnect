@@ -126,14 +126,19 @@ export interface PostRestriction {
   expires: any; // Firestore Timestamp
 }
 
-export interface CampusEvent {
+export interface Event {
   id: string;
   title: string;
   description: string;
   location: string;
-  date: any;
+  date: any; // Start date
+  endDate?: any; // Optional end date for multi-day events
+  category: string;
+  cost?: string;
+  capacity?: number | null;
   organizer: string;
   imageUrl: string;
   chatId: string;
   authorId: string;
+  timestamp: any;
 }

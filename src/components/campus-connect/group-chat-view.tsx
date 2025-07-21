@@ -7,13 +7,13 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import type { User, Message, MessageContent, CampusEvent } from '@/lib/types';
+import type { User, Message, MessageContent, Event } from '@/lib/types';
 import { getFirestore, onSnapshot, collection, query, orderBy, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import Image from 'next/image';
 
 interface GroupChatViewProps {
-  event: CampusEvent;
+  event: Event;
   currentUser: User;
   onLeaveChat: () => void;
 }

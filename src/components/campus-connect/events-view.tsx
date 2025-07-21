@@ -7,9 +7,9 @@ import { ArrowLeft, PlusCircle } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Skeleton } from '@/components/ui/skeleton';
 import EventCard from './event-card';
-import type { CampusEvent } from '@/lib/types';
+import type { Event } from '@/lib/types';
 import CreateEventView from './create-event-view';
-import GroupChatView from './group-chat-view'; // Import the new component
+import GroupChatView from './group-chat-view';
 import { getFirestore, collection, query, orderBy, onSnapshot, where } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
@@ -35,15 +35,15 @@ const EventSkeleton = () => (
 );
 
 export default function EventsView({ onNavigateHome }: EventsViewProps) {
-  const [events, setEvents] = useState<CampusEvent[]>([]);
+  const [events, setEvents] = useState<Event[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCreateEventOpen, setCreateEventOpen] = useState(false);
-  const [activeEventChat, setActiveEventChat] = useState<CampusEvent | null>(null);
+  const [activeEventChat, setActiveEventChat] = useState<Event | null>(null);
   const db = getFirestore(firebaseApp);
   const { profile, user } = useAuth();
 
   useEffect(() => {
-    const eventsRef = collection(db, 'campus_events');
+    const eventsRef = collection(db, 'events');
     const q = query(
         eventsRef, 
         where('date', '>=', new Date()),
@@ -51,9 +51,9 @@ export default function EventsView({ onNavigateHome }: EventsViewProps) {
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedEvents: CampusEvent[] = [];
+      const fetchedEvents: Event[] = [];
       snapshot.forEach(doc => {
-        fetchedEvents.push({ id: doc.id, ...doc.data() } as CampusEvent);
+        fetchedEvents.push({ id: doc.id, ...doc.data() } as Event);
       });
       setEvents(fetchedEvents);
       setIsLoading(false);
@@ -69,7 +69,7 @@ export default function EventsView({ onNavigateHome }: EventsViewProps) {
     setCreateEventOpen(true);
   }
 
-  const handleJoinChat = (event: CampusEvent) => {
+  const handleJoinChat = (event: Event) => {
     setActiveEventChat(event);
   };
 
@@ -98,7 +98,7 @@ export default function EventsView({ onNavigateHome }: EventsViewProps) {
                 <span className="sr-only">Back to Home</span>
             </Button>
         </div>
-        <h1 className="text-xl font-bold w-1/3 text-center">Campus Events</h1>
+        <h1 className="text-xl font-bold w-1/3 text-center">Events</h1>
         <div className="w-1/3 flex justify-end">
             <Button onClick={handleCreateEventClick} disabled={profile?.isGuest} size="sm">
                 <PlusCircle className="mr-2 h-4 w-4" />
