@@ -1,8 +1,8 @@
 
 "use client";
 
-import React, { useState, useEffect } from 'react';
-import { Bot, MessageSquare, Home, HeartCrack, UserX } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { Bot, MessageSquare, Home, HeartCrack, UserX, Loader2 } from 'lucide-react';
 import {
   SidebarProvider,
   Sidebar,
@@ -17,8 +17,8 @@ import {
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Dialog, DialogTrigger, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter, DialogClose } from '@/components/ui/dialog';
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import ChatView from '@/components/campus-connect/chat-view';
 import AiAssistantView from '@/components/campus-connect/ai-assistant-view';
 import WelcomeView from '@/components/campus-connect/welcome-view';
@@ -29,17 +29,17 @@ import ConnectFour from '@/components/campus-connect/connect-four';
 import DotsAndBoxes from '@/components/campus-connect/dots-and-boxes';
 import { useAuth } from '@/hooks/use-auth';
 import type { User, Chat, FriendRequest, GameState, GameType } from '@/lib/types';
-import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where, getDocs, deleteDoc, addDoc, updateDoc, serverTimestamp, arrayUnion, writeBatch, limit, runTransaction, arrayRemove, orderBy, Timestamp, Unsubscribe } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where, getDocs, deleteDoc, addDoc, updateDoc, serverTimestamp, arrayUnion, writeBatch, limit, runTransaction, arrayRemove, orderBy, Unsubscribe } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import VideoCallView from './video-call-view';
 import { generateIcebreaker } from '@/ai/flows/generate-icebreaker';
 
-type ActiveView = 
+type ActiveView =
   | { type: 'welcome' }
   | { type: 'ai' }
   | { type: 'chat', data: { user: User, chat: Chat } };
-  
+
 interface MainLayoutProps {
   onNavigateHome: () => void;
   onNavigateToMissedConnections: () => void;
@@ -56,9 +56,13 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   const [incomingCall, setIncomingCall] = useState<{ chat: Chat, from: User } | null>(null);
   const [isVideoCallOpen, setVideoCallOpen] = useState(false);
   const [friendToRemove, setFriendToRemove] = useState<User | null>(null);
-  
+
   const { toast } = useToast();
   const db = getFirestore(firebaseApp);
+
+  const cleanupChatListeners = useCallback(() => {
+    // This function will be defined inside useEffect to capture the correct unsubscribe functions
+  }, []);
 
   // Listen for friends
   useEffect(() => {
@@ -69,7 +73,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
       setFriends([]);
       return;
     }
-    
+
     const usersRef = collection(db, 'users');
     const q = query(usersRef, where('id', 'in', friendsIds));
 
@@ -89,7 +93,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     if (!user) return;
     const requestsRef = collection(db, 'friend_requests');
     const q = query(requestsRef, where('toId', '==', user.uid), where('status', '==', 'pending'));
-    
+
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedRequests: FriendRequest[] = [];
       snapshot.forEach((doc) => {
@@ -100,33 +104,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
     return () => unsubscribe();
   }, [user, db]);
-  
-  // Cleanup waiting user and active chats on component unmount or tab close
-  useEffect(() => {
-    const cleanup = async () => {
-      if (user) {
-        if (isSearching) {
-            await deleteDoc(doc(db, 'waiting_users', user.uid));
-        }
-        if (activeChat && !activeChat.isFriendChat) {
-             const chatRef = doc(db, 'chats', activeChat.id);
-             const chatSnap = await getDoc(chatRef);
-             if(chatSnap.exists() && !chatSnap.data().isFriendChat) {
-                await updateDoc(chatRef, {
-                    [`usersData.${user.uid}.online`]: false
-                });
-             }
-        }
-      }
-    };
-  
-    window.addEventListener('beforeunload', cleanup);
-  
-    return () => {
-      window.removeEventListener('beforeunload', cleanup);
-      cleanup(); 
-    };
-  }, [user, isSearching, activeChat, db]);
 
   // Listen for matches while searching
    useEffect(() => {
@@ -157,43 +134,46 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     
     return () => unsubscribe();
   }, [user, profile, isSearching, db]);
-  
+
   // Listen for incoming calls, game state, and partner leaving on the active chat
   useEffect(() => {
-    if (activeView.type !== 'chat' || !user) return;
-
-    const { chat, user: partner } = activeView.data;
-    const chatRef = doc(db, 'chats', chat.id);
-
+    if (activeView.type !== 'chat' || !user || !activeChat?.id) return;
+  
+    const { user: partner } = activeView.data;
+    const chatRef = doc(db, 'chats', activeChat.id);
+  
     const unsubscribe = onSnapshot(chatRef, (docSnap) => {
       if (!docSnap.exists()) {
-          toast({ variant: 'destructive', title: "Chat deleted" });
-          setActiveView({ type: 'welcome' });
-          setActiveChat(null);
-          return;
+        toast({ variant: 'destructive', title: "Chat deleted", description: "This chat no longer exists." });
+        setActiveView({ type: 'welcome' });
+        setActiveChat(null);
+        return;
       }
+      
       const chatData = { id: docSnap.id, ...docSnap.data() } as Chat;
-      
-      setActiveChat(chatData);
-      
+      setActiveChat(chatData); // Keep local activeChat state in sync
+  
+      // Partner leaves a non-friend chat
       const partnerUserData = chatData.usersData?.[partner.id];
       if (partnerUserData && !partnerUserData.online && !chatData.isFriendChat) {
         toast({ title: "Partner Left", description: `${partner.name} has left the chat.` });
-        handleLeaveChat(true);
+        handleLeaveChat(true); // Silently leave
       }
-      
-      if (chatData.call?.status === 'ringing' && chatData.call.callerId !== user?.uid) {
-          if (!isVideoCallOpen && !incomingCall) {
-            setIncomingCall({ chat: chatData, from: partner });
-          }
+  
+      // Incoming call logic
+      if (chatData.call?.status === 'ringing' && chatData.call.callerId !== user.uid) {
+        if (!isVideoCallOpen && !incomingCall) {
+          setIncomingCall({ chat: chatData, from: partner });
+        }
       } else if (!chatData.call && incomingCall?.chat.id === chatData.id) {
-          setIncomingCall(null);
+        // Call was declined/cancelled by the other user
+        setIncomingCall(null);
       }
     });
-    
+  
     return () => unsubscribe();
-
-  }, [activeView, user, db, isVideoCallOpen, incomingCall, toast]);
+  
+  }, [activeView.type, activeChat?.id, user, isVideoCallOpen, incomingCall, toast]);
 
 
   const addIcebreakerMessage = async (chatId: string, currentUser: User, partnerUser: User) => {
@@ -207,18 +187,30 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
       const messagesRef = collection(db, "chats", chatId, "messages");
       await addDoc(messagesRef, {
-          senderId: 'ai-assistant',
-          content: { type: 'text', value: result.icebreaker },
-          timestamp: serverTimestamp(),
+        senderId: 'ai-assistant',
+        content: { type: 'text', value: result.icebreaker },
+        timestamp: serverTimestamp(),
       });
     } catch (error) {
       console.error("Failed to generate icebreaker:", error);
     }
   };
 
+  const openChat = async (chatData: Chat) => {
+    if (!user || !profile) return;
+    const partnerId = chatData.userIds.find(id => id !== user.uid);
+    if (!partnerId) return;
+
+    const partnerSnap = await getDoc(doc(db, 'users', partnerId));
+    if (!partnerSnap.exists()) return;
+
+    setActiveChat(chatData);
+    setActiveView({ type: 'chat', data: { user: partnerSnap.data() as User, chat: chatData } });
+  }
+
   const handleSelectChat = async (friend: User) => {
-    if(!user || !profile) return;
-    
+    if (!user || !profile) return;
+
     const sortedIds = [user.uid, friend.id].sort();
     const chatId = sortedIds.join('_');
     const chatDocRef = doc(db, "chats", chatId);
@@ -233,138 +225,140 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         game: null,
         isFriendChat: true,
         usersData: {
-            [user.uid]: { online: true },
-            [friend.id]: { online: friend.online }
+          [user.uid]: { online: true },
+          [friend.id]: { online: friend.online }
         }
       };
       await setDoc(chatDocRef, newChat);
       await addIcebreakerMessage(chatId, profile, friend);
       chatData = newChat;
     } else {
-        chatData = {id: chatDoc.id, ...chatDoc.data()} as Chat;
-        if (!chatData.usersData?.[user.uid]?.online) {
-            await updateDoc(chatDocRef, { [`usersData.${user.uid}.online`]: true });
-        }
+      chatData = { id: chatDoc.id, ...chatDoc.data() } as Chat;
+      if (!chatData.usersData?.[user.uid]?.online) {
+        await updateDoc(chatDocRef, { [`usersData.${user.uid}.online`]: true });
+      }
     }
-    
-    setActiveChat(chatData);
-    setActiveView({ type: 'chat', data: { user: friend, chat: chatData } });
+    openChat(chatData);
   };
 
   const handleSelectAi = () => {
+    handleLeaveChat(true);
     setActiveView({ type: 'ai' });
     setActiveChat(null);
   };
-
+  
   const findNewChat = async () => {
     if (!user || !profile) return;
     
-    if (isSearching) {
-        setIsSearching(false);
-        await deleteDoc(doc(db, 'waiting_users', user.uid));
-        toast({ title: 'Search stopped.' });
-        return;
-    }
+    // First, leave any current chat
+    await handleLeaveChat(true);
     
-    handleLeaveChat(true);
-
     setIsSearching(true);
     toast({ title: 'Searching for a chat...' });
-    
-    const blockedUsers = profile.blockedUsers || [];
-    
+  
     try {
-        const waitingUsersRef = collection(db, 'waiting_users');
-        const q = query(waitingUsersRef, where("id", "!=", user.uid), limit(20));
-        const waitingSnapshot = await getDocs(q);
-        
-        let potentialPartners: User[] = [];
-        if (!waitingSnapshot.empty) {
-            const potentialPartnerIds = waitingSnapshot.docs.map(d => d.id);
-            if (potentialPartnerIds.length > 0) {
-                const usersQuery = query(collection(db, 'users'), where('id', 'in', potentialPartnerIds));
-                const usersSnapshot = await getDocs(usersQuery);
-                usersSnapshot.forEach(doc => {
-                    const partnerProfile = doc.data() as User;
-                    if (!blockedUsers.includes(partnerProfile.id) && !(partnerProfile.blockedUsers || []).includes(user.uid)) {
-                        potentialPartners.push(partnerProfile);
-                    }
-                });
-            }
+      const waitingUsersRef = collection(db, 'waiting_users');
+      const blockedByMe = profile.blockedUsers || [];
+      const potentialPartnersQuery = query(
+        waitingUsersRef,
+        where('id', '!=', user.uid),
+        limit(20)
+      );
+  
+      const querySnapshot = await getDocs(potentialPartnersQuery);
+  
+      let matchMade = false;
+      for (const partnerDoc of querySnapshot.docs) {
+        const partnerWaitingData = partnerDoc.data();
+        const partnerProfileSnap = await getDoc(doc(db, 'users', partnerWaitingData.id));
+        if (!partnerProfileSnap.exists()) continue;
+        const partnerProfile = partnerProfileSnap.data() as User;
+  
+        // Check if I blocked them or they blocked me
+        if (blockedByMe.includes(partnerProfile.id) || (partnerProfile.blockedUsers || []).includes(user.uid)) {
+          continue;
         }
-        
-        let matchMade = false;
-        if (potentialPartners.length > 0) {
-            const partner = potentialPartners[0];
-            const partnerWaitingRef = doc(db, 'waiting_users', partner.id);
-            
-            await runTransaction(db, async (transaction) => {
-                const partnerWaitingDoc = await transaction.get(partnerWaitingRef);
-                if (!partnerWaitingDoc.exists()) {
-                    return; 
-                }
-
-                const newChatRef = doc(collection(db, 'chats'));
-                const newChat: Omit<Chat, 'id'> = {
-                    userIds: [user.uid, partner.id].sort(),
-                    game: null,
-                    isFriendChat: false,
-                    usersData: { 
-                        [user.uid]: { online: true }, 
-                        [partner.id]: { online: true } 
-                    },
-                    lastMessageTimestamp: serverTimestamp(),
-                };
-                
-                transaction.set(newChatRef, newChat);
-                transaction.update(partnerWaitingRef, { matchedChatId: newChatRef.id });
-
-                setActiveChat({ id: newChatRef.id, ...newChat });
-                setActiveView({ type: 'chat', data: { user: partner, chat: { id: newChatRef.id, ...newChat } } });
-                matchMade = true;
-            });
-        }
-        
-        if (!matchMade) {
-            await setDoc(doc(db, 'waiting_users', user.uid), {
-                id: user.uid,
-                name: profile.name,
-                timestamp: serverTimestamp(),
-                matchedChatId: null,
-            });
-        } else {
-             setIsSearching(false);
-        }
-
-    } catch (error) {
-        console.error("Find chat transaction failed:", error);
+  
+        // Attempt to claim the match in a transaction
+        const partnerWaitingRef = partnerDoc.ref;
+        await runTransaction(db, async (transaction) => {
+          const freshPartnerWaitingDoc = await transaction.get(partnerWaitingRef);
+          if (!freshPartnerWaitingDoc.exists() || freshPartnerWaitingDoc.data().matchedChatId) {
+            // This partner was already matched by someone else, so we skip.
+            return;
+          }
+  
+          const newChatRef = doc(collection(db, 'chats'));
+          const newChat: Omit<Chat, 'id'> = {
+            userIds: [user.uid, partnerProfile.id].sort(),
+            game: null,
+            isFriendChat: false,
+            usersData: {
+              [user.uid]: { online: true },
+              [partnerProfile.id]: { online: true }
+            },
+            lastMessageTimestamp: serverTimestamp(),
+          };
+          transaction.set(newChatRef, newChat);
+          transaction.update(partnerWaitingRef, { matchedChatId: newChatRef.id });
+  
+          // We successfully made a match
+          matchMade = true;
+          await openChat({ id: newChatRef.id, ...newChat });
+        });
+  
+        if (matchMade) break; // Exit the loop once a match is made
+      }
+  
+      if (!matchMade) {
+        // No suitable partner found, add myself to the waiting list
+        await setDoc(doc(db, 'waiting_users', user.uid), {
+          id: user.uid,
+          name: profile.name,
+          timestamp: serverTimestamp(),
+          matchedChatId: null,
+        });
+      } else {
+        // Match was made, so we are no longer searching.
         setIsSearching(false);
-        toast({variant: 'destructive', title: 'Could not find a chat', description: 'Please try again.'});
+      }
+    } catch (error) {
+      console.error("Error finding new chat:", error);
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not find a chat. Please try again.' });
+      setIsSearching(false);
     }
   };
-  
+
   const handleLeaveChat = async (isSilent = false) => {
     if (activeView.type === 'chat' && user) {
       const { chat } = activeView.data;
-      const chatRef = doc(db, 'chats', chat.id);
-      
-      try {
-        const chatSnap = await getDoc(chatRef);
-        if(chatSnap.exists() && !chatSnap.data().isFriendChat) {
-          await updateDoc(chatRef, {
+      if (chat && !chat.isFriendChat) {
+        const chatRef = doc(db, 'chats', chat.id);
+        try {
+          const chatSnap = await getDoc(chatRef);
+          if (chatSnap.exists()) {
+             await updateDoc(chatRef, {
               [`usersData.${user.uid}.online`]: false
-          });
+            });
+          }
+        } catch (error) {
+          console.warn("Could not update chat on leave:", error);
         }
-      } catch (error) {
-        console.warn("Could not update chat on leave:", error);
       }
     }
+    
+    // Stop searching if user leaves while searching
+    if(isSearching) {
+        await deleteDoc(doc(db, 'waiting_users', user.uid));
+        setIsSearching(false);
+    }
+
     setActiveView({ type: 'welcome' });
     setActiveChat(null);
     if (!isSilent) {
-        toast({ title: "You left the chat."});
+      toast({ title: "You left the chat." });
     }
-  }
+  };
 
   const handleAddFriend = async (friendId: string) => {
     if (!user || !profile || profile.isGuest) return;
@@ -372,18 +366,18 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     const requestRef = doc(db, 'friend_requests', requestId);
 
     try {
-        await setDoc(requestRef, {
-            fromId: user.uid,
-            toId: friendId,
-            fromName: profile.name,
-            fromAvatar: profile.avatar,
-            status: 'pending',
-            timestamp: serverTimestamp()
-        });
-        toast({ title: "Friend request sent!" });
+      await setDoc(requestRef, {
+        fromId: user.uid,
+        toId: friendId,
+        fromName: profile.name,
+        fromAvatar: profile.avatar,
+        status: 'pending',
+        timestamp: serverTimestamp()
+      });
+      toast({ title: "Friend request sent!" });
     } catch (error) {
-        console.error("Error sending friend request:", error);
-        toast({ variant: 'destructive', title: "Error", description: "Could not send friend request." });
+      console.error("Error sending friend request:", error);
+      toast({ variant: 'destructive', title: "Error", description: "Could not send friend request." });
     }
   };
 
@@ -397,24 +391,23 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
     const friendRef = doc(db, 'users', friendToRemove.id);
     batch.update(friendRef, { friends: arrayRemove(user.uid) });
-    
+
     try {
-        await batch.commit();
-        toast({ title: "Friend Removed", description: `You are no longer friends with ${friendToRemove.name}.` });
-        setActiveView({type: 'welcome'});
-        setActiveChat(null);
+      await batch.commit();
+      toast({ title: "Friend Removed", description: `You are no longer friends with ${friendToRemove.name}.` });
+      handleLeaveChat(true);
     } catch (error) {
-        console.error("Error removing friend:", error);
-        toast({ variant: 'destructive', title: 'Error', description: 'Could not remove friend.' });
+      console.error("Error removing friend:", error);
+      toast({ variant: 'destructive', title: 'Error', description: 'Could not remove friend.' });
     } finally {
-        setFriendToRemove(null);
+      setFriendToRemove(null);
     }
   };
 
   const handleAcceptRequest = async (requestId: string, fromId: string) => {
-    if(!user) return;
+    if (!user) return;
     const batch = writeBatch(db);
-    
+
     const meRef = doc(db, 'users', user.uid);
     batch.update(meRef, { friends: arrayUnion(fromId) });
 
@@ -427,21 +420,21 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     await batch.commit();
     toast({ title: "Friend added!" });
   };
-  
+
   const handleDeclineRequest = async (requestId: string) => {
-     await deleteDoc(doc(db, 'friend_requests', requestId));
-     toast({ title: "Request declined." });
+    await deleteDoc(doc(db, 'friend_requests', requestId));
+    toast({ title: "Request declined." });
   };
-  
+
   const handleBlockUser = async (userIdToBlock: string) => {
-      if(!user) return;
-      const userRef = doc(db, 'users', user.uid);
-      await updateDoc(userRef, {
-          blockedUsers: arrayUnion(userIdToBlock)
-      });
-      toast({ variant: 'destructive', title: 'User Blocked', description: "You will no longer be matched with this user." });
-      handleLeaveChat();
-  }
+    if (!user) return;
+    const userRef = doc(db, 'users', user.uid);
+    await updateDoc(userRef, {
+      blockedUsers: arrayUnion(userIdToBlock)
+    });
+    toast({ variant: 'destructive', title: 'User Blocked', description: "You will no longer be matched with this user." });
+    handleLeaveChat();
+  };
 
   const handleInviteToGame = async (gameType: GameType) => {
     if (activeView.type !== 'chat') return;
@@ -451,75 +444,75 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     const chatRef = doc(db, 'chats', chat.id);
 
     let initialGameState: GameState | null = null;
-    
+
     if (gameType === 'ticTacToe') {
-        initialGameState = {
-            type: 'ticTacToe',
-            status: 'pending',
-            board: Array(9).fill(null),
-            turn: partner.id,
-            players: { [user.uid]: 'X', [partner.id]: 'O' },
-            winner: null,
-            initiatorId: user.uid,
-        };
+      initialGameState = {
+        type: 'ticTacToe',
+        status: 'pending',
+        board: Array(9).fill(null),
+        turn: partner.id,
+        players: { [user.uid]: 'X', [partner.id]: 'O' },
+        winner: null,
+        initiatorId: user.uid,
+      };
     } else if (gameType === 'connectFour') {
-        initialGameState = {
-            type: 'connectFour',
-            status: 'pending',
-            board: Array(42).fill(null),
-            turn: partner.id,
-            players: { [user.uid]: 1, [partner.id]: 2 },
-            winner: null,
-            initiatorId: user.uid,
-        };
+      initialGameState = {
+        type: 'connectFour',
+        status: 'pending',
+        board: Array(42).fill(null),
+        turn: partner.id,
+        players: { [user.uid]: 1, [partner.id]: 2 },
+        winner: null,
+        initiatorId: user.uid,
+      };
     } else if (gameType === 'dotsAndBoxes') {
-        const gridSize = 4;
-        initialGameState = {
-            type: 'dotsAndBoxes',
-            status: 'pending',
-            gridSize,
-            h_lines: Array((gridSize + 1) * gridSize).fill(null),
-            v_lines: Array(gridSize * (gridSize + 1)).fill(null),
-            boxes: Array(gridSize * gridSize).fill(null),
-            scores: { [user.uid]: 0, [partner.id]: 0 },
-            turn: partner.id,
-            players: { [user.uid]: 'p1', [partner.id]: 'p2' },
-            winner: null,
-            initiatorId: user.uid,
-        };
+      const gridSize = 4;
+      initialGameState = {
+        type: 'dotsAndBoxes',
+        status: 'pending',
+        gridSize,
+        h_lines: Array((gridSize + 1) * gridSize).fill(null),
+        v_lines: Array(gridSize * (gridSize + 1)).fill(null),
+        boxes: Array(gridSize * gridSize).fill(null),
+        scores: { [user.uid]: 0, [partner.id]: 0 },
+        turn: partner.id,
+        players: { [user.uid]: 'p1', [partner.id]: 'p2' },
+        winner: null,
+        initiatorId: user.uid,
+      };
     }
     await updateDoc(chatRef, { game: initialGameState });
     setGameCenterOpen(false);
   };
-  
+
   const handleAcceptGame = async () => {
     if (activeView.type !== 'chat' || !activeChat?.game) return;
     const chatRef = doc(db, 'chats', activeChat.id);
-    await updateDoc(chatRef, { 
-        'game.status': 'active',
-        'game.turn': activeChat.game.initiatorId,
+    await updateDoc(chatRef, {
+      'game.status': 'active',
+      'game.turn': activeChat.game.initiatorId,
     });
   };
-  
+
   const handleQuitGame = async () => {
-      if (activeView.type !== 'chat' || !activeChat?.game) return;
-      const chatRef = doc(db, 'chats', activeChat.id);
-      await updateDoc(chatRef, { game: null });
+    if (activeView.type !== 'chat' || !activeChat?.game) return;
+    const chatRef = doc(db, 'chats', activeChat.id);
+    await updateDoc(chatRef, { game: null });
   };
-  
+
   const handleInitiateCall = async () => {
-      if (activeView.type !== 'chat' || !user) return;
-      const { chat } = activeView.data;
-      const chatRef = doc(db, 'chats', chat.id);
-      await updateDoc(chatRef, {
-          call: {
-              callerId: user.uid,
-              status: 'ringing',
-              offer: null,
-              answer: null,
-          }
-      });
-      setVideoCallOpen(true);
+    if (activeView.type !== 'chat' || !user) return;
+    const { chat } = activeView.data;
+    const chatRef = doc(db, 'chats', chat.id);
+    await updateDoc(chatRef, {
+      call: {
+        callerId: user.uid,
+        status: 'ringing',
+        offer: null,
+        answer: null,
+      }
+    });
+    setVideoCallOpen(true);
   };
 
   const handleAnswerCall = async () => {
@@ -544,64 +537,68 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   };
 
   if (!user || !profile) {
-    return null; 
+    return (
+        <div className="flex h-screen w-screen items-center justify-center bg-background">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        </div>
+    );
   }
 
   const renderGameView = () => {
-      if (!activeChat?.game || !activeChat?.id) return null;
-      switch (activeChat.game.type) {
-          case 'ticTacToe':
-              return <TicTacToe game={activeChat.game} currentUserId={user.uid} onAcceptGame={handleAcceptGame} onQuitGame={handleQuitGame} chatId={activeChat.id} />;
-          case 'connectFour':
-              return <ConnectFour game={activeChat.game} currentUserId={user.uid} onAcceptGame={handleAcceptGame} onQuitGame={handleQuitGame} chatId={activeChat.id} />;
-          case 'dotsAndBoxes':
-              return <DotsAndBoxes game={activeChat.game} currentUserId={user.uid} onAcceptGame={handleAcceptGame} onQuitGame={handleQuitGame} chatId={activeChat.id} />;
-          default:
-              return null;
-      }
+    if (!activeChat?.game || !activeChat?.id) return null;
+    switch (activeChat.game.type) {
+      case 'ticTacToe':
+        return <TicTacToe game={activeChat.game} currentUserId={user.uid} onAcceptGame={handleAcceptGame} onQuitGame={handleQuitGame} chatId={activeChat.id} />;
+      case 'connectFour':
+        return <ConnectFour game={activeChat.game} currentUserId={user.uid} onAcceptGame={handleAcceptGame} onQuitGame={handleQuitGame} chatId={activeChat.id} />;
+      case 'dotsAndBoxes':
+        return <DotsAndBoxes game={activeChat.game} currentUserId={user.uid} onAcceptGame={handleAcceptGame} onQuitGame={handleQuitGame} chatId={activeChat.id} />;
+      default:
+        return null;
+    }
   };
 
   const renderView = () => {
     if (isVideoCallOpen && activeView.type === 'chat' && activeChat?.call) {
-        return (
-            <Dialog open={isVideoCallOpen} onOpenChange={setVideoCallOpen}>
-              <VideoCallView 
-                user={activeView.data.user} 
-                currentUser={profile} 
-                chat={activeChat}
-                onOpenChange={setVideoCallOpen} 
-              />
-            </Dialog>
-        )
+      return (
+        <Dialog open={isVideoCallOpen} onOpenChange={setVideoCallOpen}>
+          <VideoCallView
+            user={activeView.data.user}
+            currentUser={profile}
+            chat={activeChat}
+            onOpenChange={setVideoCallOpen}
+          />
+        </Dialog>
+      )
     }
 
     switch (activeView.type) {
       case 'chat':
         return (
-             <div className="h-full flex flex-col md:flex-row">
-                <div className="flex-1 min-h-0 flex flex-col h-full">
-                    <ChatView chat={activeView.data.chat} currentUser={profile} />
-                </div>
-                {activeChat?.game && (
-                    <div className="md:w-[400px] md:border-l bg-card flex-shrink-0">
-                       {renderGameView()}
-                    </div>
-                )}
+          <div className="h-full flex flex-col md:flex-row">
+            <div className="flex-1 min-h-0 flex flex-col h-full">
+              <ChatView chat={activeView.data.chat} currentUser={profile} />
             </div>
+            {activeChat?.game && (
+              <div className="md:w-[400px] md:border-l bg-card flex-shrink-0">
+                {renderGameView()}
+              </div>
+            )}
+          </div>
         )
       case 'ai':
         return <AiAssistantView />;
       case 'welcome':
       default:
-        return <WelcomeView onFindChat={findNewChat} isSearching={isSearching}/>;
+        return <WelcomeView onFindChat={findNewChat} isSearching={isSearching} />;
     }
   };
-  
+
   const isFriend = (activeView.type === 'chat') ? !!activeChat?.isFriendChat : false;
 
   return (
     <SidebarProvider>
-       <AlertDialog open={!!friendToRemove} onOpenChange={(open) => !open && setFriendToRemove(null)}>
+      <AlertDialog open={!!friendToRemove} onOpenChange={(open) => !open && setFriendToRemove(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove Friend?</AlertDialogTitle>
@@ -616,29 +613,29 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         </AlertDialogContent>
       </AlertDialog>
 
-       {incomingCall && (
+      {incomingCall && (
         <Dialog open={!!incomingCall} onOpenChange={() => setIncomingCall(null)}>
-            <DialogContent>
-                <DialogHeader>
-                    <DialogTitle>Incoming Call</DialogTitle>
-                    <DialogDescription>
-                        You have an incoming video call from {incomingCall.from.name}.
-                    </DialogDescription>
-                </DialogHeader>
-                <DialogFooter>
-                    <Button variant="outline" onClick={handleDeclineCall}>Decline</Button>
-                    <Button onClick={handleAnswerCall}>Accept</Button>
-                </DialogFooter>
-            </DialogContent>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Incoming Call</DialogTitle>
+              <DialogDescription>
+                You have an incoming video call from {incomingCall.from.name}.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={handleDeclineCall}>Decline</Button>
+              <Button onClick={handleAnswerCall}>Accept</Button>
+            </DialogFooter>
+          </DialogContent>
         </Dialog>
       )}
 
-       <Dialog open={isGameCenterOpen} onOpenChange={setGameCenterOpen}>
-           <GameCenterView 
-                onInvite={handleInviteToGame}
-                isGuest={profile.isGuest}
-           />
-       </Dialog>
+      <Dialog open={isGameCenterOpen} onOpenChange={setGameCenterOpen}>
+        <GameCenterView
+          onInvite={handleInviteToGame}
+          isGuest={profile.isGuest}
+        />
+      </Dialog>
 
       <Sidebar>
         <SidebarHeader>
@@ -654,11 +651,11 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
             <SidebarMenuItem>
               <div className="w-full justify-start gap-2 flex items-center p-2">
                 <Avatar className="h-8 w-8">
-                    <AvatarImage src={profile.avatar} alt={profile.name} data-ai-hint="profile avatar" />
-                    <AvatarFallback>{profile.name.charAt(0)}</AvatarFallback>
+                  <AvatarImage src={profile.avatar} alt={profile.name} data-ai-hint="profile avatar" />
+                  <AvatarFallback>{profile.name.charAt(0)}</AvatarFallback>
                 </Avatar>
                 <div className="flex flex-col items-start">
-                    <span className="font-medium">{profile.name}</span>
+                  <span className="font-medium">{profile.name}</span>
                 </div>
               </div>
             </SidebarMenuItem>
@@ -700,31 +697,31 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
           <SidebarSeparator />
 
           {!profile.isGuest && (
-             <>
-               {friendRequests.length > 0 && (
+            <>
+              {friendRequests.length > 0 && (
                 <SidebarGroup>
-                    <SidebarMenu>
+                  <SidebarMenu>
                     <p className="px-2 text-xs font-semibold text-muted-foreground mb-2">Friend Requests</p>
                     {friendRequests.map(req => (
-                        <SidebarMenuItem key={req.id}>
-                            <div className="flex items-center w-full justify-between p-2">
-                                <div className="flex items-center gap-2">
-                                    <Avatar className="h-6 w-6">
-                                        <AvatarImage src={req.fromAvatar} alt={req.fromName} />
-                                        <AvatarFallback>{req.fromName.charAt(0)}</AvatarFallback>
-                                    </Avatar>
-                                    <span className="text-sm">{req.fromName}</span>
-                                </div>
-                                <div className="flex gap-1">
-                                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleAcceptRequest(req.id, req.fromId)}>✓</Button>
-                                    <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleDeclineRequest(req.id)}>×</Button>
-                                </div>
-                            </div>
-                        </SidebarMenuItem>
+                      <SidebarMenuItem key={req.id}>
+                        <div className="flex items-center w-full justify-between p-2">
+                          <div className="flex items-center gap-2">
+                            <Avatar className="h-6 w-6">
+                              <AvatarImage src={req.fromAvatar} alt={req.fromName} />
+                              <AvatarFallback>{req.fromName.charAt(0)}</AvatarFallback>
+                            </Avatar>
+                            <span className="text-sm">{req.fromName}</span>
+                          </div>
+                          <div className="flex gap-1">
+                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleAcceptRequest(req.id, req.fromId)}>✓</Button>
+                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleDeclineRequest(req.id)}>×</Button>
+                          </div>
+                        </div>
+                      </SidebarMenuItem>
                     ))}
-                    </SidebarMenu>
+                  </SidebarMenu>
                 </SidebarGroup>
-               )}
+              )}
               <SidebarGroup>
                 <SidebarMenu>
                   <p className="px-2 text-xs font-semibold text-muted-foreground mb-2">Friends</p>
@@ -744,42 +741,44 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   ))}
-                   {friends.length === 0 && (
-                       <p className="px-2 text-xs text-muted-foreground">No friends yet.</p>
-                   )}
+                  {friends.length === 0 && (
+                    <p className="px-2 text-xs text-muted-foreground">No friends yet.</p>
+                  )}
                 </SidebarMenu>
               </SidebarGroup>
-             </>
+            </>
           )}
 
         </SidebarContent>
-         <SidebarHeader>
-            <Button onClick={logout} variant="ghost" className="w-full justify-center">
-              Logout
-            </Button>
+        <SidebarHeader>
+          <Button onClick={logout} variant="ghost" className="w-full justify-center">
+            Logout
+          </Button>
         </SidebarHeader>
       </Sidebar>
       <SidebarInset>
         <div className="h-screen flex flex-col bg-card">
-            <ChatHeader 
-              activeView={activeView} 
-              onFindChat={findNewChat} 
-              onLeaveChat={() => handleLeaveChat(false)}
-              onGoToWelcome={() => setActiveView({ type: 'welcome' })}
-              isSearching={isSearching}
-              onAddFriend={(activeView.type === 'chat') ? () => handleAddFriend(activeView.data.user.id) : () => {}}
-              onRemoveFriend={(activeView.type === 'chat') ? () => setFriendToRemove(activeView.data.user) : () => {}}
-              onBlockUser={(activeView.type === 'chat') ? () => handleBlockUser(activeView.data.user.id) : () => {}}
-              onStartGame={() => setGameCenterOpen(true)}
-              onVideoCall={handleInitiateCall}
-              isFriend={isFriend}
-              isGuest={profile.isGuest || ((activeView.type === 'chat') && activeView.data.user.isGuest)}
-            />
-            <div className="flex-1 min-h-0">
-              {renderView()}
-            </div>
+          <ChatHeader
+            activeView={activeView}
+            onFindChat={findNewChat}
+            onLeaveChat={() => handleLeaveChat(false)}
+            onGoToWelcome={() => setActiveView({ type: 'welcome' })}
+            isSearching={isSearching}
+            onAddFriend={(activeView.type === 'chat') ? () => handleAddFriend(activeView.data.user.id) : () => { }}
+            onRemoveFriend={(activeView.type === 'chat') ? () => setFriendToRemove(activeView.data.user) : () => { }}
+            onBlockUser={(activeView.type === 'chat') ? () => handleBlockUser(activeView.data.user.id) : () => { }}
+            onStartGame={() => setGameCenterOpen(true)}
+            onVideoCall={handleInitiateCall}
+            isFriend={isFriend}
+            isGuest={profile.isGuest || ((activeView.type === 'chat') && activeView.data.user.isGuest)}
+          />
+          <div className="flex-1 min-h-0">
+            {renderView()}
+          </div>
         </div>
       </SidebarInset>
     </SidebarProvider>
   );
 }
+
+    
