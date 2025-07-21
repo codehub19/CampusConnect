@@ -43,12 +43,10 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const pc = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const isHangingUp = useRef(false);
 
   const { toast } = useToast();
   const db = getFirestore(firebaseApp);
-  
-  // Ref to prevent multiple hangup calls
-  const isHangingUp = useRef(false);
 
   const hangUp = async (politely = false) => {
     if (isHangingUp.current) return;
@@ -65,14 +63,10 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
       localStreamRef.current = null;
     }
     
-    // Only the user initiating the hangup should clear the DB docs
     if (politely && chat.id) {
        const chatRef = doc(db, 'chats', chat.id);
        const chatSnap = await getDoc(chatRef);
        if (chatSnap.exists() && chatSnap.data().call) {
-         await updateDoc(chatRef, { call: null });
-
-         // Clean up ICE candidate subcollections
          const callCandidates = collection(chatRef, 'callCandidates');
          const answerCandidates = collection(chatRef, 'answerCandidates');
          const callCandidatesSnapshot = await getDocs(callCandidates);
@@ -82,6 +76,8 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
          callCandidatesSnapshot.forEach(doc => batch.delete(doc.ref));
          answerCandidatesSnapshot.forEach(doc => batch.delete(doc.ref));
          await batch.commit();
+
+         await updateDoc(chatRef, { call: null });
        }
     }
     
@@ -92,30 +88,37 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
     let unsubscribes: Unsubscribe[] = [];
     isHangingUp.current = false;
     
+    const startStreams = async () => {
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+        localStreamRef.current = stream;
+        if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+        setHasCameraPermission(true);
+        return stream;
+      } catch (error: any) {
+        console.error('Error accessing media devices:', error);
+        setHasCameraPermission(false);
+        const title = error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError' ? 'No Camera/Mic Found' : 'Media Access Denied';
+        const description = error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError' ? 'Could not find a camera or microphone. Please check your hardware and browser settings.' : 'Please enable camera & mic permissions.';
+        toast({ variant: 'destructive', title, description });
+        hangUp(true);
+        return null;
+      }
+    };
+
     const setupCall = async () => {
         pc.current = new RTCPeerConnection(servers);
+        const localStream = await startStreams();
+        if (!localStream) return;
 
-        try {
-            const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
-            localStreamRef.current = stream;
-            
-            stream.getTracks().forEach(track => pc.current?.addTrack(track, stream));
-            
-            if (localVideoRef.current) localVideoRef.current.srcObject = stream;
-            setHasCameraPermission(true);
-
-        } catch (error: any) {
-            console.error('Error accessing media devices:', error);
-            setHasCameraPermission(false);
-            const title = error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError' ? 'No Camera/Mic Found' : 'Media Access Denied';
-            const description = error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError' ? 'Could not find a camera or microphone.' : 'Please enable camera & mic permissions.';
-            toast({ variant: 'destructive', title, description });
-            hangUp(true);
-            return;
-        }
-
+        localStream.getTracks().forEach(track => pc.current?.addTrack(track, localStream));
+        
         const remoteStream = new MediaStream();
-        pc.current.ontrack = event => event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));
+        pc.current.ontrack = event => {
+          event.streams[0].getTracks().forEach(track => {
+            remoteStream.addTrack(track);
+          });
+        };
         if(remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
 
         const chatRef = doc(db, 'chats', chat.id);
@@ -159,7 +162,7 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
           unsubscribes.push(remoteCandidatesUnsub);
 
           const offer = chat.call?.offer;
-          if (offer) {
+          if (offer && pc.current) {
             await pc.current.setRemoteDescription(new RTCSessionDescription(offer));
             const answerDescription = await pc.current.createAnswer();
             await pc.current.setLocalDescription(answerDescription);
@@ -172,19 +175,22 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
     
     const chatRef = doc(db, 'chats', chat.id);
     const chatUnsub = onSnapshot(chatRef, (docSnap) => {
-        if (!docSnap.data()?.call && !isHangingUp.current) {
-            toast({ title: 'Call Ended', description: `${user.name} has ended the call.` });
-            hangUp(false); // Don't re-delete docs
+        if (!docSnap.exists() || !docSnap.data()?.call) {
+            if (!isHangingUp.current) {
+                toast({ title: 'Call Ended', description: `The call has ended.` });
+                hangUp(false);
+            }
         }
     });
     unsubscribes.push(chatUnsub);
 
     return () => {
         unsubscribes.forEach(unsub => unsub());
-        hangUp(true); // User is closing the dialog, so be polite
+        if (!isHangingUp.current) {
+          hangUp(true);
+        }
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [chat.id, chat.call?.callerId, chat.call?.offer, currentUser.id, db, toast]);
 
 
   const toggleMediaStream = (type: 'video' | 'audio', state: boolean) => {

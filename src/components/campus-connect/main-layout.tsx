@@ -29,7 +29,7 @@ import ConnectFour from '@/components/campus-connect/connect-four';
 import DotsAndBoxes from '@/components/campus-connect/dots-and-boxes';
 import { useAuth } from '@/hooks/use-auth';
 import type { User, Chat, FriendRequest, GameState, GameType } from '@/lib/types';
-import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where, getDocs, deleteDoc, addDoc, updateDoc, serverTimestamp, arrayUnion, writeBatch, limit, runTransaction, arrayRemove, orderBy, Timestamp } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where, getDocs, deleteDoc, addDoc, updateDoc, serverTimestamp, arrayUnion, writeBatch, limit, runTransaction, arrayRemove, orderBy, Timestamp, Unsubscribe } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import VideoCallView from './video-call-view';
@@ -62,6 +62,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
   // Restore chat state on load
   useEffect(() => {
+    if (activeView.type !== 'welcome') return;
     const persistedChatId = typeof window !== 'undefined' ? localStorage.getItem('activeChatId') : null;
     if (persistedChatId && user && profile) {
         const restoreChat = async () => {
@@ -85,7 +86,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         };
         restoreChat();
     }
-  }, [user, profile, db]);
+  }, [user, profile, db, activeView.type]);
 
   // Persist active chat to localStorage
   useEffect(() => {
@@ -136,56 +137,68 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
     return () => unsubscribe();
   }, [user, db]);
-
-  // Cleanup waiting user on tab close
+  
+  // Cleanup waiting user on component unmount or tab close
   useEffect(() => {
-    const handleBeforeUnload = async () => {
+    const cleanup = async () => {
       if (user && isSearching) {
         await deleteDoc(doc(db, 'waiting_users', user.uid));
       }
     };
-    window.addEventListener('beforeunload', handleBeforeUnload);
+  
+    window.addEventListener('beforeunload', cleanup);
+  
     return () => {
-      window.removeEventListener('beforeunload', handleBeforeUnload);
-      if (user && isSearching) {
-         deleteDoc(doc(db, 'waiting_users', user.uid));
-      }
+      window.removeEventListener('beforeunload', cleanup);
+      // Also cleanup if component unmounts for any other reason
+      cleanup(); 
     };
   }, [user, isSearching, db]);
 
   // Listen for matches while searching
    useEffect(() => {
-    if (!user || !isSearching) return;
+    if (!user || !profile) return;
+    
+    let unsubscribe: Unsubscribe | null = null;
 
-    const waitingDocRef = doc(db, 'waiting_users', user.uid);
-    const unsubscribe = onSnapshot(waitingDocRef, async (docSnap) => {
-        if (docSnap.exists()) {
-            const waitingData = docSnap.data();
-            // If another user matched with us, they'll add a chatId
-            if (waitingData.matchedChatId) {
-                await deleteDoc(waitingDocRef); // Clean up our waiting doc
-                setIsSearching(false);
-                
-                // Get the partner and chat data to switch views
-                const chatRef = doc(db, 'chats', waitingData.matchedChatId);
-                const chatSnap = await getDoc(chatRef);
-                if (chatSnap.exists()) {
-                    const chatData = { id: chatSnap.id, ...chatSnap.data() } as Chat;
-                    const partnerId = chatData.userIds.find(id => id !== user.uid);
-                    if (partnerId) {
-                        const partnerSnap = await getDoc(doc(db, 'users', partnerId));
-                        if (partnerSnap.exists()) {
-                            setActiveChat(chatData);
-                            setActiveView({ type: 'chat', data: { user: partnerSnap.data() as User, chat: chatData } });
-                        }
-                    }
-                }
-            }
-        }
-    });
+    const listenForMatches = () => {
+      const waitingDocRef = doc(db, 'waiting_users', user.uid);
+      unsubscribe = onSnapshot(waitingDocRef, async (docSnap) => {
+          if (docSnap.exists()) {
+              const waitingData = docSnap.data();
+              if (waitingData.matchedChatId) {
+                  // Found a match, clean up and switch
+                  await deleteDoc(waitingDocRef);
+                  setIsSearching(false);
+                  
+                  const chatRef = doc(db, 'chats', waitingData.matchedChatId);
+                  const chatSnap = await getDoc(chatRef);
+                  if (chatSnap.exists()) {
+                      const chatData = { id: chatSnap.id, ...chatSnap.data() } as Chat;
+                      const partnerId = chatData.userIds.find(id => id !== user.uid);
+                      if (partnerId) {
+                          const partnerSnap = await getDoc(doc(db, 'users', partnerId));
+                          if (partnerSnap.exists()) {
+                              setActiveChat(chatData);
+                              setActiveView({ type: 'chat', data: { user: partnerSnap.data() as User, chat: chatData } });
+                          }
+                      }
+                  }
+              }
+          }
+      });
+    }
 
-    return () => unsubscribe();
-  }, [user, isSearching, db]);
+    if (isSearching) {
+      listenForMatches();
+    }
+    
+    return () => {
+      if (unsubscribe) {
+        unsubscribe();
+      }
+    };
+  }, [user, profile, isSearching, db]);
   
   // Listen for incoming calls, game state, and partner leaving on the active chat
   useEffect(() => {
@@ -203,24 +216,19 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
       }
       const chatData = { id: docSnap.id, ...docSnap.data() } as Chat;
       
-      // Update the active chat, which also contains game state
       setActiveChat(chatData);
       
-      // Handle partner leaving a non-friend chat
       const partnerUserData = chatData.usersData?.[partner.id];
       if (partnerUserData && !partnerUserData.online && !chatData.isFriendChat) {
         toast({ title: "Partner Left", description: `${partner.name} has left the chat.` });
-        handleLeaveChat(true); // silent leave, just update UI
+        handleLeaveChat(true);
       }
       
-      // Handle incoming calls
       if (chatData.call?.status === 'ringing' && chatData.call.callerId !== user?.uid) {
-          // Prevent showing dialog if already in a call or dialog is open
           if (!isVideoCallOpen && !incomingCall) {
             setIncomingCall({ chat: chatData, from: partner });
           }
       } else if (!chatData.call && incomingCall?.chat.id === chatData.id) {
-          // Partner cancelled the call before it was answered
           setIncomingCall(null);
       }
     });
@@ -247,7 +255,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
       });
     } catch (error) {
       console.error("Failed to generate icebreaker:", error);
-      // Fail silently, don't block chat experience
     }
   };
 
@@ -291,66 +298,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     setActiveChat(null);
   };
 
-  const findAndMatchPartner = async () => {
-    if (!user || !profile) return;
-
-    const blockedByUsers = profile.blockedUsers || [];
-    const waitingUsersRef = collection(db, 'waiting_users');
-    const q = query(waitingUsersRef, where('id', '!=', user.uid));
-    const waitingSnapshot = await getDocs(q);
-
-    let potentialPartners = [];
-    for (const doc of waitingSnapshot.docs) {
-      const waitingUser = doc.data();
-      if (!blockedByUsers.includes(waitingUser.id)) {
-        potentialPartners.push(waitingUser);
-      }
-    }
-
-    if (potentialPartners.length === 0) return null;
-
-    const partner = potentialPartners[0]; // Simplest matching: first available user
-    const partnerRef = doc(db, 'users', partner.id);
-    const partnerWaitingRef = doc(db, 'waiting_users', partner.id);
-    
-    try {
-      await runTransaction(db, async (transaction) => {
-        const partnerWaitingDoc = await transaction.get(partnerWaitingRef);
-        if (!partnerWaitingDoc.exists()) {
-          throw new Error("Partner is no longer waiting.");
-        }
-
-        const newChatRef = doc(collection(db, 'chats'));
-        const newChat = {
-          id: newChatRef.id,
-          userIds: [user.uid, partner.id].sort(),
-          game: null,
-          isFriendChat: false,
-          usersData: { 
-            [user.uid]: { online: true }, 
-            [partner.id]: { online: true } 
-          },
-          lastMessageTimestamp: serverTimestamp(),
-        };
-        transaction.set(newChatRef, newChat);
-        
-        // Notify partner by updating their waiting doc
-        transaction.update(partnerWaitingRef, { matchedChatId: newChatRef.id });
-
-        // Switch the current user to the new chat immediately
-        const partnerSnap = await getDoc(partnerRef);
-        if (partnerSnap.exists()) {
-            setActiveChat(newChat);
-            setActiveView({ type: 'chat', data: { user: partnerSnap.data() as User, chat: newChat } });
-        }
-      });
-      return partner; // Match successful
-    } catch (error) {
-      console.warn("Match transaction failed (likely a race condition, this is okay):", error);
-      return null;
-    }
-  }
-
   const handleFindChat = async () => {
     if (!user || !profile) return;
 
@@ -363,27 +310,70 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
     setIsSearching(true);
     toast({ title: 'Searching for a chat...' });
+    
+    const waitingUsersRef = collection(db, 'waiting_users');
+    const q = query(waitingUsersRef, where('id', '!=', user.uid));
+    const querySnapshot = await getDocs(q);
 
-    try {
-        const matchedPartner = await findAndMatchPartner();
-        if (!matchedPartner) {
-            // If no match found, add self to waiting list. The useEffect listener will handle being found.
-            await setDoc(doc(db, 'waiting_users', user.uid), {
-                id: user.uid,
-                name: profile.name,
-                avatar: profile.avatar,
-                online: true,
-                gender: profile.gender,
-                interests: profile.interests,
-                timestamp: serverTimestamp(),
-                matchedChatId: null,
-            });
+    const blockedUsers = profile.blockedUsers || [];
+    let potentialPartners = [];
+    if (!querySnapshot.empty) {
+        const userDocs = await getDocs(query(collection(db, 'users'), where('id', 'in', querySnapshot.docs.map(d => d.id))));
+        const userProfiles = Object.fromEntries(userDocs.docs.map(d => [d.id, d.data() as User]));
+        
+        for (const doc of querySnapshot.docs) {
+            const waitingUser = doc.data();
+            const partnerProfile = userProfiles[waitingUser.id];
+            if (partnerProfile && !blockedUsers.includes(waitingUser.id) && !(partnerProfile.blockedUsers || []).includes(user.uid)) {
+                potentialPartners.push(waitingUser);
+            }
         }
-    } catch (error) {
-        console.error("Find chat failed: ", error);
-        toast({ variant: 'destructive', title: "Error", description: "Could not find a chat. Please try again." });
+    }
+
+    if (potentialPartners.length > 0) {
+      const partner = potentialPartners[0];
+      const partnerWaitingRef = doc(db, 'waiting_users', partner.id);
+      
+      try {
+        await runTransaction(db, async (transaction) => {
+          const partnerWaitingDoc = await transaction.get(partnerWaitingRef);
+          if (!partnerWaitingDoc.exists()) {
+            throw new Error("Partner is no longer waiting.");
+          }
+
+          const newChatRef = doc(collection(db, 'chats'));
+          const newChat: Omit<Chat, 'id'> = {
+            userIds: [user.uid, partner.id].sort(),
+            game: null,
+            isFriendChat: false,
+            usersData: { 
+              [user.uid]: { online: true }, 
+              [partner.id]: { online: true } 
+            },
+            lastMessageTimestamp: serverTimestamp(),
+          };
+          transaction.set(newChatRef, newChat);
+          
+          transaction.update(partnerWaitingRef, { matchedChatId: newChatRef.id });
+          
+          const partnerSnap = await getDoc(doc(db, 'users', partner.id));
+          if (partnerSnap.exists()) {
+              setActiveChat({ id: newChatRef.id, ...newChat });
+              setActiveView({ type: 'chat', data: { user: partnerSnap.data() as User, chat: { id: newChatRef.id, ...newChat } } });
+          }
+        });
         setIsSearching(false);
-        await deleteDoc(doc(db, 'waiting_users', user.uid));
+      } catch (error) {
+        console.warn("Match transaction failed (likely a race condition), trying again...", error);
+        handleFindChat(); // Retry
+      }
+    } else {
+        await setDoc(doc(db, 'waiting_users', user.uid), {
+            id: user.uid,
+            name: profile.name,
+            timestamp: serverTimestamp(),
+            matchedChatId: null,
+        });
     }
   };
   
@@ -394,7 +384,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
       
       const chatSnap = await getDoc(chatRef);
       if(chatSnap.exists() && !chatSnap.data().isFriendChat) {
-         // Mark the user as inactive in non-friend chats
         await updateDoc(chatRef, {
             [`usersData.${user.uid}.online`]: false
         });
@@ -635,7 +624,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         return <AiAssistantView />;
       case 'welcome':
       default:
-        return <WelcomeView onFindChat={handleFindChat} />;
+        return <WelcomeView onFindChat={handleFindChat} isSearching={isSearching}/>;
     }
   };
   
@@ -825,11 +814,5 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     </SidebarProvider>
   );
 }
-
-    
-
-    
-
-
 
     
