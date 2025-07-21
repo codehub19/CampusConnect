@@ -185,5 +185,3 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, onGoTo
     </div>
   );
 }
-
-    
