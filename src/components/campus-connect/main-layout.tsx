@@ -53,11 +53,13 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   const [friends, setFriends] = useState<User[]>([]);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [incomingCall, setIncomingCall] = useState<{ chatId: string, chat: Chat, from: User } | null>(null);
+  const [incomingCall, setIncomingCall] = useState<{ chatId: string, from: User } | null>(null);
   const [isVideoCallOpen, setVideoCallOpen] = useState(false);
   const [friendToRemove, setFriendToRemove] = useState<User | null>(null);
-  const [unsubscribeChat, setUnsubscribeChat] = useState<() => void>(() => () => {});
   const [callListener, setCallListener] = useState<() => void>(() => () => {});
+  const [activeCallId, setActiveCallId] = useState<string | null>(null);
+  const [activeChatListener, setActiveChatListener] = useState<() => void>(() => () => {});
+
 
   const { toast } = useToast();
   const db = getFirestore(firebaseApp);
@@ -103,12 +105,13 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
   // Listen for game state changes and partner leaving on the active chat
   useEffect(() => {
+    activeChatListener(); // Unsubscribe from previous chat listener
     if (activeView.type !== 'chat' || !user || !activeChat?.id) return;
   
     const { user: partner } = activeView.data;
     const chatRef = doc(db, 'chats', activeChat.id);
   
-    const unsubscribe = onSnapshot(chatRef, (docSnap) => {
+    const newUnsubscribe = onSnapshot(chatRef, (docSnap) => {
       if (!docSnap.exists()) {
         toast({ variant: 'destructive', title: "Chat deleted", description: "This chat no longer exists." });
         setActiveView({ type: 'welcome' });
@@ -119,7 +122,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
       const chatData = { id: docSnap.id, ...docSnap.data() } as Chat;
       setActiveChat(chatData); // Keep local activeChat state in sync
   
-      // Partner leaves a non-friend chat
       const partnerUserData = chatData.usersData?.[partner.id];
       if (partnerUserData && !partnerUserData.online && !chatData.isFriendChat) {
         toast({ title: "Partner Left", description: `${partner.name} has left the chat.` });
@@ -127,8 +129,9 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
       }
     });
   
-    return () => unsubscribe();
-  }, [activeView, activeChat?.id, user, toast]);
+    setActiveChatListener(() => newUnsubscribe);
+    return () => newUnsubscribe();
+  }, [activeView.type, activeChat?.id, user, toast]);
 
     // Listen for incoming calls on the active chat
   useEffect(() => {
@@ -136,23 +139,26 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     if (activeView.type !== 'chat' || !user || isVideoCallOpen) return;
     
     const { chat, user: partner } = activeView.data;
+    if (!chat.id) return;
+
     const callsRef = collection(db, 'chats', chat.id, 'calls');
-    const q = query(callsRef, where('callerId', '!=', user.id), where('answer', '==', null));
+    const q = query(callsRef, where('callerId', '!=', user.id));
 
     const newUnsubscribe = onSnapshot(q, (snapshot) => {
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const callData = change.doc.data();
-          if (callData.offer) {
-              setIncomingCall({ chatId: change.doc.id, chat, from: partner });
+          // Check for offer and ensure it's not an old, answered call
+          if (callData.offer && !callData.answer) {
+              setIncomingCall({ chatId: change.doc.id, from: partner });
           }
         }
       });
     });
 
     setCallListener(() => newUnsubscribe); // Store the new unsubscribe function
-    return () => newUnsubscribe(); // Cleanup on component unmount
-  }, [activeView.type, user?.id, db, isVideoCallOpen, activeView, callListener]);
+    return () => newUnsubscribe();
+  }, [activeView.type, user?.id, db, isVideoCallOpen, activeView]);
 
 
   const addIcebreakerMessage = async (chatId: string, currentUser: User, partnerUser: User) => {
@@ -183,7 +189,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     const partnerSnap = await getDoc(doc(db, 'users', partnerId));
     if (!partnerSnap.exists()) return;
     
-    // Clear waiting status in case user was searching
     if (isSearching) {
         setIsSearching(false);
         const waitingDocRef = doc(db, 'waiting_users', user.uid);
@@ -199,35 +204,48 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
   const handleSelectChat = async (friend: User) => {
     if (!user || !profile) return;
-
+  
     const sortedIds = [user.uid, friend.id].sort();
     const chatId = sortedIds.join('_');
     const chatDocRef = doc(db, "chats", chatId);
-
-    let chatDoc = await getDoc(chatDocRef);
-    let chatData: Chat;
-
-    if (!chatDoc.exists()) {
-      const newChat: Chat = {
-        id: chatId,
-        userIds: sortedIds,
-        game: null,
-        isFriendChat: true,
-        usersData: {
-          [user.uid]: { online: true },
-          [friend.id]: { online: friend.online }
+  
+    try {
+      const chatDocSnap = await getDoc(chatDocRef);
+      let chatData: Chat;
+  
+      if (!chatDocSnap.exists()) {
+        // Create new chat document
+        const newChat: Chat = {
+          id: chatId,
+          userIds: sortedIds,
+          game: null,
+          isFriendChat: true,
+          usersData: {
+            [user.uid]: { online: true },
+            [friend.id]: { online: friend.online ?? false }
+          },
+          lastMessageTimestamp: serverTimestamp(),
+        };
+        await setDoc(chatDocRef, newChat);
+        await addIcebreakerMessage(chatId, profile, friend);
+        chatData = newChat;
+      } else {
+        // Chat exists, update my online status
+        chatData = { id: chatDocSnap.id, ...chatDocSnap.data() } as Chat;
+        if (!chatData.usersData?.[user.uid]?.online) {
+          await updateDoc(chatDocRef, { [`usersData.${user.uid}.online`]: true });
+          chatData.usersData![user.uid].online = true;
         }
-      };
-      await setDoc(chatDocRef, newChat);
-      await addIcebreakerMessage(chatId, profile, friend);
-      chatData = newChat;
-    } else {
-      chatData = { id: chatDoc.id, ...chatDoc.data() } as Chat;
-      if (!chatData.usersData?.[user.uid]?.online) {
-        await updateDoc(chatDocRef, { [`usersData.${user.uid}.online`]: true });
       }
+      openChat(chatData);
+    } catch (error) {
+      console.error("Error opening chat with friend:", error);
+      toast({
+        variant: 'destructive',
+        title: 'Error',
+        description: 'Could not start chat. Please try again.'
+      });
     }
-    openChat(chatData);
   };
 
   const handleSelectAi = () => {
@@ -264,9 +282,8 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   const findNewChat = async () => {
     if (!user || !profile) return;
 
-    // Reset state before searching
     if (activeChat) {
-      await handleLeaveChat(true); // silent leave
+      await handleLeaveChat(true);
     }
     setActiveView({ type: 'welcome' });
     setIsSearching(true);
@@ -286,7 +303,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         let matchMade = false;
         for (const partnerDoc of querySnapshot.docs) {
             const partnerWaitingData = partnerDoc.data();
-            if (partnerWaitingData.matchedChatId) continue; // Skip already matched users
+            if (partnerWaitingData.matchedChatId) continue;
 
             const partnerProfileSnap = await getDoc(doc(db, 'users', partnerWaitingData.uid));
             if (!partnerProfileSnap.exists()) continue;
@@ -296,16 +313,19 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
                 continue;
             }
 
-            // Attempt to claim match in transaction
             const partnerWaitingRef = partnerDoc.ref;
             try {
                 await runTransaction(db, async (transaction) => {
                     const freshPartnerDoc = await transaction.get(partnerWaitingRef);
                     if (!freshPartnerDoc.exists() || freshPartnerDoc.data().matchedChatId) {
-                        return; // This partner was claimed, so we return and loop to the next
+                        return;
                     }
+
+                    // Create a unique, consistent chat ID for non-friend chats
                     const newChatRef = doc(collection(db, 'chats'));
-                    const newChatData: Omit<Chat, 'id'> = {
+                    
+                    const newChatData: Chat = {
+                        id: newChatRef.id,
                         userIds: [user.uid, partnerProfile.id].sort(),
                         game: null,
                         isFriendChat: false,
@@ -318,14 +338,13 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
                     transaction.set(newChatRef, newChatData);
                     transaction.update(partnerWaitingRef, { matchedChatId: newChatRef.id });
                     
-                    // This is where we update the state to reflect the new chat
-                    setActiveChat({ id: newChatRef.id, ...newChatData });
-                    setActiveView({ type: 'chat', data: { user: partnerProfile, chat: { id: newChatRef.id, ...newChatData } } });
+                    setActiveChat(newChatData);
+                    setActiveView({ type: 'chat', data: { user: partnerProfile, chat: newChatData } });
                     await addIcebreakerMessage(newChatRef.id, profile, partnerProfile);
                     matchMade = true;
                 });
 
-                if (matchMade) break; // Exit loop if match is made
+                if (matchMade) break;
             } catch (error) {
                 console.warn("Transaction failed, trying next user:", error);
             }
@@ -335,7 +354,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
             setIsSearching(false);
             toast.dismiss();
         } else {
-            // No suitable partner, add self to waiting list
             await setDoc(doc(db, 'waiting_users', user.uid), {
                 uid: user.uid,
                 displayName: profile.name,
@@ -364,17 +382,14 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         try {
           const chatSnap = await getDoc(chatRef);
           if (chatSnap.exists()) {
-             await updateDoc(chatRef, {
-              [`usersData.${user.uid}.online`]: false
-            });
+             await deleteDoc(chatRef);
           }
         } catch (error) {
-          console.warn("Could not update chat on leave:", error);
+          console.warn("Could not delete chat on leave:", error);
         }
       }
     }
     
-    // Stop searching if user leaves while searching
     if(isSearching && user) {
         const waitingDocRef = doc(db, 'waiting_users', user.uid);
         const waitingDocSnap = await getDoc(waitingDocRef);
@@ -533,21 +548,28 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     await updateDoc(chatRef, { game: null });
   };
 
-  const handleInitiateCall = () => {
+  const handleInitiateCall = async () => {
     if (activeView.type !== 'chat' || isVideoCallOpen) return;
+    const { chat } = activeView.data;
+    
+    const callDocRef = doc(collection(db, 'chats', chat.id, 'calls'));
+    setActiveCallId(callDocRef.id);
     setVideoCallOpen(true);
   };
   
   const handleAnswerCall = () => {
     if (!incomingCall) return;
+    setActiveCallId(incomingCall.chatId);
     setVideoCallOpen(true);
     setIncomingCall(null);
   };
 
   const handleDeclineCall = async () => {
     if (!incomingCall) return;
-    const callDocRef = doc(db, 'chats', incomingCall.chat.id, 'calls', incomingCall.chatId);
-    await deleteDoc(callDocRef);
+    const callDocRef = doc(db, 'chats', activeChat!.id, 'calls', incomingCall.chatId);
+    try {
+        await deleteDoc(callDocRef);
+    } catch (e) { console.error("Error declining call", e)}
     setIncomingCall(null);
     toast({
       title: 'Call Declined',
@@ -584,9 +606,12 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
             user={activeView.data.user}
             currentUser={profile}
             chat={activeView.data.chat}
-            callId={incomingCall?.chatId}
+            callId={activeCallId!}
             onOpenChange={(open) => {
-                if(!open) setVideoCallOpen(false);
+                if(!open) {
+                    setVideoCallOpen(false);
+                    setActiveCallId(null);
+                }
             }}
           />
       )
@@ -798,3 +823,5 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     </SidebarProvider>
   );
 }
+
+    
