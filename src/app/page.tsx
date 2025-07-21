@@ -13,6 +13,7 @@ import MissedConnectionsView from '@/components/campus-connect/missed-connection
 import ProfileView from '@/components/campus-connect/profile-view';
 import { ref, onValue } from 'firebase/database';
 import { rtdb } from '@/lib/firebase';
+import { Loader2 } from 'lucide-react';
 
 type AppState = 'policy' | 'auth' | 'profile_setup' | 'home' | 'chat' | 'events' | 'missed_connections';
 
@@ -46,7 +47,11 @@ function AppContent() {
     if (typeof window !== 'undefined' && localStorage.getItem('policyAgreed') !== 'true') {
       return 'policy';
     }
-    if (!user || !profile) {
+    if (!user) {
+      return 'auth';
+    }
+    // If the profile is not yet loaded, wait in an auth-like state
+    if (!profile) {
       return 'auth';
     }
     if (!profile.profileComplete && !profile.isGuest) {
@@ -68,16 +73,17 @@ function AppContent() {
     setAppState(getInitialState());
   };
 
-  if (loading) {
-    return (
-      <div className="flex h-screen w-screen items-center justify-center bg-background">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
-
   const navigateTo = (state: AppState) => {
     setAppState(state);
+  }
+
+  // This is the key fix: Show a loading spinner until auth and profile are ready.
+  if (loading || (user && !profile)) {
+    return (
+      <div className="flex h-screen w-screen items-center justify-center bg-background">
+        <Loader2 className="h-12 w-12 animate-spin text-primary" />
+      </div>
+    );
   }
 
   return (
