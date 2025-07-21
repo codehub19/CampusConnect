@@ -60,6 +60,42 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   const { toast } = useToast();
   const db = getFirestore(firebaseApp);
 
+  // Restore chat state on load
+  useEffect(() => {
+    const persistedChatId = typeof window !== 'undefined' ? localStorage.getItem('activeChatId') : null;
+    if (persistedChatId && user && profile) {
+        const restoreChat = async () => {
+            const chatRef = doc(db, 'chats', persistedChatId);
+            const chatSnap = await getDoc(chatRef);
+            if (chatSnap.exists()) {
+                const chatData = { id: chatSnap.id, ...chatSnap.data() } as Chat;
+                const partnerId = chatData.userIds.find(id => id !== user.uid);
+                if (partnerId) {
+                    const partnerRef = doc(db, 'users', partnerId);
+                    const partnerSnap = await getDoc(partnerRef);
+                    if (partnerSnap.exists()) {
+                        const partnerData = partnerSnap.data() as User;
+                        setActiveChat(chatData);
+                        setActiveView({ type: 'chat', data: { user: partnerData, chat: chatData } });
+                    }
+                }
+            } else {
+                localStorage.removeItem('activeChatId');
+            }
+        };
+        restoreChat();
+    }
+  }, [user, profile, db]);
+
+  // Persist active chat to localStorage
+  useEffect(() => {
+    if (activeChat?.id && typeof window !== 'undefined') {
+        localStorage.setItem('activeChatId', activeChat.id);
+    } else if (!activeChat && typeof window !== 'undefined') {
+        localStorage.removeItem('activeChatId');
+    }
+  }, [activeChat]);
+
   // Listen for friends
   useEffect(() => {
     if (!user || !profile?.friends) return;

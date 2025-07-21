@@ -17,9 +17,10 @@ type AppState = 'policy' | 'auth' | 'profile_setup' | 'home' | 'chat' | 'events'
 function AppContent() {
   const { user, loading, profile, updateProfile } = useAuth();
   const [isProfileOpen, setProfileOpen] = useState(false);
+  const [appState, setAppState] = useState<AppState>('auth');
   
   const getInitialState = (): AppState => {
-    if (loading) return 'auth'; // Show loader, but logically it's part of auth flow
+    if (loading) return 'auth';
     if (typeof window !== 'undefined' && localStorage.getItem('policyAgreed') !== 'true') {
       return 'policy';
     }
@@ -29,10 +30,12 @@ function AppContent() {
     if (!profile.profileComplete && !profile.isGuest) {
       return 'profile_setup';
     }
+     // Check for persisted chat state
+    if (typeof window !== 'undefined' && localStorage.getItem('activeChatId')) {
+      return 'chat';
+    }
     return 'home';
   };
-
-  const [appState, setAppState] = useState<AppState>('auth');
   
   // Effect to manage state transitions based on auth changes
   useEffect(() => {
@@ -55,7 +58,13 @@ function AppContent() {
     );
   }
 
-  const navigateTo = (state: AppState) => setAppState(state);
+  const navigateTo = (state: AppState) => {
+     // Clear persisted chat when navigating away
+    if (state !== 'chat' && typeof window !== 'undefined') {
+      localStorage.removeItem('activeChatId');
+    }
+    setAppState(state);
+  }
 
   return (
     <>
