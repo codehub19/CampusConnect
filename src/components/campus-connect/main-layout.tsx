@@ -29,7 +29,7 @@ import ConnectFour from '@/components/campus-connect/connect-four';
 import DotsAndBoxes from '@/components/campus-connect/dots-and-boxes';
 import { useAuth } from '@/hooks/use-auth';
 import type { User, Chat, FriendRequest, GameState, GameType } from '@/lib/types';
-import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where, getDocs, deleteDoc, addDoc, updateDoc, serverTimestamp, arrayUnion, writeBatch, limit, runTransaction, arrayRemove } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where, getDocs, deleteDoc, addDoc, updateDoc, serverTimestamp, arrayUnion, writeBatch, limit, runTransaction, arrayRemove, orderBy } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import VideoCallView from './video-call-view';
@@ -290,6 +290,63 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     setActiveChat(null);
   };
 
+  const findAndMatchPartner = async (currentUser: User, profile: User) => {
+    const waitingUsersRef = collection(db, 'waiting_users');
+    const q = query(waitingUsersRef, where('id', '!=', currentUser.uid), limit(10));
+    const waitingSnapshot = await getDocs(q);
+    
+    if (waitingSnapshot.empty) return null;
+
+    const potentialPartnerIds = waitingSnapshot.docs.map(d => d.id);
+    const usersRef = collection(db, 'users');
+    const partnersQuery = query(usersRef, where('id', 'in', potentialPartnerIds));
+    const partnersSnapshot = await getDocs(partnersQuery);
+    const partners = partnersSnapshot.docs.map(d => d.data() as User);
+
+    const partner = partners.find(p => 
+        !(profile.blockedUsers || []).includes(p.id) &&
+        !(p.blockedUsers || []).includes(currentUser.uid)
+    );
+
+    if (partner) {
+        try {
+            await runTransaction(db, async (transaction) => {
+                const myWaitingRef = doc(db, 'waiting_users', currentUser.uid);
+                const partnerWaitingRef = doc(db, 'waiting_users', partner.id);
+                
+                const partnerWaitingDoc = await transaction.get(partnerWaitingRef);
+                if (!partnerWaitingDoc.exists()) {
+                    // Partner is no longer waiting, so we can't match.
+                    // The current user will remain in the waiting pool.
+                    return; 
+                }
+
+                // Both users are waiting, let's match them
+                transaction.delete(myWaitingRef);
+                transaction.delete(partnerWaitingRef);
+                
+                const newChatRef = doc(collection(db, 'chats'));
+                const newChat = {
+                    id: newChatRef.id,
+                    userIds: [currentUser.uid, partner.id].sort(),
+                    game: null,
+                    isFriendChat: false,
+                    usersData: { [currentUser.uid]: { online: true }, [partner.id]: { online: true } },
+                    lastMessageTimestamp: serverTimestamp(),
+                };
+                transaction.set(newChatRef, newChat);
+            });
+            // Transaction was successful. Let the useEffect listener handle navigation.
+            return partner; // Indicate a match was attempted/made
+        } catch (error) {
+            console.warn("Match transaction failed (likely a race condition, this is okay):", error);
+            return null; // Transaction failed, so no match.
+        }
+    }
+    
+    return null; // No suitable partner found
+  }
+
   const handleFindChat = async () => {
     if (!user || !profile) return;
 
@@ -304,61 +361,13 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     toast({ title: 'Searching for a chat...' });
 
     try {
-        await runTransaction(db, async (transaction) => {
-            const waitingUsersRef = collection(db, 'waiting_users');
-            const blockedByMe = profile.blockedUsers || [];
-            
-            // Query for potential partners, excluding the current user.
-            const q = query(waitingUsersRef, where('id', '!=', user.uid), limit(10));
-            const waitingSnapshot = await transaction.get(q);
+        // Try to find a match immediately
+        const matchedPartner = await findAndMatchPartner(user, profile);
 
-            const waitingUserDocs = waitingSnapshot.docs;
-            if (waitingUserDocs.length > 0) {
-                 // Fetch full profiles for all potential partners in a single batch
-                const partnerIds = waitingUserDocs.map(doc => doc.id);
-                const usersRef = collection(db, 'users');
-                const usersQuery = query(usersRef, where('id', 'in', partnerIds));
-                const usersSnapshot = await getDocs(usersQuery); // Cannot use transaction.get() here as it's outside the transaction's read set
-                const potentialPartners = usersSnapshot.docs.map(d => d.data() as User);
-                
-                // Find a valid partner in memory
-                let partner: User | null = null;
-                for (const p of potentialPartners) {
-                    const isBlockedByMe = blockedByMe.includes(p.id);
-                    const iAmBlocked = p.blockedUsers?.includes(user.uid);
-                    if (!isBlockedByMe && !iAmBlocked) {
-                        partner = p;
-                        break; // Found a suitable partner
-                    }
-                }
-                
-                if (partner && profile) { // Match found
-                    // Remove both users from the waiting list atomically
-                    const myWaitingRef = doc(db, 'waiting_users', user.uid);
-                    const partnerWaitingRef = doc(db, 'waiting_users', partner.id);
-                    transaction.delete(myWaitingRef);
-                    transaction.delete(partnerWaitingRef);
-
-                    // Create the new chat
-                    const newChatRef = doc(collection(db, 'chats'));
-                    const newChat: Chat = {
-                        id: newChatRef.id,
-                        userIds: [user.uid, partner.id].sort(),
-                        game: null,
-                        isFriendChat: false,
-                        usersData: { [user.uid]: { online: true }, [partner.id]: { online: true } },
-                        lastMessageTimestamp: serverTimestamp(),
-                    };
-                    transaction.set(newChatRef, newChat);
-
-                    // This data is passed back out of the transaction to update the UI
-                    return { partner, newChat };
-                }
-            }
-
-            // No suitable partner found, add self to waiting list
+        if (!matchedPartner) {
+            // If no match, add self to waiting list
             const myWaitingRef = doc(db, 'waiting_users', user.uid);
-            transaction.set(myWaitingRef, {
+            await setDoc(myWaitingRef, {
                 id: user.uid,
                 name: profile.name,
                 avatar: profile.avatar,
@@ -367,22 +376,16 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
                 interests: profile.interests,
                 timestamp: serverTimestamp(),
             });
-            return null; // No match found
-        }).then(async (result) => {
-            if (result) { // A match was made inside the transaction
-                const { partner, newChat } = result;
-                await addIcebreakerMessage(newChat.id, profile, partner);
-                setActiveChat(newChat);
-                setActiveView({ type: 'chat', data: { user: partner, chat: newChat }});
-                setIsSearching(false);
-                toast({ title: "Chat found!", description: `You've been connected with ${partner.name}.` });
-            }
-            // If result is null, we were added to the waiting list and the useEffect will handle finding a match.
-        });
+            // The useEffect listener will now wait for another user to match with us.
+        }
+        // If a match was found, the useEffect will handle the UI update when it sees our waiting doc deleted.
+
     } catch (error) {
-        console.error("Find chat transaction failed: ", error);
+        console.error("Find chat failed: ", error);
         toast({ variant: 'destructive', title: "Error", description: "Could not find a chat. Please try again." });
         setIsSearching(false);
+        // Clean up our own waiting doc just in case
+        await deleteDoc(doc(db, 'waiting_users', user.uid));
     }
   };
   
