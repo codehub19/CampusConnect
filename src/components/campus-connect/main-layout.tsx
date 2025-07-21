@@ -64,10 +64,14 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
   // Listen for friends
   useEffect(() => {
-    if (!user?.uid || !profile?.friends || profile.friends.length === 0) {
+    if (!user?.uid || !profile || !Array.isArray(profile.friends)) {
       setFriends([]);
       return;
-    };
+    }
+    if (profile.friends.length === 0) {
+      setFriends([]);
+      return;
+    }
     
     const usersRef = collection(db, 'users');
     const q = query(usersRef, where('id', 'in', profile.friends));
@@ -79,7 +83,8 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
       setFriends(fetchedFriends);
     });
     return () => unsubscribe();
-  }, [user?.uid, profile?.friends, db]);
+  }, [user?.uid, profile, db]);
+
 
   // Listen for friend requests
   useEffect(() => {
