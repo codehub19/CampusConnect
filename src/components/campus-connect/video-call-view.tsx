@@ -15,7 +15,7 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import type { User, Chat } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { getFirestore, doc, updateDoc, getDoc, onSnapshot, collection, addDoc, getDocs, writeBatch } from 'firebase/firestore';
+import { getFirestore, doc, updateDoc, getDoc, onSnapshot, collection, addDoc, getDocs, writeBatch, Unsubscribe } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 
 interface VideoCallViewProps {
@@ -43,13 +43,18 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const pc = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
+  const remoteStreamRef = useRef<MediaStream | null>(null);
 
   const { toast } = useToast();
   const db = getFirestore(firebaseApp);
   
   const hangUp = async () => {
     if (pc.current) {
-      pc.current.getSenders().forEach(sender => sender.track?.stop());
+      pc.current.getSenders().forEach(sender => {
+        if (sender.track) {
+          sender.track.stop();
+        }
+      });
       pc.current.close();
       pc.current = null;
     }
@@ -57,6 +62,11 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop());
       localStreamRef.current = null;
+    }
+    
+    if (remoteStreamRef.current) {
+        remoteStreamRef.current.getTracks().forEach(track => track.stop());
+        remoteStreamRef.current = null;
     }
 
     if(chat.id) {
@@ -66,7 +76,6 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
          await updateDoc(chatRef, { call: null });
        }
 
-       // Clean up candidate collections
        const callCandidates = collection(chatRef, 'callCandidates');
        const answerCandidates = collection(chatRef, 'answerCandidates');
        
@@ -85,6 +94,7 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
   };
   
   useEffect(() => {
+    const unsubscribes: Unsubscribe[] = [];
     pc.current = new RTCPeerConnection(servers);
     
     const startStreams = async () => {
@@ -102,25 +112,26 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
             setHasCameraPermission(true);
 
         } catch (error) {
-            console.error('Error accessing camera:', error);
+            console.error('Error accessing media devices:', error);
             setHasCameraPermission(false);
             toast({
               variant: 'destructive',
               title: 'Media Access Denied',
               description: 'Please enable camera & mic permissions in your browser.',
             });
+            hangUp();
             return;
         }
 
-        const remoteStream = new MediaStream();
+        remoteStreamRef.current = new MediaStream();
         pc.current.ontrack = (event) => {
             event.streams[0].getTracks().forEach(track => {
-                remoteStream.addTrack(track);
+                remoteStreamRef.current?.addTrack(track);
             });
         };
-
+        
         if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = remoteStream;
+            remoteVideoRef.current.srcObject = remoteStreamRef.current;
         }
 
         const chatRef = doc(db, 'chats', chat.id);
@@ -136,19 +147,37 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
         };
 
         if (isCaller) {
-          const offerDescription = await pc.current.createOffer();
-          await pc.current.setLocalDescription(offerDescription);
-          await updateDoc(chatRef, { 'call.offer': offerDescription.toJSON() });
-
-          onSnapshot(answerCandidates, (snapshot) => {
+          const remoteCandidatesUnsub = onSnapshot(answerCandidates, (snapshot) => {
             snapshot.docChanges().forEach((change) => {
               if (change.type === 'added') {
                 pc.current?.addIceCandidate(new RTCIceCandidate(change.doc.data()));
               }
             });
           });
+          unsubscribes.push(remoteCandidatesUnsub);
+
+          const offerDescription = await pc.current.createOffer();
+          await pc.current.setLocalDescription(offerDescription);
+          await updateDoc(chatRef, { 'call.offer': offerDescription.toJSON() });
+
+          const callUnsub = onSnapshot(chatRef, (docSnap) => {
+              const data = docSnap.data();
+              if (pc.current && !pc.current.currentRemoteDescription && data?.call?.answer) {
+                  pc.current.setRemoteDescription(new RTCSessionDescription(data.call.answer));
+              }
+          });
+          unsubscribes.push(callUnsub);
 
         } else { // Is Answerer
+          const remoteCandidatesUnsub = onSnapshot(callCandidates, (snapshot) => {
+              snapshot.docChanges().forEach((change) => {
+                if (change.type === 'added') {
+                  pc.current?.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+                }
+              });
+          });
+          unsubscribes.push(remoteCandidatesUnsub);
+
           if (chat.call?.offer) {
             await pc.current.setRemoteDescription(new RTCSessionDescription(chat.call.offer));
             
@@ -156,14 +185,6 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
             await pc.current.setLocalDescription(answerDescription);
 
             await updateDoc(chatRef, { 'call.answer': answerDescription.toJSON() });
-
-            onSnapshot(callCandidates, (snapshot) => {
-              snapshot.docChanges().forEach((change) => {
-                if (change.type === 'added') {
-                  pc.current?.addIceCandidate(new RTCIceCandidate(change.doc.data()));
-                }
-              });
-            });
           }
         }
     };
@@ -171,26 +192,21 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
     startStreams();
 
     const chatRef = doc(db, 'chats', chat.id);
-    const unsubscribe = onSnapshot(chatRef, (docSnap) => {
+    const chatUnsub = onSnapshot(chatRef, (docSnap) => {
         const data = docSnap.data();
         if (!data?.call) {
-            if(pc.current && (pc.current.connectionState === 'connected' || pc.current.connectionState === 'connecting')){
+             if(pc.current && (pc.current.connectionState === 'connected' || pc.current.connectionState === 'connecting')){
                 hangUp();
                 toast({ title: 'Call Ended', description: `${user.name} has ended the call.` });
             }
-            return;
-        }
-
-        // Caller receives the answer
-        if (pc.current && !pc.current.currentRemoteDescription && data.call.answer) {
-             pc.current.setRemoteDescription(new RTCSessionDescription(data.call.answer));
         }
     });
+    unsubscribes.push(chatUnsub);
 
 
     return () => {
+        unsubscribes.forEach(unsub => unsub());
         hangUp();
-        unsubscribe();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -288,5 +304,3 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
     </DialogContent>
   );
 }
-
-    
