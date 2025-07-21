@@ -23,7 +23,7 @@ export default function HomeView({ onNavigateTo1v1Chat, onNavigateToEvents, onNa
   return (
     <>
     <SuggestionView isOpen={isSuggestionOpen} onOpenChange={setSuggestionOpen} />
-    <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4 sm:p-6 relative">
+    <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4 sm:p-6">
       <div className="absolute top-4 right-4">
         <Button onClick={onOpenProfile} variant="ghost" size="icon" className="rounded-full h-12 w-12">
             <Avatar className="h-10 w-10">
@@ -113,8 +113,8 @@ export default function HomeView({ onNavigateTo1v1Chat, onNavigateToEvents, onNa
         </Card>
       </div>
 
-       <div className="absolute bottom-4 left-4">
-        <Button onClick={() => setSuggestionOpen(true)} variant="outline" size="icon" className="rounded-full h-12 w-12 shadow-lg">
+       <div className="fixed bottom-4 left-4 z-50">
+        <Button onClick={() => setSuggestionOpen(true)} variant="outline" size="icon" className="rounded-full h-14 w-14 shadow-lg bg-card/80 border-border hover:bg-accent">
             <Lightbulb className="h-6 w-6 text-yellow-400" />
         </Button>
       </div>
