@@ -63,7 +63,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
   // Listen for friends
   useEffect(() => {
-    if (!user || !profile?.friends) return;
+    if (!user || !profile?.friends || !Array.isArray(profile.friends)) return;
 
     const friendsIds = profile.friends;
     if (friendsIds.length === 0) {

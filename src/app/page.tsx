@@ -62,7 +62,12 @@ function AppContent() {
   
   // Effect to manage state transitions based on auth changes
   useEffect(() => {
-    setAppState(getInitialState());
+    const initialState = getInitialState();
+    // Only update app state if it's different, to avoid unnecessary re-renders.
+    // Especially important for after profile setup, to not revert to 'home' prematurely.
+    if (initialState !== 'profile_setup' || appState !== 'home') {
+      setAppState(initialState);
+    }
   }, [loading, user, profile]);
 
 
