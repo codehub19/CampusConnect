@@ -167,13 +167,13 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     
     const { chat, user: partner } = activeView.data;
     const callsRef = collection(db, 'chats', chat.id, 'calls');
-    const q = query(callsRef);
+    const q = query(callsRef, where('callerId', '!=', user.id));
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const callData = change.doc.data() as Call;
-          if (callData.callerId !== user.id && !callData.answer) {
+          if (!callData.answer) {
              if (!isVideoCallOpen && !incomingCall) {
                 setIncomingCall({ callId: change.doc.id, chat: chat, from: partner });
              }
@@ -358,7 +358,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     
     // Stop searching if user leaves while searching
     if(isSearching) {
-        await deleteDoc(doc(db, 'waiting_users', user.uid));
+        if(user) await deleteDoc(doc(db, 'waiting_users', user.uid));
         setIsSearching(false);
     }
 
@@ -617,7 +617,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         </AlertDialogContent>
       </AlertDialog>
 
-      <Dialog open={!!incomingCall && !isVideoCallOpen} onOpenChange={() => setIncomingCall(null)}>
+      <AlertDialog open={!!incomingCall && !isVideoCallOpen} onOpenChange={() => setIncomingCall(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Incoming Call</AlertDialogTitle>
@@ -630,7 +630,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
             <AlertDialogAction onClick={handleAnswerCall}>Accept</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </Dialog>
+      </AlertDialog>
       
       <Dialog open={isGameCenterOpen} onOpenChange={setGameCenterOpen}>
         <GameCenterView
@@ -782,3 +782,5 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     </SidebarProvider>
   );
 }
+
+    
