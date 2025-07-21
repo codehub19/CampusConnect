@@ -11,8 +11,8 @@ import HomeView from '@/components/campus-connect/home-view';
 import EventsView from '@/components/campus-connect/events-view';
 import MissedConnectionsView from '@/components/campus-connect/missed-connections-view';
 import ProfileView from '@/components/campus-connect/profile-view';
-import { getFirestore, collection, query, where, onSnapshot } from 'firebase/firestore';
-import { firebaseApp } from '@/lib/firebase';
+import { ref, onValue } from 'firebase/database';
+import { rtdb } from '@/lib/firebase';
 
 type AppState = 'policy' | 'auth' | 'profile_setup' | 'home' | 'chat' | 'events' | 'missed_connections';
 
@@ -21,21 +21,25 @@ function AppContent() {
   const [isProfileOpen, setProfileOpen] = useState(false);
   const [appState, setAppState] = useState<AppState>('auth');
   const [onlineCount, setOnlineCount] = useState<number | null>(null);
-  const db = getFirestore(firebaseApp);
-  
-  useEffect(() => {
-    const usersRef = collection(db, 'users');
-    const q = query(usersRef, where('online', '==', true));
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      setOnlineCount(snapshot.size);
+  useEffect(() => {
+    // Listen for online user count from Realtime Database
+    const statusRef = ref(rtdb, 'status');
+    const unsubscribe = onValue(statusRef, (snapshot) => {
+        if (snapshot.exists()) {
+            const statuses = snapshot.val();
+            const count = Object.values(statuses).filter((status: any) => status.state === 'online').length;
+            setOnlineCount(count);
+        } else {
+            setOnlineCount(0);
+        }
     }, (error) => {
-      console.error("Error fetching online user count:", error);
-      setOnlineCount(0);
+        console.error("Error fetching online user count from RTDB:", error);
+        setOnlineCount(0);
     });
 
     return () => unsubscribe();
-  }, [db]);
+  }, []);
   
   const getInitialState = (): AppState => {
     if (loading) return 'auth';

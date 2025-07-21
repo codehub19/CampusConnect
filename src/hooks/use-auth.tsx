@@ -20,9 +20,16 @@ import {
   setDoc,
   getDoc,
   updateDoc,
-  serverTimestamp,
+  serverTimestamp as firestoreServerTimestamp,
 } from 'firebase/firestore';
-import { firebaseApp } from '@/lib/firebase';
+import { 
+    ref, 
+    onValue, 
+    set, 
+    onDisconnect, 
+    serverTimestamp as rtdbServerTimestamp 
+} from 'firebase/database';
+import { firebaseApp, rtdb } from '@/lib/firebase';
 import type { User } from '@/lib/types';
 import { useToast } from './use-toast';
 
@@ -53,29 +60,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoading(true);
       if (firebaseUser) {
         setUser(firebaseUser);
-        const userDocRef = doc(db, 'users', firebaseUser.uid);
         
-        const unsubProfile = onSnapshot(userDocRef, async (docSnap) => {
+        // --- Realtime Database Presence Management ---
+        const userStatusDatabaseRef = ref(rtdb, '/status/' + firebaseUser.uid);
+        const userStatusFirestoreRef = doc(db, 'users', firebaseUser.uid);
+
+        const isOfflineForDatabase = {
+            state: 'offline',
+            last_changed: rtdbServerTimestamp(),
+        };
+        const isOnlineForDatabase = {
+            state: 'online',
+            last_changed: rtdbServerTimestamp(),
+        };
+
+        const con = ref(rtdb, '.info/connected');
+        onValue(con, (snapshot) => {
+            if (snapshot.val() === false) return;
+            
+            onDisconnect(userStatusDatabaseRef).set(isOfflineForDatabase).then(() => {
+                set(userStatusDatabaseRef, isOnlineForDatabase);
+            });
+        });
+        
+        // --- Firestore Profile Management ---
+        const unsubProfile = onSnapshot(userStatusFirestoreRef, async (docSnap) => {
           if (docSnap.exists()) {
             const userProfile = docSnap.data() as User;
             setProfile(userProfile);
-            if(!userProfile.online) {
-               await updateDoc(userDocRef, { online: true, lastSeen: serverTimestamp() });
-            }
+            // Firestore online status is now managed by RTDB listener, not directly here.
           } else {
              // Profile will be created by auth functions, let it proceed
           }
            setLoading(false);
         });
 
-        return () => unsubProfile();
+        return () => {
+            unsubProfile();
+            // No need to manually set offline here, onDisconnect handles it.
+        };
 
       } else {
         if (user && profile) {
            const userDocRef = doc(db, 'users', user.uid);
            const docSnap = await getDoc(userDocRef);
            if (docSnap.exists()){
-             await updateDoc(userDocRef, { online: false, lastSeen: serverTimestamp() });
+             await updateDoc(userDocRef, { online: false, lastSeen: firestoreServerTimestamp() });
            }
         }
         setUser(null);
@@ -96,7 +126,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: uid,
         name: data.name || 'Anonymous',
         avatar: data.avatar || `https://placehold.co/100x100/FFFFFF/121820?text=${(data.name || 'A').charAt(0)}`,
-        online: true,
+        online: true, // Will be updated by RTDB presence
         gender: 'Prefer not to say',
         interests: [],
         friends: [],
@@ -123,16 +153,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           });
       }
     } catch (error: any) {
-      // This specifically handles the common case where the user closes the popup.
       if (error.code === 'auth/popup-closed-by-user') {
         toast({
           variant: 'default',
           title: 'Login Canceled',
           description: 'You canceled the Google Sign-In process.',
         });
-        return; // Don't throw an error, just stop the function.
+        return;
       }
-      // For other errors, we still want to show them.
       throw error;
     }
   };
@@ -162,6 +190,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
+     if (user) {
+        // Set offline in RTDB before signing out
+        const userStatusDatabaseRef = ref(rtdb, '/status/' + user.uid);
+        await set(userStatusDatabaseRef, {
+            state: 'offline',
+            last_changed: rtdbServerTimestamp(),
+        });
+    }
     await signOut(auth);
   };
 
