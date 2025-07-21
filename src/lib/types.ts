@@ -66,7 +66,6 @@ export interface DotsAndBoxesState extends BaseGameState {
 export type GameState = TicTacToeState | ConnectFourState | DotsAndBoxesState;
 
 export interface Call {
-  id: string;
   callerId: string;
   offer?: any;
   answer?: any;

@@ -26,7 +26,7 @@ export default function HomeView({ onNavigateTo1v1Chat, onNavigateToEvents, onNa
     <SuggestionView isOpen={isSuggestionOpen} onOpenChange={setSuggestionOpen} />
     <div className="flex flex-col min-h-screen bg-background">
        <header className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-background/80 backdrop-blur-sm z-10">
-        <h1 className="text-xl font-bold text-foreground">CampusConnect</h1>
+        <h1 class="text-xl font-bold text-foreground">CampusConnect</h1>
         <Button onClick={onOpenProfile} variant="ghost" size="icon" className="rounded-full h-10 w-10">
             <Avatar className="h-10 w-10">
                 <AvatarImage src={userAvatar} alt={userName} data-ai-hint="profile avatar" />
@@ -37,17 +37,8 @@ export default function HomeView({ onNavigateTo1v1Chat, onNavigateToEvents, onNa
 
       <main className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6">
         <div className="text-center mb-10">
-            <h1 className="text-4xl sm:text-5xl font-bold text-foreground">Welcome, {userName}!</h1>
-            <p className="text-lg text-muted-foreground mt-2">Choose how you want to connect today.</p>
-            {onlineCount !== null && (
-                <div className="flex justify-center items-center gap-2 mt-4">
-                    <span className="relative flex h-3 w-3">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
-                    </span>
-                    <span className="text-sm font-medium text-green-400">{onlineCount} {onlineCount === 1 ? 'user' : 'users'} online</span>
-                </div>
-            )}
+            <h1 class="text-4xl sm:text-5xl font-bold text-foreground">Welcome, {userName}!</h1>
+            <p class="text-lg text-muted-foreground mt-2">Choose how you want to connect today.</p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-6xl">
             <Card 

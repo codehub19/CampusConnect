@@ -11,8 +11,6 @@ import HomeView from '@/components/campus-connect/home-view';
 import EventsView from '@/components/campus-connect/events-view';
 import MissedConnectionsView from '@/components/campus-connect/missed-connections-view';
 import ProfileView from '@/components/campus-connect/profile-view';
-import { ref, onValue } from 'firebase/database';
-import { rtdb } from '@/lib/firebase';
 import { Loader2 } from 'lucide-react';
 
 type AppState = 'policy' | 'auth' | 'profile_setup' | 'home' | 'chat' | 'events' | 'missed_connections';
@@ -21,26 +19,7 @@ function AppContent() {
   const { user, loading, profile, updateProfile } = useAuth();
   const [isProfileOpen, setProfileOpen] = useState(false);
   const [appState, setAppState] = useState<AppState>('auth');
-  const [onlineCount, setOnlineCount] = useState<number | null>(null);
 
-  useEffect(() => {
-    // Listen for online user count from Realtime Database
-    const statusRef = ref(rtdb, 'status');
-    const unsubscribe = onValue(statusRef, (snapshot) => {
-        if (snapshot.exists()) {
-            const statuses = snapshot.val();
-            const count = Object.values(statuses).filter((status: any) => status.state === 'online').length;
-            setOnlineCount(count);
-        } else {
-            setOnlineCount(0);
-        }
-    }, (error) => {
-        console.error("Error fetching online user count from RTDB:", error);
-        setOnlineCount(0);
-    });
-
-    return () => unsubscribe();
-  }, []);
   
   const getInitialState = (): AppState => {
     if (loading) return 'auth';
@@ -68,6 +47,7 @@ function AppContent() {
     if (initialState !== 'profile_setup' || appState !== 'home') {
       setAppState(initialState);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, user, profile]);
 
 
@@ -100,7 +80,7 @@ function AppContent() {
           case 'policy':
             return <PolicyView onAgree={handleAgree} />;
           case 'auth':
-            return <AuthView onlineCount={onlineCount} />;
+            return <AuthView onlineCount={null} />;
           case 'profile_setup':
             return <ProfileSetupView />;
           case 'home':
@@ -111,7 +91,7 @@ function AppContent() {
               userName={profile?.name || 'User'}
               onOpenProfile={() => setProfileOpen(true)}
               userAvatar={profile?.avatar}
-              onlineCount={onlineCount}
+              onlineCount={null}
             />;
           case 'chat':
             return <MainLayout onNavigateHome={() => navigateTo('home')} onNavigateToMissedConnections={() => navigateTo('missed_connections')} />;
@@ -120,7 +100,7 @@ function AppContent() {
           case 'missed_connections':
             return <MissedConnectionsView onNavigateHome={() => navigateTo('home')} />;
           default:
-            return <AuthView onlineCount={onlineCount} />;
+            return <AuthView onlineCount={null} />;
         }
       })()}
     </>

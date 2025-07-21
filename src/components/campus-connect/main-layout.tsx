@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Bot, MessageSquare, Home, HeartCrack, UserX, Loader2, Video, Gamepad2 } from 'lucide-react';
 import {
   SidebarProvider,
@@ -18,7 +18,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
-import { Dialog } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import ChatView from '@/components/campus-connect/chat-view';
 import AiAssistantView from '@/components/campus-connect/ai-assistant-view';
 import WelcomeView from '@/components/campus-connect/welcome-view';
@@ -28,8 +28,8 @@ import TicTacToe from '@/components/campus-connect/tic-tac-toe';
 import ConnectFour from '@/components/campus-connect/connect-four';
 import DotsAndBoxes from '@/components/campus-connect/dots-and-boxes';
 import { useAuth } from '@/hooks/use-auth';
-import type { User, Chat, FriendRequest, GameState, GameType, Call } from '@/lib/types';
-import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where, getDocs, deleteDoc, addDoc, updateDoc, serverTimestamp, arrayUnion, writeBatch, limit, runTransaction, arrayRemove, Unsubscribe } from 'firebase/firestore';
+import type { User, Chat, FriendRequest, GameState, GameType } from '@/lib/types';
+import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where, getDocs, deleteDoc, addDoc, updateDoc, serverTimestamp, arrayUnion, writeBatch, limit, runTransaction, arrayRemove } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import VideoCallView from './video-call-view';
@@ -53,27 +53,23 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   const [friends, setFriends] = useState<User[]>([]);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [incomingCall, setIncomingCall] = useState<{ callId: string, chat: Chat, from: User } | null>(null);
+  const [incomingCall, setIncomingCall] = useState<{ chat: Chat, from: User } | null>(null);
   const [isVideoCallOpen, setVideoCallOpen] = useState(false);
   const [friendToRemove, setFriendToRemove] = useState<User | null>(null);
-  const [activeCall, setActiveCall] = useState<Call | null>(null);
 
   const { toast } = useToast();
   const db = getFirestore(firebaseApp);
 
   // Listen for friends
   useEffect(() => {
-    if (!user || !profile?.friends || !Array.isArray(profile.friends)) return;
-
+    if (!user || !profile?.friends) return;
     const friendsIds = profile.friends;
     if (friendsIds.length === 0) {
       setFriends([]);
       return;
     }
-
     const usersRef = collection(db, 'users');
     const q = query(usersRef, where('id', 'in', friendsIds));
-
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedFriends: User[] = [];
       snapshot.forEach((doc) => {
@@ -81,16 +77,14 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
       });
       setFriends(fetchedFriends);
     });
-
     return () => unsubscribe();
   }, [user, profile?.friends, db]);
 
   // Listen for friend requests
   useEffect(() => {
-    if (!user?.uid) return;
+    if (!user) return;
     const requestsRef = collection(db, 'friend_requests');
     const q = query(requestsRef, where('toId', '==', user.uid), where('status', '==', 'pending'));
-
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedRequests: FriendRequest[] = [];
       snapshot.forEach((doc) => {
@@ -98,7 +92,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
       });
       setFriendRequests(fetchedRequests);
     });
-
     return () => unsubscribe();
   }, [user, db]);
 
@@ -134,33 +127,23 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     // Listen for incoming calls on the active chat
   useEffect(() => {
     if (activeView.type !== 'chat' || !user || isVideoCallOpen) return;
-    
     const { chat, user: partner } = activeView.data;
-    let unsub: Unsubscribe | null = null;
     const callsRef = collection(db, 'chats', chat.id, 'calls');
     const q = query(callsRef, where('callerId', '!=', user.id), where('answer', '==', null));
 
-    const setupListener = () => {
-        unsub = onSnapshot(q, (snapshot) => {
-        snapshot.docChanges().forEach((change) => {
-            if (change.type === 'added') {
-            const callData = change.doc.data() as Omit<Call, 'id'>;
-            if (callData.offer) {
-                if (!incomingCall) {
-                    setIncomingCall({ callId: change.doc.id, chat, from: partner });
-                }
-            }
-            }
-        });
-        });
-    }
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const callData = change.doc.data();
+          if (callData.offer) {
+              setIncomingCall({ chat, from: partner });
+          }
+        }
+      });
+    });
 
-    setupListener();
-
-    return () => {
-        if (unsub) unsub();
-    };
-  }, [activeView.type, user?.id, db, isVideoCallOpen, incomingCall]);
+    return () => unsubscribe();
+  }, [activeView.type, user?.id, db, isVideoCallOpen]);
 
 
   const addIcebreakerMessage = async (chatId: string, currentUser: User, partnerUser: User) => {
@@ -394,7 +377,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     
     setVideoCallOpen(false);
     setIncomingCall(null);
-    setActiveCall(null);
     setActiveView({ type: 'welcome' });
     setActiveChat(null);
     if (!isSilent) {
@@ -542,58 +524,25 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     await updateDoc(chatRef, { game: null });
   };
 
-  const handleInitiateCall = async () => {
-    if (activeView.type !== 'chat' || !user || isVideoCallOpen) return;
-    const { chat } = activeView.data;
-    const callDocRef = doc(collection(db, 'chats', chat.id, 'calls'));
-    
-    setActiveCall({
-      id: callDocRef.id,
-      callerId: user.id,
-    });
+  const handleInitiateCall = () => {
+    if (activeView.type !== 'chat' || isVideoCallOpen) return;
     setVideoCallOpen(true);
   };
   
-  const handleAnswerCall = async () => {
+  const handleAnswerCall = () => {
     if (!incomingCall) return;
-    const { callId, from } = incomingCall;
-    
-    // Create an answer document in Firestore so caller knows we accepted.
-    const callDocRef = doc(db, 'chats', incomingCall.chat.id, 'calls', callId);
-    await updateDoc(callDocRef, { answered: true }).catch(e => console.error("Error marking call as answered:", e));
-    
-    setActiveCall({
-      id: callId,
-      callerId: from.id,
-    });
-    setIncomingCall(null);
     setVideoCallOpen(true);
+    setIncomingCall(null);
   };
 
-  const handleDeclineCall = async () => {
-    if (!incomingCall) return;
-    const callDocRef = doc(db, 'chats', incomingCall.chat.id, 'calls', incomingCall.callId);
-    await deleteDoc(callDocRef);
+  const handleDeclineCall = () => {
+    // TODO: Send a decline signal to the caller via Firestore if needed
     setIncomingCall(null);
     toast({
       title: 'Call Declined',
       description: 'You declined the call.',
     });
   };
-
-  const handlePageUnload = useCallback((e: BeforeUnloadEvent) => {
-    if (activeChat && !activeChat.isFriendChat) {
-      // This is a synchronous operation, which is not ideal but necessary for beforeunload
-      handleLeaveChat(true);
-    }
-  }, [activeChat]);
-
-  useEffect(() => {
-    window.addEventListener('beforeunload', handlePageUnload);
-    return () => {
-      window.removeEventListener('beforeunload', handlePageUnload);
-    };
-  }, [handlePageUnload]);
 
   if (!user || !profile) {
     return (
@@ -618,18 +567,14 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   };
 
   const renderView = () => {
-    if (isVideoCallOpen && activeView.type === 'chat' && activeCall) {
+    if (isVideoCallOpen && activeView.type === 'chat') {
       return (
           <VideoCallView
             user={activeView.data.user}
             currentUser={profile}
             chat={activeView.data.chat}
-            call={activeCall}
             onOpenChange={(open) => {
-                if(!open) { // This is called on hangup
-                    setVideoCallOpen(false);
-                    setActiveCall(null);
-                }
+                if(!open) setVideoCallOpen(false);
             }}
           />
       )
@@ -676,7 +621,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={!!incomingCall && !isVideoCallOpen}>
+      <AlertDialog open={!!incomingCall}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Incoming Call</AlertDialogTitle>
@@ -704,7 +649,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
             <Button variant="ghost" size="icon" className="h-8 w-8 bg-primary text-primary-foreground rounded-full">
               <MessageSquare className="h-4 w-4" />
             </Button>
-            <h1 className="text-lg font-semibold text-foreground">CampusConnect</h1>
+            <h1 class="text-lg font-semibold text-foreground">CampusConnect</h1>
           </div>
         </SidebarHeader>
         <SidebarContent>
@@ -762,7 +707,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
               {friendRequests.length > 0 && (
                 <SidebarGroup>
                   <SidebarMenu>
-                    <p className="px-2 text-xs font-semibold text-muted-foreground mb-2">Friend Requests</p>
+                    <p class="px-2 text-xs font-semibold text-muted-foreground mb-2">Friend Requests</p>
                     {friendRequests.map(req => (
                       <SidebarMenuItem key={req.id}>
                         <div className="flex items-center w-full justify-between p-2">
@@ -785,7 +730,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
               )}
               <SidebarGroup>
                 <SidebarMenu>
-                  <p className="px-2 text-xs font-semibold text-muted-foreground mb-2">Friends</p>
+                  <p class="px-2 text-xs font-semibold text-muted-foreground mb-2">Friends</p>
                   {friends.map(friend => (
                     <SidebarMenuItem key={friend.id}>
                       <SidebarMenuButton
@@ -796,14 +741,14 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
                         <Avatar className="h-6 w-6 relative flex items-center justify-center">
                           <AvatarImage src={friend.avatar} alt={friend.name} />
                           <AvatarFallback>{friend.name.charAt(0)}</AvatarFallback>
-                          {friend.online && <span className="absolute bottom-0 right-0 block h-2 w-2 rounded-full bg-green-500 ring-2 ring-sidebar-background" />}
+                          {friend.online && <span class="absolute bottom-0 right-0 block h-2 w-2 rounded-full bg-green-500 ring-2 ring-sidebar-background" />}
                         </Avatar>
                         <span>{friend.name}</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   ))}
                   {friends.length === 0 && (
-                    <p className="px-2 text-xs text-muted-foreground">No friends yet.</p>
+                    <p class="px-2 text-xs text-muted-foreground">No friends yet.</p>
                   )}
                 </SidebarMenu>
               </SidebarGroup>

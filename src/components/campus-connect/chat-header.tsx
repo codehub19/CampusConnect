@@ -56,8 +56,8 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, onGoTo
                     <AvatarFallback>{user.name.charAt(0)}</AvatarFallback>
                 </Avatar>
                 <div className="min-w-0">
-                    <h2 className="font-semibold text-lg truncate">{user.name}</h2>
-                    <p className="text-sm text-muted-foreground">{user.online ? 'Online' : 'Offline'}</p>
+                    <h2 class="font-semibold text-lg truncate">{user.name}</h2>
+                    <p class="text-sm text-muted-foreground">{user.online ? 'Online' : 'Offline'}</p>
                 </div>
             </div>
             <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
@@ -135,7 +135,7 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, onGoTo
                             <Menu />
                         </SidebarTrigger>
                     </div>
-                    <h2 className="font-semibold text-lg">AI Assistant</h2>
+                    <h2 class="font-semibold text-lg">AI Assistant</h2>
                 </div>
                  <Button onClick={onGoToWelcome} variant="outline" size="sm">
                     End Chat
@@ -152,7 +152,7 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, onGoTo
                       <Menu />
                   </SidebarTrigger>
               </div>
-              <h2 className="font-semibold text-lg">Welcome</h2>
+              <h2 class="font-semibold text-lg">Welcome</h2>
             </div>
           </>
         );
