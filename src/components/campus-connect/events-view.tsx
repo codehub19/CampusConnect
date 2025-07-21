@@ -9,7 +9,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import EventCard from './event-card';
 import type { CampusEvent } from '@/lib/types';
 import CreateEventView from './create-event-view';
-import { getFirestore, collection, query, orderBy, onSnapshot } from 'firebase/firestore';
+import { getFirestore, collection, query, orderBy, onSnapshot, where } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
 
@@ -42,7 +42,11 @@ export default function EventsView({ onNavigateHome }: EventsViewProps) {
 
   useEffect(() => {
     const eventsRef = collection(db, 'campus_events');
-    const q = query(eventsRef, orderBy('date', 'asc'));
+    const q = query(
+        eventsRef, 
+        where('date', '>=', new Date()),
+        orderBy('date', 'asc')
+    );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {
       const fetchedEvents: CampusEvent[] = [];
@@ -67,16 +71,20 @@ export default function EventsView({ onNavigateHome }: EventsViewProps) {
     <>
     <CreateEventView isOpen={isCreateEventOpen} onOpenChange={setCreateEventOpen} />
     <div className="flex flex-col h-screen bg-background text-foreground">
-      <header className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-background/80 backdrop-blur-sm z-10">
-        <Button variant="ghost" size="icon" onClick={onNavigateHome}>
-          <ArrowLeft className="h-5 w-5" />
-          <span className="sr-only">Back to Home</span>
-        </Button>
-        <h1 className="text-xl font-bold">Campus Events</h1>
-        <Button onClick={handleCreateEventClick} disabled={profile?.isGuest}>
-          <PlusCircle className="mr-2 h-4 w-4" />
-          Create Event
-        </Button>
+      <header className="flex items-center p-4 border-b border-border sticky top-0 bg-background/80 backdrop-blur-sm z-10">
+        <div className="w-1/3">
+            <Button variant="ghost" size="icon" onClick={onNavigateHome}>
+                <ArrowLeft className="h-5 w-5" />
+                <span className="sr-only">Back to Home</span>
+            </Button>
+        </div>
+        <h1 className="text-xl font-bold w-1/3 text-center">Campus Events</h1>
+        <div className="w-1/3 flex justify-end">
+            <Button onClick={handleCreateEventClick} disabled={profile?.isGuest} size="sm">
+                <PlusCircle className="mr-2 h-4 w-4" />
+                Create
+            </Button>
+        </div>
       </header>
       <main className="flex-1 overflow-hidden">
         <ScrollArea className="h-full">
@@ -90,7 +98,7 @@ export default function EventsView({ onNavigateHome }: EventsViewProps) {
                 ))
               ) : (
                 <div className="text-center py-20 col-span-full">
-                  <p className="text-lg font-semibold">No events scheduled.</p>
+                  <p className="text-lg font-semibold">No upcoming events scheduled.</p>
                   <p className="text-muted-foreground">Check back soon or create the first event!</p>
                 </div>
               )}

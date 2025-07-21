@@ -189,16 +189,20 @@ export default function MissedConnectionsView({ onNavigateHome }: MissedConnecti
         onOpenChange={setCreatePostOpen}
       />
       <div className="flex flex-col h-screen bg-background text-foreground">
-        <header className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-background/80 backdrop-blur-sm z-10">
-          <Button variant="ghost" size="icon" onClick={onNavigateHome}>
-            <ArrowLeft className="h-5 w-5" />
-            <span className="sr-only">Back to Home</span>
-          </Button>
-          <h1 className="text-xl font-bold">Missed Connections</h1>
-          <Button onClick={() => setCreatePostOpen(true)}>
-            <PlusCircle className="mr-2 h-4 w-4" />
-            Create Post
-          </Button>
+        <header className="flex items-center p-4 border-b border-border sticky top-0 bg-background/80 backdrop-blur-sm z-10">
+          <div className="w-1/3">
+            <Button variant="ghost" size="icon" onClick={onNavigateHome}>
+              <ArrowLeft className="h-5 w-5" />
+              <span className="sr-only">Back to Home</span>
+            </Button>
+          </div>
+          <h1 className="text-xl font-bold w-1/3 text-center truncate">Missed Connections</h1>
+          <div className="w-1/3 flex justify-end">
+            <Button onClick={() => setCreatePostOpen(true)} size="sm">
+              <PlusCircle className="mr-2 h-4 w-4" />
+              Create
+            </Button>
+          </div>
         </header>
         <main className="flex-1 overflow-hidden">
           <ScrollArea className="h-full">

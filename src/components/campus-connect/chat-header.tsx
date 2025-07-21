@@ -72,11 +72,11 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, onGoTo
                     {isFriend ? <UserCheck className="h-5 w-5 text-green-500" /> : <UserPlus className="h-5 w-5" /> }
                     <span className="sr-only">Add Friend</span>
                 </Button>
-                <Button variant="ghost" size="icon" className="rounded-full" onClick={onStartGame}>
+                <Button variant="ghost" size="icon" className="rounded-full hidden sm:inline-flex" onClick={onStartGame}>
                     <Gamepad2 className="h-5 w-5" />
                     <span className="sr-only">Play Game</span>
                 </Button>
-                <Button variant="ghost" size="icon" className="rounded-full" onClick={onVideoCall}>
+                <Button variant="ghost" size="icon" className="rounded-full hidden sm:inline-flex" onClick={onVideoCall}>
                     <Video className="h-5 w-5" />
                     <span className="sr-only">Video Call</span>
                 </Button>
@@ -96,6 +96,14 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, onGoTo
                         {isFriend ? <UserCheck className="mr-2 h-4 w-4 text-green-500" /> : <UserPlus className="mr-2 h-4 w-4" /> }
                         <span>{isFriend ? "Already friends" : "Add friend"}</span>
                     </DropdownMenuItem>
+                    <DropdownMenuItem className="sm:hidden" onSelect={onStartGame}>
+                        <Gamepad2 className="mr-2 h-4 w-4" />
+                        <span>Play Game</span>
+                    </DropdownMenuItem>
+                    <DropdownMenuItem className="sm:hidden" onSelect={onVideoCall}>
+                        <Video className="mr-2 h-4 w-4" />
+                        <span>Video Call</span>
+                    </DropdownMenuItem>
                     {!isFriend && (
                         <DropdownMenuItem 
                             className="text-destructive focus:text-destructive-foreground focus:bg-destructive sm:hidden"
@@ -105,7 +113,7 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, onGoTo
                           <span>Leave Chat</span>
                         </DropdownMenuItem>
                     )}
-                    <DropdownMenuSeparator className="sm:hidden" />
+                    <DropdownMenuSeparator />
                     {isFriend && (
                         <DropdownMenuItem 
                             className="text-destructive focus:text-destructive-foreground focus:bg-destructive"
@@ -149,7 +157,7 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, onGoTo
                     </div>
                     <h2 className="font-semibold text-lg">AI Assistant</h2>
                 </div>
-                 <Button onClick={onLeaveChat} variant="outline" size="sm">
+                 <Button onClick={onGoToWelcome} variant="outline" size="sm">
                     End Chat
                 </Button>
             </>
