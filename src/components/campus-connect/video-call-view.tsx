@@ -15,7 +15,7 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import type { User, Chat } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { getFirestore, doc, updateDoc, getDoc, onSnapshot, collection, addDoc, getDocs, writeBatch, Unsubscribe } from 'firebase/firestore';
+import { getFirestore, doc, updateDoc, getDoc, onSnapshot, collection, addDoc, getDocs, writeBatch, Unsubscribe, DocumentReference } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 
 interface VideoCallViewProps {
@@ -43,18 +43,19 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const pc = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
-  const remoteStreamRef = useRef<MediaStream | null>(null);
 
   const { toast } = useToast();
   const db = getFirestore(firebaseApp);
   
-  const hangUp = async () => {
+  // Ref to prevent multiple hangup calls
+  const isHangingUp = useRef(false);
+
+  const hangUp = async (politely = false) => {
+    if (isHangingUp.current) return;
+    isHangingUp.current = true;
+    
     if (pc.current) {
-      pc.current.getSenders().forEach(sender => {
-        if (sender.track) {
-          sender.track.stop();
-        }
-      });
+      pc.current.getSenders().forEach(sender => sender.track?.stop());
       pc.current.close();
       pc.current = null;
     }
@@ -64,29 +65,23 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
       localStreamRef.current = null;
     }
     
-    if (remoteStreamRef.current) {
-        remoteStreamRef.current.getTracks().forEach(track => track.stop());
-        remoteStreamRef.current = null;
-    }
-
-    if(chat.id) {
+    // Only the user initiating the hangup should clear the DB docs
+    if (politely && chat.id) {
        const chatRef = doc(db, 'chats', chat.id);
        const chatSnap = await getDoc(chatRef);
        if (chatSnap.exists() && chatSnap.data().call) {
          await updateDoc(chatRef, { call: null });
-       }
 
-       const callCandidates = collection(chatRef, 'callCandidates');
-       const answerCandidates = collection(chatRef, 'answerCandidates');
-       
-       const callCandidatesSnapshot = await getDocs(callCandidates);
-       const answerCandidatesSnapshot = await getDocs(answerCandidates);
+         // Clean up ICE candidate subcollections
+         const callCandidates = collection(chatRef, 'callCandidates');
+         const answerCandidates = collection(chatRef, 'answerCandidates');
+         const callCandidatesSnapshot = await getDocs(callCandidates);
+         const answerCandidatesSnapshot = await getDocs(answerCandidates);
 
-       if (!callCandidatesSnapshot.empty || !answerCandidatesSnapshot.empty) {
-            const batch = writeBatch(db);
-            callCandidatesSnapshot.forEach(doc => batch.delete(doc.ref));
-            answerCandidatesSnapshot.forEach(doc => batch.delete(doc.ref));
-            await batch.commit();
+         const batch = writeBatch(db);
+         callCandidatesSnapshot.forEach(doc => batch.delete(doc.ref));
+         answerCandidatesSnapshot.forEach(doc => batch.delete(doc.ref));
+         await batch.commit();
        }
     }
     
@@ -94,53 +89,34 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
   };
   
   useEffect(() => {
-    const unsubscribes: Unsubscribe[] = [];
-    pc.current = new RTCPeerConnection(servers);
+    let unsubscribes: Unsubscribe[] = [];
+    isHangingUp.current = false;
     
-    const startStreams = async () => {
+    const setupCall = async () => {
+        pc.current = new RTCPeerConnection(servers);
+
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
             localStreamRef.current = stream;
             
-            stream.getTracks().forEach(track => {
-                pc.current?.addTrack(track, stream);
-            });
+            stream.getTracks().forEach(track => pc.current?.addTrack(track, stream));
             
-            if (localVideoRef.current) {
-                localVideoRef.current.srcObject = stream;
-            }
+            if (localVideoRef.current) localVideoRef.current.srcObject = stream;
             setHasCameraPermission(true);
 
         } catch (error: any) {
             console.error('Error accessing media devices:', error);
             setHasCameraPermission(false);
-             if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
-                toast({
-                    variant: 'destructive',
-                    title: 'No Camera/Mic Found',
-                    description: 'Could not find a camera or microphone. Please check your hardware.',
-                });
-            } else {
-                 toast({
-                    variant: 'destructive',
-                    title: 'Media Access Denied',
-                    description: 'Please enable camera & mic permissions in your browser settings.',
-                });
-            }
-            hangUp();
+            const title = error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError' ? 'No Camera/Mic Found' : 'Media Access Denied';
+            const description = error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError' ? 'Could not find a camera or microphone.' : 'Please enable camera & mic permissions.';
+            toast({ variant: 'destructive', title, description });
+            hangUp(true);
             return;
         }
 
-        remoteStreamRef.current = new MediaStream();
-        pc.current.ontrack = (event) => {
-            event.streams[0].getTracks().forEach(track => {
-                remoteStreamRef.current?.addTrack(track);
-            });
-        };
-        
-        if (remoteVideoRef.current) {
-            remoteVideoRef.current.srcObject = remoteStreamRef.current;
-        }
+        const remoteStream = new MediaStream();
+        pc.current.ontrack = event => event.streams[0].getTracks().forEach(track => remoteStream.addTrack(track));
+        if(remoteVideoRef.current) remoteVideoRef.current.srcObject = remoteStream;
 
         const chatRef = doc(db, 'chats', chat.id);
         const callCandidates = collection(chatRef, 'callCandidates');
@@ -155,11 +131,9 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
         };
 
         if (isCaller) {
-          const remoteCandidatesUnsub = onSnapshot(answerCandidates, (snapshot) => {
-            snapshot.docChanges().forEach((change) => {
-              if (change.type === 'added') {
-                pc.current?.addIceCandidate(new RTCIceCandidate(change.doc.data()));
-              }
+          const remoteCandidatesUnsub = onSnapshot(answerCandidates, snapshot => {
+            snapshot.docChanges().forEach(change => {
+              if (change.type === 'added') pc.current?.addIceCandidate(new RTCIceCandidate(change.doc.data()));
             });
           });
           unsubscribes.push(remoteCandidatesUnsub);
@@ -177,55 +151,46 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
           unsubscribes.push(callUnsub);
 
         } else { // Is Answerer
-          const remoteCandidatesUnsub = onSnapshot(callCandidates, (snapshot) => {
-              snapshot.docChanges().forEach((change) => {
-                if (change.type === 'added') {
-                  pc.current?.addIceCandidate(new RTCIceCandidate(change.doc.data()));
-                }
+          const remoteCandidatesUnsub = onSnapshot(callCandidates, snapshot => {
+              snapshot.docChanges().forEach(change => {
+                if (change.type === 'added') pc.current?.addIceCandidate(new RTCIceCandidate(change.doc.data()));
               });
           });
           unsubscribes.push(remoteCandidatesUnsub);
 
-          if (chat.call?.offer) {
-            await pc.current.setRemoteDescription(new RTCSessionDescription(chat.call.offer));
-            
+          const offer = chat.call?.offer;
+          if (offer) {
+            await pc.current.setRemoteDescription(new RTCSessionDescription(offer));
             const answerDescription = await pc.current.createAnswer();
             await pc.current.setLocalDescription(answerDescription);
-
             await updateDoc(chatRef, { 'call.answer': answerDescription.toJSON() });
           }
         }
     };
-
-    startStreams();
-
+    
+    setupCall();
+    
     const chatRef = doc(db, 'chats', chat.id);
     const chatUnsub = onSnapshot(chatRef, (docSnap) => {
-        const data = docSnap.data();
-        if (!data?.call) {
-             if(pc.current && (pc.current.connectionState === 'connected' || pc.current.connectionState === 'connecting')){
-                hangUp();
-                toast({ title: 'Call Ended', description: `${user.name} has ended the call.` });
-            }
+        if (!docSnap.data()?.call && !isHangingUp.current) {
+            toast({ title: 'Call Ended', description: `${user.name} has ended the call.` });
+            hangUp(false); // Don't re-delete docs
         }
     });
     unsubscribes.push(chatUnsub);
 
-
     return () => {
         unsubscribes.forEach(unsub => unsub());
-        hangUp();
+        hangUp(true); // User is closing the dialog, so be polite
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+
   const toggleMediaStream = (type: 'video' | 'audio', state: boolean) => {
-    if (localStreamRef.current) {
-      const track = type === 'video' ? localStreamRef.current.getVideoTracks()[0] : localStreamRef.current.getAudioTracks()[0];
-      if (track) {
-        track.enabled = state;
-      }
-    }
+    localStreamRef.current?.getTracks().forEach(track => {
+        if (track.kind === type) track.enabled = state;
+    });
   };
 
   const handleToggleCamera = () => {
@@ -258,7 +223,7 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
         
         {/* Local Video (Picture-in-Picture) */}
         <div className="absolute top-4 right-4 w-32 h-48 sm:w-40 sm:h-56 rounded-lg overflow-hidden border-2 border-border bg-card shadow-lg">
-             <video ref={localVideoRef} className={cn("w-full h-full object-cover", { 'hidden': !isCameraOn || hasCameraPermission === false })} autoPlay muted playsInline />
+             <video ref={localVideoRef} className={cn("w-full h-full object-cover", { 'transform -scale-x-100': true, 'hidden': !isCameraOn || hasCameraPermission === false })} autoPlay muted playsInline />
              {(!isCameraOn || hasCameraPermission === false) && (
                <div className="w-full h-full bg-card flex items-center justify-center flex-col gap-4 p-2">
                  <Avatar className="h-16 w-16 sm:h-20 sm:w-20">
@@ -304,7 +269,7 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
           variant="destructive"
           size="icon"
           className="rounded-full h-12 w-12 sm:h-14 sm:w-14"
-          onClick={hangUp}
+          onClick={() => hangUp(true)}
         >
           <PhoneOff className="h-6 w-6" />
         </Button>
@@ -312,3 +277,5 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
     </DialogContent>
   );
 }
+
+    
