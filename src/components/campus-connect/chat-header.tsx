@@ -133,7 +133,7 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, onGoTo
                   </DropdownMenuContent>
                 </DropdownMenu>
                 {isFriend ? (
-                    <Button onClick={onGoToWelcome} variant="outline" size="sm" className="ml-2 hidden sm:inline-flex">
+                    <Button onClick={onFindChat} variant="outline" size="sm" className="ml-2 hidden sm:inline-flex">
                         <Search className="mr-2 h-4 w-4" />
                         Find Chat
                     </Button>
@@ -174,19 +174,6 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, onGoTo
               </div>
               <h2 className="font-semibold text-lg">Welcome</h2>
             </div>
-            <Button onClick={onFindChat} disabled={isSearching}>
-              {isSearching ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Searching...
-                </>
-              ) : (
-                <>
-                  <MessageSquarePlus className="mr-2 h-4 w-4" />
-                  Find New Chat
-                </>
-              )}
-            </Button>
           </>
         );
     }
@@ -198,3 +185,5 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, onGoTo
     </div>
   );
 }
+
+    

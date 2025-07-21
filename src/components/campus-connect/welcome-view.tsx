@@ -15,11 +15,11 @@ export default function WelcomeView({ onFindChat, isSearching }: WelcomeViewProp
       <MessageSquareDashed className="h-16 w-16 text-muted-foreground mb-4" />
       <h2 className="text-2xl font-bold tracking-tight">Welcome to CampusConnect</h2>
       <p className="text-muted-foreground mb-6 max-w-sm">Select a friend from the sidebar to start a conversation, or find a new person to chat with.</p>
-      <Button onClick={onFindChat} disabled={isSearching}>
+      <Button onClick={onFindChat} disabled={isSearching} size="lg">
         {isSearching ? (
           <>
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            Searching...
+            Searching for new chat...
           </>
         ) : (
           <>

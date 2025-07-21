@@ -191,25 +191,31 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
             if(isSearching) {
                 const chatsRef = collection(db, 'chats');
                 const q = query(chatsRef, where('userIds', 'array-contains', user.uid), where('isFriendChat', '==', false), orderBy('lastMessageTimestamp', 'desc'), limit(1));
-                const chatSnaps = await getDocs(q);
-                if (!chatSnaps.empty) {
-                    const chatDoc = chatSnaps.docs[0];
-                    const chatData = { id: chatDoc.id, ...chatDoc.data() } as Chat;
-                    const partnerId = chatData.userIds.find(id => id !== user.uid);
+                
+                try {
+                    const chatSnaps = await getDocs(q);
+                    if (!chatSnaps.empty) {
+                        const chatDoc = chatSnaps.docs[0];
+                        const chatData = { id: chatDoc.id, ...chatDoc.data() } as Chat;
+                        const partnerId = chatData.userIds.find(id => id !== user.uid);
 
-                    // Check if chat is recent enough to be a new match
-                    const now = Timestamp.now();
-                    const lastMessageTime = chatData.lastMessageTimestamp || new Timestamp(0,0);
-                    if(now.seconds - lastMessageTime.seconds < 15) {
-                        setIsSearching(false);
-                        if (partnerId) {
-                            const partnerSnap = await getDoc(doc(db, 'users', partnerId));
-                            if (partnerSnap.exists()) {
-                                setActiveChat(chatData);
-                                setActiveView({ type: 'chat', data: { user: partnerSnap.data() as User, chat: chatData } });
+                        // Check if chat is recent enough to be a new match
+                        const now = Timestamp.now();
+                        const lastMessageTime = chatData.lastMessageTimestamp || new Timestamp(0,0);
+                        if(now.seconds - lastMessageTime.seconds < 15) {
+                            setIsSearching(false);
+                            if (partnerId) {
+                                const partnerSnap = await getDoc(doc(db, 'users', partnerId));
+                                if (partnerSnap.exists()) {
+                                    setActiveChat(chatData);
+                                    setActiveView({ type: 'chat', data: { user: partnerSnap.data() as User, chat: chatData } });
+                                }
                             }
                         }
                     }
+                } catch(error) {
+                    // This can fail if the composite index is not created yet. We can ignore it.
+                    console.warn("Query for matched chat failed, likely due to missing index. This is safe to ignore as the primary match mechanism will still work.");
                 }
             }
           }
@@ -325,14 +331,9 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     setActiveChat(null);
   };
 
-  const handleFindChat = async () => {
+  const findNewChat = async () => {
     if (!user || !profile) return;
     
-    // Force reset state before finding a new chat
-    if (activeView.type !== 'welcome' || activeChat) {
-      handleLeaveChat(true); // Silently leave current chat
-    }
-
     if (isSearching) {
         setIsSearching(false);
         await deleteDoc(doc(db, 'waiting_users', user.uid));
@@ -346,35 +347,28 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     const waitingUsersRef = collection(db, 'waiting_users');
     const blockedUsers = profile.blockedUsers || [];
     
-    // Get all waiting users (except myself)
-    const waitingQuery = query(waitingUsersRef, where('id', '!=', user.uid));
-    const waitingSnapshot = await getDocs(waitingQuery);
+    // Query for potential partners
+    const q = query(waitingUsersRef, where('id', '!=', user.uid));
+    const waitingSnapshot = await getDocs(q);
+
     const potentialPartnerIds = waitingSnapshot.docs.map(d => d.id);
+    let potentialPartners: User[] = [];
 
-    let potentialPartners = [];
     if (potentialPartnerIds.length > 0) {
-        // Batch fetch profiles of potential partners
-        const usersQuery = query(collection(db, 'users'), where('id', 'in', potentialPartnerIds));
-        const usersSnapshot = await getDocs(usersQuery);
-        const userProfiles: { [key: string]: User } = {};
-        usersSnapshot.forEach(doc => {
-            userProfiles[doc.id] = doc.data() as User;
-        });
-
-        // Filter out blocked users
-        for (const waitingDoc of waitingSnapshot.docs) {
-            const partnerProfile = userProfiles[waitingDoc.id];
-            if (partnerProfile && !blockedUsers.includes(partnerProfile.id) && !(partnerProfile.blockedUsers || []).includes(user.uid)) {
-                potentialPartners.push(waitingDoc.data());
-            }
+      const usersQuery = query(collection(db, 'users'), where('id', 'in', potentialPartnerIds));
+      const usersSnapshot = await getDocs(usersQuery);
+      usersSnapshot.forEach(doc => {
+        const partnerProfile = doc.data() as User;
+        if (!blockedUsers.includes(partnerProfile.id) && !(partnerProfile.blockedUsers || []).includes(user.uid)) {
+          potentialPartners.push(partnerProfile);
         }
+      });
     }
 
     if (potentialPartners.length > 0) {
       // Found a partner, try to match in a transaction
       const partner = potentialPartners[0];
       const partnerWaitingRef = doc(db, 'waiting_users', partner.id);
-      const myWaitingRef = doc(db, 'waiting_users', user.uid);
       
       try {
         await runTransaction(db, async (transaction) => {
@@ -397,21 +391,20 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
           
           transaction.set(newChatRef, newChat);
           
-          // Atomically remove both users from waiting list
-          transaction.delete(partnerWaitingRef);
+          // Atomically update partner's waiting doc with the chat ID
+          transaction.update(partnerWaitingRef, { matchedChatId: newChatRef.id });
           
-          // Set my active view directly
-          const partnerSnap = await getDoc(doc(db, 'users', partner.id));
-          if (partnerSnap.exists()) {
-              setActiveChat({ id: newChatRef.id, ...newChat });
-              setActiveView({ type: 'chat', data: { user: partnerSnap.data() as User, chat: { id: newChatRef.id, ...newChat } } });
-          }
+          // Set my active view directly and stop searching
+          setIsSearching(false);
+          setActiveChat({ id: newChatRef.id, ...newChat });
+          setActiveView({ type: 'chat', data: { user: partner, chat: { id: newChatRef.id, ...newChat } } });
         });
-        setIsSearching(false);
+        
+        // No need for addIcebreakerMessage here, that's for friend chats
       } catch (error) {
         console.warn("Match transaction failed (likely a race condition), trying again...", error);
         // Short delay before retrying
-        setTimeout(handleFindChat, 1000);
+        setTimeout(findNewChat, 1000 + Math.random() * 1000);
       }
     } else {
         // No partners found, add myself to the waiting list
@@ -671,7 +664,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         return <AiAssistantView />;
       case 'welcome':
       default:
-        return <WelcomeView onFindChat={handleFindChat} isSearching={isSearching}/>;
+        return <WelcomeView onFindChat={findNewChat} isSearching={isSearching}/>;
     }
   };
   
@@ -841,7 +834,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         <div className="h-screen flex flex-col bg-card">
             <ChatHeader 
               activeView={activeView} 
-              onFindChat={handleFindChat} 
+              onFindChat={() => setActiveView({ type: 'welcome' })} 
               onLeaveChat={() => handleLeaveChat(false)}
               onGoToWelcome={() => setActiveView({ type: 'welcome' })}
               isSearching={isSearching}
@@ -861,3 +854,5 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     </SidebarProvider>
   );
 }
+
+    
