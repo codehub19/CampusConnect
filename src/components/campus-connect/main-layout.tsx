@@ -165,18 +165,24 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
       }
       const chatData = { id: docSnap.id, ...docSnap.data() } as Chat;
       
-      setActiveChat(chatData); // Keep the active chat state updated
+      // Update the active chat, which also contains game state
+      setActiveChat(chatData);
       
-      // Handle partner leaving
+      // Handle partner leaving a non-friend chat
       const partnerUserData = chatData.usersData?.[partner.id];
       if (partnerUserData && !partnerUserData.online && !chatData.isFriendChat) {
         toast({ title: "Partner Left", description: `${partner.name} has left the chat.` });
         handleLeaveChat(true); // silent leave, just update UI
       }
       
-      if (chatData.call && chatData.call.callerId !== user?.uid && !isVideoCallOpen) {
-          setIncomingCall({ chat: chatData, from: partner });
+      // Handle incoming calls
+      if (chatData.call?.status === 'ringing' && chatData.call.callerId !== user?.uid) {
+          // Prevent showing dialog if already in a call or dialog is open
+          if (!isVideoCallOpen && !incomingCall) {
+            setIncomingCall({ chat: chatData, from: partner });
+          }
       } else if (!chatData.call && incomingCall?.chat.id === chatData.id) {
+          // Partner cancelled the call before it was answered
           setIncomingCall(null);
       }
     });
@@ -198,7 +204,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
       const messagesRef = collection(db, "chats", chatId, "messages");
       await addDoc(messagesRef, {
           senderId: 'ai-assistant',
-          text: result.icebreaker,
+          content: { type: 'text', value: result.icebreaker },
           timestamp: serverTimestamp(),
       });
     } catch (error) {
@@ -482,8 +488,25 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
       await updateDoc(chatRef, { game: null });
   };
   
-  const handleAnswerCall = () => {
+  const handleInitiateCall = async () => {
+      if (activeView.type !== 'chat' || !user) return;
+      const { chat } = activeView.data;
+      const chatRef = doc(db, 'chats', chat.id);
+      await updateDoc(chatRef, {
+          call: {
+              callerId: user.uid,
+              status: 'ringing',
+              offer: null,
+              answer: null,
+          }
+      });
+      setVideoCallOpen(true);
+  };
+
+  const handleAnswerCall = async () => {
     if (!incomingCall) return;
+    const chatRef = doc(db, 'chats', incomingCall.chat.id);
+    await updateDoc(chatRef, { 'call.status': 'active' });
     setActiveChat(incomingCall.chat);
     setActiveView({ type: 'chat', data: { user: incomingCall.from, chat: incomingCall.chat } });
     setVideoCallOpen(true);
@@ -521,13 +544,13 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   };
 
   const renderView = () => {
-    if (isVideoCallOpen && activeView.type === 'chat') {
+    if (isVideoCallOpen && activeView.type === 'chat' && activeChat?.call) {
         return (
             <Dialog open={isVideoCallOpen} onOpenChange={setVideoCallOpen}>
               <VideoCallView 
                 user={activeView.data.user} 
                 currentUser={profile} 
-                chat={activeView.data.chat}
+                chat={activeChat}
                 onOpenChange={setVideoCallOpen} 
               />
             </Dialog>
@@ -730,7 +753,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
               onRemoveFriend={(activeView.type === 'chat') ? () => setFriendToRemove(activeView.data.user) : () => {}}
               onBlockUser={(activeView.type === 'chat') ? () => handleBlockUser(activeView.data.user.id) : () => {}}
               onStartGame={() => setGameCenterOpen(true)}
-              onVideoCall={() => setVideoCallOpen(true)}
+              onVideoCall={handleInitiateCall}
               isFriend={isFriend}
               isGuest={profile.isGuest || ((activeView.type === 'chat') && activeView.data.user.isGuest)}
             />

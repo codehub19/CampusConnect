@@ -119,9 +119,12 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
             remoteVideoRef.current.srcObject = remoteStream;
         }
 
+        const chatRef = doc(db, 'chats', chat.id);
+        const callCandidates = collection(chatRef, 'callCandidates');
+        const answerCandidates = collection(chatRef, 'answerCandidates');
+
         // --- Caller logic ---
-        if (chat.call && chat.call.callerId === currentUser.id) {
-            const callCandidates = collection(db, 'chats', chat.id, 'callCandidates');
+        if (chat.call?.callerId === currentUser.id) {
             pc.current.onicecandidate = event => {
                 event.candidate && addDoc(callCandidates, event.candidate.toJSON());
             };
@@ -129,12 +132,13 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
             const offerDescription = await pc.current.createOffer();
             await pc.current.setLocalDescription(offerDescription);
             
-            await updateDoc(doc(db, 'chats', chat.id), { call: { ...chat.call, offer: offerDescription.toJSON() }});
+            await updateDoc(chatRef, { 
+              'call.offer': offerDescription.toJSON()
+            });
         }
         
         // --- Answerer logic ---
-        if (chat.call && chat.call.callerId !== currentUser.id && chat.call.offer) {
-            const answerCandidates = collection(db, 'chats', chat.id, 'answerCandidates');
+        if (chat.call?.callerId !== currentUser.id && chat.call?.offer) {
             pc.current.onicecandidate = event => {
                 event.candidate && addDoc(answerCandidates, event.candidate.toJSON());
             };
@@ -144,7 +148,9 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
             const answerDescription = await pc.current.createAnswer();
             await pc.current.setLocalDescription(answerDescription);
 
-            await updateDoc(doc(db, 'chats', chat.id), { call: { ...chat.call, answer: answerDescription.toJSON() } });
+            await updateDoc(chatRef, { 
+              'call.answer': answerDescription.toJSON() 
+            });
         }
     };
 
@@ -154,7 +160,7 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
     const unsubscribe = onSnapshot(chatRef, (docSnap) => {
         const data = docSnap.data();
         if (!data?.call) {
-            if(pc.current?.connectionState === 'connected'){
+            if(pc.current?.connectionState === 'connected' || pc.current?.connectionState === 'connecting'){
                 hangUp();
                 toast({ title: 'Call Ended', description: `${user.name} has ended the call.` });
             }

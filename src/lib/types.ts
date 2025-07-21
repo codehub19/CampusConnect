@@ -72,10 +72,11 @@ export interface Chat {
   game: GameState | null;
   lastMessageTimestamp?: any;
   call?: {
+    callerId: string;
+    status: 'ringing' | 'active';
     offer: any;
     answer?: any;
-    callerId: string;
-  }
+  } | null;
   isFriendChat?: boolean;
   usersData?: {
       [key: string]: {
