@@ -68,11 +68,13 @@ export default function TicTacToe({ game: gameProp, currentUserId, onAcceptGame,
     try {
       await runTransaction(db, async (transaction) => {
         const freshChatDoc = await transaction.get(chatRef);
-        if (!freshChatDoc.exists()) throw new Error("Chat does not exist");
+        if (!freshChatDoc.exists() || !freshChatDoc.data().game) {
+            throw new Error("Chat or game no longer exists.");
+        }
         
         const freshGame = freshChatDoc.data().game as TicTacToeState;
         // Re-verify the move against the fresh game state
-        if (!freshGame || freshGame.turn !== authUser.uid || freshGame.board[index] !== null || freshGame.status !== 'active') {
+        if (freshGame.turn !== authUser.uid || freshGame.board[index] !== null || freshGame.status !== 'active') {
             // If the optimistic update was wrong, revert the state
             setGame(freshGame);
             throw new Error("Move is no longer valid.");

@@ -12,6 +12,8 @@ import EventsView from '@/components/campus-connect/events-view';
 import MissedConnectionsView from '@/components/campus-connect/missed-connections-view';
 import ProfileView from '@/components/campus-connect/profile-view';
 import { Loader2 } from 'lucide-react';
+import { getDatabase, ref, onValue, goOffline, goOnline } from 'firebase/database';
+import { firebaseApp, rtdb } from '@/lib/firebase';
 
 type AppState = 'policy' | 'auth' | 'profile_setup' | 'home' | 'chat' | 'events' | 'missed_connections';
 
@@ -19,6 +21,18 @@ function AppContent() {
   const { user, loading, profile, updateProfile } = useAuth();
   const [isProfileOpen, setProfileOpen] = useState(false);
   const [appState, setAppState] = useState<AppState>('auth');
+  const [onlineCount, setOnlineCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    const statusRef = ref(rtdb, 'status');
+    const unsubscribe = onValue(statusRef, (snapshot) => {
+        const statuses = snapshot.val() || {};
+        const count = Object.values(statuses).filter((status: any) => status.state === 'online').length;
+        setOnlineCount(count);
+    });
+
+    return () => unsubscribe();
+  }, []);
 
   
   const getInitialState = (): AppState => {
@@ -80,7 +94,7 @@ function AppContent() {
           case 'policy':
             return <PolicyView onAgree={handleAgree} />;
           case 'auth':
-            return <AuthView onlineCount={null} />;
+            return <AuthView onlineCount={onlineCount} />;
           case 'profile_setup':
             return <ProfileSetupView />;
           case 'home':
@@ -91,7 +105,7 @@ function AppContent() {
               userName={profile?.name || 'User'}
               onOpenProfile={() => setProfileOpen(true)}
               userAvatar={profile?.avatar}
-              onlineCount={null}
+              onlineCount={onlineCount}
             />;
           case 'chat':
             return <MainLayout onNavigateHome={() => navigateTo('home')} onNavigateToMissedConnections={() => navigateTo('missed_connections')} />;
@@ -100,7 +114,7 @@ function AppContent() {
           case 'missed_connections':
             return <MissedConnectionsView onNavigateHome={() => navigateTo('home')} />;
           default:
-            return <AuthView onlineCount={null} />;
+            return <AuthView onlineCount={onlineCount} />;
         }
       })()}
     </>

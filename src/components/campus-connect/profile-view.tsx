@@ -42,16 +42,23 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
   const db = getFirestore(firebaseApp);
 
   useEffect(() => {
-    if (!isOpen || !user) return;
+    if (!isOpen || !user?.id) return;
 
     setFormData(user);
     
     if (user.friends && user.friends.length > 0) {
         const friendsQuery = query(collection(db, 'users'), where('id', 'in', user.friends));
-        getDocs(friendsQuery).then(snapshot => setFriends(snapshot.docs.map(doc => doc.data() as User)));
+        const friendsUnsub = onSnapshot(friendsQuery, (snapshot) => {
+            setFriends(snapshot.docs.map(doc => doc.data() as User));
+        });
+        return () => friendsUnsub();
     } else {
         setFriends([]);
     }
+  }, [user, isOpen, db]);
+
+  useEffect(() => {
+    if (!isOpen || !user?.id) return;
 
     const eventsQuery = query(collection(db, 'events'), where('authorId', '==', user.id));
     const eventsUnsub = onSnapshot(eventsQuery, (snapshot) => {
@@ -79,7 +86,7 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
         eventsUnsub();
         postsUnsub();
     }
-  }, [user, isOpen, db]);
+  }, [user?.id, isOpen, db]);
   
   const handleEditEvent = (event: Event) => {
     setEventToEdit(event);
@@ -105,6 +112,7 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
   };
 
   const handleRemoveFriend = async (friendId: string) => {
+    if (!user?.id) return;
     const meRef = doc(db, 'users', user.id);
     const friendRef = doc(db, 'users', friendId);
     try {
