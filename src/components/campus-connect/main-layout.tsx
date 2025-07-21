@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { Bot, MessageSquare, Home, HeartCrack, UserX, Loader2 } from 'lucide-react';
+import { Bot, MessageSquare, Home, HeartCrack, UserX, Loader2, Video, Gamepad2 } from 'lucide-react';
 import {
   SidebarProvider,
   Sidebar,
@@ -17,7 +17,6 @@ import {
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Dialog } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import ChatView from '@/components/campus-connect/chat-view';
 import AiAssistantView from '@/components/campus-connect/ai-assistant-view';
@@ -87,7 +86,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
   // Listen for friend requests
   useEffect(() => {
-    if (!user) return;
+    if (!user?.uid) return;
     const requestsRef = collection(db, 'friend_requests');
     const q = query(requestsRef, where('toId', '==', user.uid), where('status', '==', 'pending'));
 
@@ -99,36 +98,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
       setFriendRequests(fetchedRequests);
     });
 
-    return () => unsubscribe();
-  }, [user, db]);
-
-  // Listen for matches while searching
-  useEffect(() => {
-    if (!user) return;
-    
-    const waitingDocRef = doc(db, 'waiting_users', user.uid);
-    const unsubscribe = onSnapshot(waitingDocRef, async (docSnap) => {
-        if (docSnap.exists() && docSnap.data().matchedChatId) {
-            const matchedChatId = docSnap.data().matchedChatId;
-            setIsSearching(false);
-            await deleteDoc(waitingDocRef);
-            
-            const chatRef = doc(db, 'chats', matchedChatId);
-            const chatSnap = await getDoc(chatRef);
-            if (chatSnap.exists()) {
-                const chatData = { id: chatSnap.id, ...chatSnap.data() } as Chat;
-                const partnerId = chatData.userIds.find(id => id !== user.uid);
-                if (partnerId) {
-                    const partnerSnap = await getDoc(doc(db, 'users', partnerId));
-                    if (partnerSnap.exists()) {
-                        setActiveChat(chatData);
-                        setActiveView({ type: 'chat', data: { user: partnerSnap.data() as User, chat: chatData } });
-                    }
-                }
-            }
-        }
-    });
-    
     return () => unsubscribe();
   }, [user, db]);
 
@@ -161,29 +130,37 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     return () => unsubscribe();
   }, [activeView.type, activeChat?.id, user, toast]);
 
-  // Listen for incoming calls on the active chat
+    // Listen for incoming calls on the active chat
   useEffect(() => {
-    if (activeView.type !== 'chat' || !user) return;
+    if (activeView.type !== 'chat' || !user || isVideoCallOpen) return;
     
     const { chat, user: partner } = activeView.data;
+    let unsub: Unsubscribe | null = null;
     const callsRef = collection(db, 'chats', chat.id, 'calls');
-    const q = query(callsRef, where('callerId', '!=', user.id));
+    const q = query(callsRef, where('callerId', '!=', user.id), where('answer', '==', null));
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      snapshot.docChanges().forEach((change) => {
-        if (change.type === 'added') {
-          const callData = change.doc.data() as Call;
-          if (!callData.answer) {
-             if (!isVideoCallOpen && !incomingCall) {
-                setIncomingCall({ callId: change.doc.id, chat: chat, from: partner });
-             }
-          }
-        }
-      });
-    });
+    const setupListener = () => {
+        unsub = onSnapshot(q, (snapshot) => {
+        snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+            const callData = change.doc.data() as Omit<Call, 'id'>;
+            if (callData.offer) {
+                if (!incomingCall) {
+                    setIncomingCall({ callId: change.doc.id, chat, from: partner });
+                }
+            }
+            }
+        });
+        });
+    }
 
-    return () => unsubscribe();
-  }, [activeView, user, db, isVideoCallOpen, incomingCall]);
+    setupListener();
+
+    return () => {
+        if (unsub) unsub();
+    };
+  }, [activeView.type, user?.id, db, isVideoCallOpen, incomingCall]);
+
 
   const addIcebreakerMessage = async (chatId: string, currentUser: User, partnerUser: User) => {
     try {
@@ -212,6 +189,16 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
     const partnerSnap = await getDoc(doc(db, 'users', partnerId));
     if (!partnerSnap.exists()) return;
+    
+    // Clear waiting status in case user was searching
+    if (isSearching) {
+        setIsSearching(false);
+        const waitingDocRef = doc(db, 'waiting_users', user.uid);
+        const waitingDocSnap = await getDoc(waitingDocRef);
+        if (waitingDocSnap.exists()) {
+            await deleteDoc(waitingDocRef);
+        }
+    }
 
     setActiveChat(chatData);
     setActiveView({ type: 'chat', data: { user: partnerSnap.data() as User, chat: chatData } });
@@ -256,85 +243,119 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     setActiveChat(null);
   };
   
+    // Listener for being matched by another user
+  useEffect(() => {
+    if (!user?.uid) return;
+    const waitingDocRef = doc(db, 'waiting_users', user.uid);
+
+    const unsubscribe = onSnapshot(waitingDocRef, async (docSnap) => {
+        if (docSnap.exists() && docSnap.data().matchedChatId) {
+            const matchedChatId = docSnap.data().matchedChatId;
+            setIsSearching(false);
+            
+            await deleteDoc(waitingDocRef);
+            
+            const chatRef = doc(db, 'chats', matchedChatId);
+            const chatSnap = await getDoc(chatRef);
+            if (chatSnap.exists()) {
+                const chatData = { id: chatSnap.id, ...chatSnap.data() } as Chat;
+                openChat(chatData);
+            }
+        }
+    });
+
+    return () => unsubscribe();
+  }, [user?.uid, db]);
+
+
   const findNewChat = async () => {
-    if (!user || !profile) return;
-    
-    // First, leave any current chat
-    await handleLeaveChat(true);
-    
+    if (!user || !profile || isSearching) return;
+
+    handleLeaveChat(true);
     setIsSearching(true);
     toast({ title: 'Searching for a chat...' });
-  
+
     try {
-      const waitingUsersRef = collection(db, 'waiting_users');
-      const blockedByMe = profile.blockedUsers || [];
-      const potentialPartnersQuery = query(
-        waitingUsersRef,
-        where('id', '!=', user.uid),
-        limit(20)
-      );
-  
-      const querySnapshot = await getDocs(potentialPartnersQuery);
-  
-      let matchMade = false;
-      for (const partnerDoc of querySnapshot.docs) {
-        const partnerWaitingData = partnerDoc.data();
-        const partnerProfileSnap = await getDoc(doc(db, 'users', partnerWaitingData.id));
-        if (!partnerProfileSnap.exists()) continue;
-        const partnerProfile = partnerProfileSnap.data() as User;
-  
-        // Check if I blocked them or they blocked me
-        if (blockedByMe.includes(partnerProfile.id) || (partnerProfile.blockedUsers || []).includes(user.uid)) {
-          continue;
+        const blockedUsers = profile.blockedUsers || [];
+        const waitingUsersRef = collection(db, 'waiting_users');
+        const q = query(
+            waitingUsersRef,
+            where("uid", "!=", user.uid),
+            limit(20)
+        );
+
+        const querySnapshot = await getDocs(q);
+
+        let matchMade = false;
+        for (const partnerDoc of querySnapshot.docs) {
+            const partnerWaitingData = partnerDoc.data();
+            if (partnerWaitingData.matchedChatId) continue; // Skip already matched users
+
+            const partnerProfileSnap = await getDoc(doc(db, 'users', partnerWaitingData.uid));
+            if (!partnerProfileSnap.exists()) continue;
+            
+            const partnerProfile = partnerProfileSnap.data() as User;
+            if (blockedUsers.includes(partnerProfile.id) || (partnerProfile.blockedUsers || []).includes(user.uid)) {
+                continue;
+            }
+
+            // Attempt to claim match in transaction
+            const partnerWaitingRef = partnerDoc.ref;
+            try {
+                await runTransaction(db, async (transaction) => {
+                    const freshPartnerDoc = await transaction.get(partnerWaitingRef);
+                    if (!freshPartnerDoc.exists() || freshPartnerDoc.data().matchedChatId) {
+                        return; // This partner was claimed, so we return and loop to the next
+                    }
+
+                    const newChatRef = doc(collection(db, 'chats'));
+                    const newChatData: Omit<Chat, 'id'> = {
+                        userIds: [user.uid, partnerProfile.id].sort(),
+                        game: null,
+                        isFriendChat: false,
+                        usersData: {
+                            [user.uid]: { online: true },
+                            [partnerProfile.id]: { online: true }
+                        },
+                        lastMessageTimestamp: serverTimestamp(),
+                    };
+                    transaction.set(newChatRef, newChatData);
+                    transaction.update(partnerWaitingRef, { matchedChatId: newChatRef.id });
+                    
+                    // This is where we update the state to reflect the new chat
+                    setActiveChat({ id: newChatRef.id, ...newChatData });
+                    setActiveView({ type: 'chat', data: { user: partnerProfile, chat: { id: newChatRef.id, ...newChatData } } });
+                    matchMade = true;
+                });
+
+                if (matchMade) break; // Exit loop if match is made
+            } catch (error) {
+                console.warn("Transaction failed, trying next user:", error);
+            }
         }
-  
-        // Attempt to claim the match in a transaction
-        const partnerWaitingRef = partnerDoc.ref;
-        await runTransaction(db, async (transaction) => {
-          const freshPartnerWaitingDoc = await transaction.get(partnerWaitingRef);
-          if (!freshPartnerWaitingDoc.exists() || freshPartnerWaitingDoc.data().matchedChatId) {
-            // This partner was already matched by someone else, so we skip.
-            return;
-          }
-  
-          const newChatRef = doc(collection(db, 'chats'));
-          const newChat: Omit<Chat, 'id'> = {
-            userIds: [user.uid, partnerProfile.id].sort(),
-            game: null,
-            isFriendChat: false,
-            usersData: {
-              [user.uid]: { online: true },
-              [partnerProfile.id]: { online: true }
-            },
-            lastMessageTimestamp: serverTimestamp(),
-          };
-          transaction.set(newChatRef, newChat);
-          transaction.update(partnerWaitingRef, { matchedChatId: newChatRef.id });
-  
-          // We successfully made a match
-          matchMade = true;
-          await openChat({ id: newChatRef.id, ...newChat });
-        });
-  
-        if (matchMade) break; // Exit the loop once a match is made
-      }
-  
-      if (!matchMade) {
-        // No suitable partner found, add myself to the waiting list
-        await setDoc(doc(db, 'waiting_users', user.uid), {
-          id: user.uid,
-          name: profile.name,
-          timestamp: serverTimestamp(),
-          matchedChatId: null,
-        });
-      } else {
-        // Match was made, so we are no longer searching.
-        setIsSearching(false);
-      }
+
+        if (matchMade) {
+            setIsSearching(false);
+            toast.dismiss();
+        } else {
+            // No suitable partner, add self to waiting list
+            await setDoc(doc(db, 'waiting_users', user.uid), {
+                uid: user.uid,
+                displayName: profile.name,
+                isGuest: profile.isGuest,
+                timestamp: serverTimestamp(),
+                matchedChatId: null,
+            });
+        }
     } catch (error) {
-      console.error("Error finding new chat:", error);
-      toast({ variant: 'destructive', title: 'Error', description: 'Could not find a chat. Please try again.' });
-      setIsSearching(false);
+        console.error("Error finding new chat:", error);
+        toast({ variant: 'destructive', title: 'Error', description: 'Could not find a chat. Please try again.' });
+        setIsSearching(false);
+        const waitingDocRef = doc(db, 'waiting_users', user.uid);
+        const waitingDocSnap = await getDoc(waitingDocRef);
+        if (waitingDocSnap.exists()) {
+            await deleteDoc(waitingDocRef);
+        }
     }
   };
 
@@ -357,11 +378,18 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     }
     
     // Stop searching if user leaves while searching
-    if(isSearching) {
-        if(user) await deleteDoc(doc(db, 'waiting_users', user.uid));
+    if(isSearching && user) {
+        const waitingDocRef = doc(db, 'waiting_users', user.uid);
+        const waitingDocSnap = await getDoc(waitingDocRef);
+        if (waitingDocSnap.exists()) {
+            await deleteDoc(waitingDocRef);
+        }
         setIsSearching(false);
     }
-
+    
+    setVideoCallOpen(false);
+    setIncomingCall(null);
+    setActiveCall(null);
     setActiveView({ type: 'welcome' });
     setActiveChat(null);
     if (!isSilent) {
@@ -510,7 +538,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   };
 
   const handleInitiateCall = async () => {
-    if (activeView.type !== 'chat' || !user) return;
+    if (activeView.type !== 'chat' || !user || isVideoCallOpen) return;
     const { chat } = activeView.data;
     const callDocRef = doc(collection(db, 'chats', chat.id, 'calls'));
     
@@ -523,10 +551,17 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   
   const handleAnswerCall = async () => {
     if (!incomingCall) return;
-    const callData = { id: incomingCall.callId, callerId: incomingCall.from.id };
+    const { callId, from } = incomingCall;
     
+    // Create an answer document in Firestore so caller knows we accepted.
+    const callDocRef = doc(db, 'chats', incomingCall.chat.id, 'calls', callId);
+    await updateDoc(callDocRef, { answered: true }).catch(e => console.error("Error marking call as answered:", e));
+    
+    setActiveCall({
+      id: callId,
+      callerId: from.id,
+    });
     setIncomingCall(null);
-    setActiveCall(callData);
     setVideoCallOpen(true);
   };
 
@@ -571,7 +606,12 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
             currentUser={profile}
             chat={activeView.data.chat}
             call={activeCall}
-            onOpenChange={setVideoCallOpen}
+            onOpenChange={(open) => {
+                if(!open) { // This is called on hangup
+                    setVideoCallOpen(false);
+                    setActiveCall(null);
+                }
+            }}
           />
       )
     }
@@ -632,12 +672,12 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         </AlertDialogContent>
       </AlertDialog>
       
-      <Dialog open={isGameCenterOpen} onOpenChange={setGameCenterOpen}>
+      <AlertDialog open={isGameCenterOpen} onOpenChange={setGameCenterOpen}>
         <GameCenterView
           onInvite={handleInviteToGame}
           isGuest={profile.isGuest}
         />
-      </Dialog>
+      </AlertDialog>
 
       <Sidebar>
         <SidebarHeader>
