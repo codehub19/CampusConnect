@@ -53,7 +53,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   const [friends, setFriends] = useState<User[]>([]);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [incomingCall, setIncomingCall] = useState<{ chatId: string, from: User } | null>(null);
+  const [incomingCall, setIncomingCall] = useState<{ callId: string, from: User } | null>(null);
   const [isVideoCallOpen, setVideoCallOpen] = useState(false);
   const [friendToRemove, setFriendToRemove] = useState<User | null>(null);
   const [callListener, setCallListener] = useState<() => void>(() => () => {});
@@ -106,7 +106,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   // Listen for game state changes and partner leaving on the active chat
   useEffect(() => {
     activeChatListener(); // Unsubscribe from previous chat listener
-    if (activeView.type !== 'chat' || !user || !activeChat?.id) return;
+    if (activeView.type !== 'chat' || !user || !activeChat?.id) return () => {};
   
     const { user: partner } = activeView.data;
     const chatRef = doc(db, 'chats', activeChat.id);
@@ -131,15 +131,16 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   
     setActiveChatListener(() => newUnsubscribe);
     return () => newUnsubscribe();
-  }, [activeView.type, activeChat?.id, user, toast]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView.type, activeChat?.id]);
 
     // Listen for incoming calls on the active chat
   useEffect(() => {
     callListener(); // Unsubscribe from previous listener
-    if (activeView.type !== 'chat' || !user || isVideoCallOpen) return;
+    if (activeView.type !== 'chat' || !user?.id || isVideoCallOpen) return () => {};
     
     const { chat, user: partner } = activeView.data;
-    if (!chat.id) return;
+    if (!chat.id) return () => {};
 
     const callsRef = collection(db, 'chats', chat.id, 'calls');
     const q = query(callsRef, where('callerId', '!=', user.id));
@@ -150,7 +151,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
           const callData = change.doc.data();
           // Check for offer and ensure it's not an old, answered call
           if (callData.offer && !callData.answer) {
-              setIncomingCall({ chatId: change.doc.id, from: partner });
+              setIncomingCall({ callId: change.doc.id, from: partner });
           }
         }
       });
@@ -158,7 +159,8 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
     setCallListener(() => newUnsubscribe); // Store the new unsubscribe function
     return () => newUnsubscribe();
-  }, [activeView.type, user?.id, db, isVideoCallOpen, activeView]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeView.type, user?.id, isVideoCallOpen]);
 
 
   const addIcebreakerMessage = async (chatId: string, currentUser: User, partnerUser: User) => {
@@ -256,7 +258,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   
   // Listener for being matched by another user
   useEffect(() => {
-    if (!user?.uid) return;
+    if (!user?.uid) return () => {};
 
     const waitingDocRef = doc(db, 'waiting_users', user.uid);
     const unsubscribe = onSnapshot(waitingDocRef, async (docSnap) => {
@@ -550,23 +552,19 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
   const handleInitiateCall = async () => {
     if (activeView.type !== 'chat' || isVideoCallOpen) return;
-    const { chat } = activeView.data;
-    
-    const callDocRef = doc(collection(db, 'chats', chat.id, 'calls'));
-    setActiveCallId(callDocRef.id);
     setVideoCallOpen(true);
   };
   
   const handleAnswerCall = () => {
     if (!incomingCall) return;
-    setActiveCallId(incomingCall.chatId);
+    setActiveCallId(incomingCall.callId);
     setVideoCallOpen(true);
     setIncomingCall(null);
   };
 
   const handleDeclineCall = async () => {
-    if (!incomingCall) return;
-    const callDocRef = doc(db, 'chats', activeChat!.id, 'calls', incomingCall.chatId);
+    if (!incomingCall || !activeChat?.id) return;
+    const callDocRef = doc(db, 'chats', activeChat.id, 'calls', incomingCall.callId);
     try {
         await deleteDoc(callDocRef);
     } catch (e) { console.error("Error declining call", e)}
@@ -606,7 +604,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
             user={activeView.data.user}
             currentUser={profile}
             chat={activeView.data.chat}
-            callId={activeCallId!}
+            callId={activeCallId}
             onOpenChange={(open) => {
                 if(!open) {
                     setVideoCallOpen(false);
@@ -823,5 +821,3 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     </SidebarProvider>
   );
 }
-
-    

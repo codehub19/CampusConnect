@@ -24,6 +24,13 @@ function AppContent() {
   const [onlineCount, setOnlineCount] = useState<number | null>(null);
 
   useEffect(() => {
+    // Only establish RTDB connection if user is logged in
+    if (!user) {
+        if(rtdb) goOffline(rtdb);
+        return;
+    }
+    goOnline(rtdb);
+
     const statusRef = ref(rtdb, 'status');
     const unsubscribe = onValue(statusRef, (snapshot) => {
         const statuses = snapshot.val() || {};
@@ -32,7 +39,7 @@ function AppContent() {
     });
 
     return () => unsubscribe();
-  }, []);
+  }, [user]);
 
   
   const getInitialState = (): AppState => {
