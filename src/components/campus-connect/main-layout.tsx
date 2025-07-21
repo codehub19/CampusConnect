@@ -157,45 +157,32 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
   // Listen for matches while searching
    useEffect(() => {
-    if (!user || !profile || !isSearching) return;
+    if (!user || !profile) return;
     
-    let unsubscribe: Unsubscribe | null = null;
-
-    const listenForMatches = () => {
-      const waitingDocRef = doc(db, 'waiting_users', user.uid);
-      unsubscribe = onSnapshot(waitingDocRef, async (docSnap) => {
-          if (docSnap.exists()) {
-              const waitingData = docSnap.data();
-              if (waitingData.matchedChatId) {
-                  // Found a match, clean up and switch
-                  setIsSearching(false);
-                  await deleteDoc(waitingDocRef);
-                  
-                  const chatRef = doc(db, 'chats', waitingData.matchedChatId);
-                  const chatSnap = await getDoc(chatRef);
-                  if (chatSnap.exists()) {
-                      const chatData = { id: chatSnap.id, ...chatSnap.data() } as Chat;
-                      const partnerId = chatData.userIds.find(id => id !== user.uid);
-                      if (partnerId) {
-                          const partnerSnap = await getDoc(doc(db, 'users', partnerId));
-                          if (partnerSnap.exists()) {
-                              setActiveChat(chatData);
-                              setActiveView({ type: 'chat', data: { user: partnerSnap.data() as User, chat: chatData } });
-                          }
-                      }
-                  }
-              }
-          }
-      });
-    }
-
-    listenForMatches();
+    const waitingDocRef = doc(db, 'waiting_users', user.uid);
+    const unsubscribe = onSnapshot(waitingDocRef, async (docSnap) => {
+        if (isSearching && docSnap.exists() && docSnap.data().matchedChatId) {
+            // Found a match, clean up and switch
+            setIsSearching(false);
+            await deleteDoc(waitingDocRef);
+            
+            const chatRef = doc(db, 'chats', docSnap.data().matchedChatId);
+            const chatSnap = await getDoc(chatRef);
+            if (chatSnap.exists()) {
+                const chatData = { id: chatSnap.id, ...chatSnap.data() } as Chat;
+                const partnerId = chatData.userIds.find(id => id !== user.uid);
+                if (partnerId) {
+                    const partnerSnap = await getDoc(doc(db, 'users', partnerId));
+                    if (partnerSnap.exists()) {
+                        setActiveChat(chatData);
+                        setActiveView({ type: 'chat', data: { user: partnerSnap.data() as User, chat: chatData } });
+                    }
+                }
+            }
+        }
+    });
     
-    return () => {
-      if (unsubscribe) {
-        unsubscribe();
-      }
-    };
+    return () => unsubscribe();
   }, [user, profile, isSearching, db]);
   
   // Listen for incoming calls, game state, and partner leaving on the active chat
@@ -299,19 +286,19 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   const findNewChat = async () => {
     if (!user || !profile) return;
     
-    // This is the key fix. We reset the state fully before starting the search.
-    setActiveChat(null);
-    if(typeof window !== 'undefined') {
-        localStorage.removeItem('activeChatId');
-    }
-    setActiveView({ type: 'welcome' });
-    
     if (isSearching) {
         setIsSearching(false);
         await deleteDoc(doc(db, 'waiting_users', user.uid));
         toast({ title: 'Search stopped.' });
         return;
     }
+    
+    // This is the key fix. We reset the state fully before starting the search.
+    setActiveChat(null);
+    if(typeof window !== 'undefined') {
+        localStorage.removeItem('activeChatId');
+    }
+    setActiveView({ type: 'welcome' });
 
     setIsSearching(true);
     toast({ title: 'Searching for a chat...' });
@@ -833,5 +820,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     </SidebarProvider>
   );
 }
+
+    
 
     
