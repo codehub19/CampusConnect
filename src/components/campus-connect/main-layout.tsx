@@ -18,6 +18,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Dialog } from '@/components/ui/dialog';
 import ChatView from '@/components/campus-connect/chat-view';
 import AiAssistantView from '@/components/campus-connect/ai-assistant-view';
 import WelcomeView from '@/components/campus-connect/welcome-view';
@@ -243,11 +244,11 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     setActiveChat(null);
   };
   
-    // Listener for being matched by another user
+  // Listener for being matched by another user
   useEffect(() => {
     if (!user?.uid) return;
-    const waitingDocRef = doc(db, 'waiting_users', user.uid);
 
+    const waitingDocRef = doc(db, 'waiting_users', user.uid);
     const unsubscribe = onSnapshot(waitingDocRef, async (docSnap) => {
         if (docSnap.exists() && docSnap.data().matchedChatId) {
             const matchedChatId = docSnap.data().matchedChatId;
@@ -269,9 +270,13 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
 
   const findNewChat = async () => {
-    if (!user || !profile || isSearching) return;
+    if (!user || !profile) return;
 
-    handleLeaveChat(true);
+    // Reset state before searching
+    if (activeChat) {
+      await handleLeaveChat(true); // silent leave
+    }
+    setActiveView({ type: 'welcome' });
     setIsSearching(true);
     toast({ title: 'Searching for a chat...' });
 
@@ -307,7 +312,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
                     if (!freshPartnerDoc.exists() || freshPartnerDoc.data().matchedChatId) {
                         return; // This partner was claimed, so we return and loop to the next
                     }
-
                     const newChatRef = doc(collection(db, 'chats'));
                     const newChatData: Omit<Chat, 'id'> = {
                         userIds: [user.uid, partnerProfile.id].sort(),
@@ -325,6 +329,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
                     // This is where we update the state to reflect the new chat
                     setActiveChat({ id: newChatRef.id, ...newChatData });
                     setActiveView({ type: 'chat', data: { user: partnerProfile, chat: { id: newChatRef.id, ...newChatData } } });
+                    await addIcebreakerMessage(newChatRef.id, profile, partnerProfile);
                     matchMade = true;
                 });
 
@@ -576,6 +581,20 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     });
   };
 
+  const handlePageUnload = useCallback((e: BeforeUnloadEvent) => {
+    if (activeChat && !activeChat.isFriendChat) {
+      // This is a synchronous operation, which is not ideal but necessary for beforeunload
+      handleLeaveChat(true);
+    }
+  }, [activeChat]);
+
+  useEffect(() => {
+    window.addEventListener('beforeunload', handlePageUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handlePageUnload);
+    };
+  }, [handlePageUnload]);
+
   if (!user || !profile) {
     return (
         <div className="flex h-screen w-screen items-center justify-center bg-background">
@@ -642,7 +661,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
   return (
     <SidebarProvider>
-      <AlertDialog open={!!friendToRemove} onOpenChange={(open) => !open && setFriendToRemove(null)}>
+       <AlertDialog open={!!friendToRemove} onOpenChange={(open) => !open && setFriendToRemove(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Remove Friend?</AlertDialogTitle>
@@ -657,7 +676,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={!!incomingCall && !isVideoCallOpen} onOpenChange={() => setIncomingCall(null)}>
+      <AlertDialog open={!!incomingCall && !isVideoCallOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Incoming Call</AlertDialogTitle>
@@ -672,12 +691,12 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         </AlertDialogContent>
       </AlertDialog>
       
-      <AlertDialog open={isGameCenterOpen} onOpenChange={setGameCenterOpen}>
+      <Dialog open={isGameCenterOpen} onOpenChange={setGameCenterOpen}>
         <GameCenterView
           onInvite={handleInviteToGame}
           isGuest={profile.isGuest}
         />
-      </AlertDialog>
+      </Dialog>
 
       <Sidebar>
         <SidebarHeader>
@@ -822,5 +841,3 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     </SidebarProvider>
   );
 }
-
-    
