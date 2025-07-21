@@ -306,61 +306,60 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     const blockedByMe = profile.blockedUsers || [];
     
     const q = query(waitingUsersRef, where('id', '!=', user.uid), limit(10));
-    const querySnapshot = await getDocs(q);
-
-    let partner: User | null = null;
-    let partnerWaitingDocId: string | null = null;
+    const waitingSnapshot = await getDocs(q);
     
-    const potentialPartners = querySnapshot.docs.map(doc => ({ id: doc.id, data: doc.data() as User }));
+    const waitingUserIds = waitingSnapshot.docs.map(doc => doc.id);
 
-    for (const potentialPartner of potentialPartners) {
-        const partnerProfileDoc = await getDoc(doc(db, 'users', potentialPartner.id));
-        if (!partnerProfileDoc.exists()) continue;
+    if (waitingUserIds.length > 0) {
+        // Batch fetch all potential partners' full profiles
+        const usersRef = collection(db, 'users');
+        const usersQuery = query(usersRef, where('id', 'in', waitingUserIds));
+        const usersSnapshot = await getDocs(usersQuery);
+        const potentialPartners = usersSnapshot.docs.map(doc => doc.data() as User);
 
-        const partnerProfile = partnerProfileDoc.data() as User;
-        const blockedMe = partnerProfile.blockedUsers || [];
+        // Find a valid partner in memory
+        let partner: User | null = null;
+        for (const p of potentialPartners) {
+            const isBlockedByMe = blockedByMe.includes(p.id);
+            const iAmBlocked = p.blockedUsers?.includes(user.uid);
+            if (!isBlockedByMe && !iAmBlocked) {
+                partner = p;
+                break;
+            }
+        }
 
-        if(!blockedByMe.includes(potentialPartner.id) && !blockedMe.includes(user.uid)) {
-            partnerWaitingDocId = potentialPartner.id;
-            partner = partnerProfile;
-            break;
+        if (partner && profile) {
+            // Found a match
+            const newChatRef = doc(collection(db, 'chats'));
+            const newChat: Chat = {
+                id: newChatRef.id,
+                userIds: [user.uid, partner.id].sort(),
+                game: null,
+                isFriendChat: false,
+                usersData: { [user.uid]: { online: true }, [partner.id]: { online: true } }
+            };
+            await setDoc(newChatRef, newChat);
+            await addIcebreakerMessage(newChatRef.id, profile, partner);
+            await updateDoc(doc(db, 'waiting_users', partner.id), { matchedChatId: newChatRef.id });
+            
+            setActiveChat(newChat);
+            setActiveView({ type: 'chat', data: { user: partner, chat: newChat }});
+            setIsSearching(false);
+            toast({ title: "Chat found!", description: `You've been connected with ${partner.name}.` });
+            return;
         }
     }
 
-
-    if (partner && partnerWaitingDocId && profile) {
-        const newChatRef = doc(collection(db, 'chats'));
-        const newChat: Chat = {
-            id: newChatRef.id,
-            userIds: [user.uid, partner.id].sort(),
-            game: null,
-            isFriendChat: false,
-            usersData: {
-                [user.uid]: { online: true },
-                [partner.id]: { online: true }
-            }
-        };
-        await setDoc(newChatRef, newChat);
-
-        await addIcebreakerMessage(newChatRef.id, profile, partner);
-
-        await updateDoc(doc(db, 'waiting_users', partnerWaitingDocId), { matchedChatId: newChatRef.id });
-        
-        setActiveChat(newChat);
-        setActiveView({type: 'chat', data: { user: partner, chat: newChat }});
-        setIsSearching(false);
-        toast({ title: "Chat found!", description: `You've been connected with ${partner.name}.` });
-    } else {
-        await setDoc(doc(db, 'waiting_users', user.uid), {
-            id: user.uid,
-            name: profile.name,
-            avatar: profile.avatar,
-            online: true,
-            gender: profile.gender,
-            interests: profile.interests,
-            timestamp: serverTimestamp(),
-        });
-    }
+    // No suitable partner found, add self to waiting list
+    await setDoc(doc(db, 'waiting_users', user.uid), {
+        id: user.uid,
+        name: profile.name,
+        avatar: profile.avatar,
+        online: true,
+        gender: profile.gender,
+        interests: profile.interests,
+        timestamp: serverTimestamp(),
+    });
   };
   
   const handleLeaveChat = async (isSilent = false) => {
@@ -801,3 +800,5 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     </SidebarProvider>
   );
 }
+
+    
