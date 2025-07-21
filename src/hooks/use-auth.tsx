@@ -111,15 +111,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const signInWithGoogle = async () => {
     const provider = new GoogleAuthProvider();
-    const result = await signInWithPopup(auth, provider);
-    const userDocRef = doc(db, 'users', result.user.uid);
-    const userDoc = await getDoc(userDocRef);
-    if (!userDoc.exists()) {
-        await createProfile(result.user.uid, { 
-            name: result.user.displayName, 
-            avatar: result.user.photoURL,
-            profileComplete: false,
+    try {
+      const result = await signInWithPopup(auth, provider);
+      const userDocRef = doc(db, 'users', result.user.uid);
+      const userDoc = await getDoc(userDocRef);
+      if (!userDoc.exists()) {
+          await createProfile(result.user.uid, { 
+              name: result.user.displayName, 
+              avatar: result.user.photoURL,
+              profileComplete: false,
+          });
+      }
+    } catch (error: any) {
+      // This specifically handles the common case where the user closes the popup.
+      if (error.code === 'auth/popup-closed-by-user') {
+        toast({
+          variant: 'default',
+          title: 'Login Canceled',
+          description: 'You canceled the Google Sign-In process.',
         });
+        return; // Don't throw an error, just stop the function.
+      }
+      // For other errors, we still want to show them.
+      throw error;
     }
   };
 
