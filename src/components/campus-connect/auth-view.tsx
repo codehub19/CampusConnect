@@ -1,11 +1,14 @@
+
 "use client";
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
+import { getFirestore, collection, query, where, onSnapshot } from 'firebase/firestore';
+import { firebaseApp } from '@/lib/firebase';
 
 const GoogleIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 48 48">
@@ -22,8 +25,25 @@ export default function AuthView() {
     const [password, setPassword] = useState('');
     const [guestName, setGuestName] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [onlineCount, setOnlineCount] = useState<number | null>(null);
     const { signInWithGoogle, signUpWithEmail, signInWithEmail, signInAsGuest } = useAuth();
     const { toast } = useToast();
+    const db = getFirestore(firebaseApp);
+
+    useEffect(() => {
+        const usersRef = collection(db, 'users');
+        const q = query(usersRef, where('online', '==', true));
+    
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+          setOnlineCount(snapshot.size);
+        }, (error) => {
+          console.error("Error fetching online user count:", error);
+          setOnlineCount(0);
+        });
+    
+        return () => unsubscribe();
+      }, [db]);
+
 
     const handleAuthAction = async (action: Function, ...args: any[]) => {
         setIsLoading(true);
@@ -94,6 +114,17 @@ export default function AuthView() {
                     <div>
                         <h2 className="text-3xl font-bold mb-2 text-center text-white">CampusConnect</h2>
                         <p className="text-center text-muted-foreground mb-6">Connect with fellow students!</p>
+                        
+                        {onlineCount !== null && (
+                            <div className="flex justify-center items-center gap-2 mb-6">
+                                <span className="relative flex h-3 w-3">
+                                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                <span className="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                                </span>
+                                <span className="text-sm font-medium text-green-400">{onlineCount} {onlineCount === 1 ? 'user' : 'users'} online</span>
+                            </div>
+                        )}
+
                         <div className="space-y-4">
                             <Button onClick={() => handleAuthAction(signInWithGoogle)} className="w-full bg-white text-gray-800 font-bold hover:bg-gray-200" disabled={isLoading}>
                                 {isLoading ? <Loader2 className="animate-spin" /> : <><GoogleIcon /> Sign in with Google</>}

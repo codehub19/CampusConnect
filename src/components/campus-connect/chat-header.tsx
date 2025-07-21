@@ -61,22 +61,11 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, onGoTo
                 </div>
             </div>
             <div className="flex items-center gap-1 md:gap-2 flex-shrink-0">
-                 <Button 
-                    variant="ghost" 
-                    size="icon" 
-                    className="rounded-full hidden sm:inline-flex" 
-                    onClick={onAddFriend} 
-                    disabled={isFriend || isGuest}
-                    title={isGuest ? "Sign up to add friends" : (isFriend ? "Already friends" : "Add friend")}
-                >
-                    {isFriend ? <UserCheck className="h-5 w-5 text-green-500" /> : <UserPlus className="h-5 w-5" /> }
-                    <span className="sr-only">Add Friend</span>
-                </Button>
-                <Button variant="ghost" size="icon" className="rounded-full hidden sm:inline-flex" onClick={onStartGame}>
+                <Button variant="ghost" size="icon" className="rounded-full" onClick={onStartGame}>
                     <Gamepad2 className="h-5 w-5" />
                     <span className="sr-only">Play Game</span>
                 </Button>
-                <Button variant="ghost" size="icon" className="rounded-full hidden sm:inline-flex" onClick={onVideoCall}>
+                <Button variant="ghost" size="icon" className="rounded-full" onClick={onVideoCall}>
                     <Video className="h-5 w-5" />
                     <span className="sr-only">Video Call</span>
                 </Button>
@@ -89,24 +78,15 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, onGoTo
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem 
-                        className="sm:hidden"
                         onSelect={onAddFriend} 
                         disabled={isFriend || isGuest}
                     >
                         {isFriend ? <UserCheck className="mr-2 h-4 w-4 text-green-500" /> : <UserPlus className="mr-2 h-4 w-4" /> }
                         <span>{isFriend ? "Already friends" : "Add friend"}</span>
                     </DropdownMenuItem>
-                    <DropdownMenuItem className="sm:hidden" onSelect={onStartGame}>
-                        <Gamepad2 className="mr-2 h-4 w-4" />
-                        <span>Play Game</span>
-                    </DropdownMenuItem>
-                    <DropdownMenuItem className="sm:hidden" onSelect={onVideoCall}>
-                        <Video className="mr-2 h-4 w-4" />
-                        <span>Video Call</span>
-                    </DropdownMenuItem>
                     {!isFriend && (
                         <DropdownMenuItem 
-                            className="text-destructive focus:text-destructive-foreground focus:bg-destructive sm:hidden"
+                            className="text-destructive focus:text-destructive-foreground focus:bg-destructive"
                             onSelect={onLeaveChat}
                         >
                           <LogOut className="mr-2 h-4 w-4" />
