@@ -22,6 +22,7 @@ import { getFirestore, collection, addDoc, serverTimestamp, doc, getDoc } from '
 import { firebaseApp } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import { moderateMissedConnection } from '@/ai/flows/moderate-missed-connection';
+import { formatDistanceToNow } from 'date-fns';
 
 interface CreatePostViewProps {
   isOpen: boolean;
@@ -142,7 +143,7 @@ export default function CreatePostView({ isOpen, onOpenChange }: CreatePostViewP
           <DialogHeader>
             <DialogTitle>Posting Restricted</DialogTitle>
             <DialogDescription>
-              Your account has been restricted from creating new posts due to community guideline violations. This restriction will be lifted in {restrictionEnds ? formatDistanceToNow(restrictionEnds) : '24 hours'}.
+              Your account has been restricted from creating new posts due to community guideline violations. This restriction will be lifted in {restrictionEnds ? formatDistanceToNow(restrictionEnds, { addSuffix: true }) : '24 hours'}.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>

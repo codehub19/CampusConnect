@@ -245,7 +245,7 @@ export default function MissedConnectionsView({ onNavigateHome }: MissedConnecti
               ) : (
                 <div className="text-center py-20">
                     <p className="text-lg font-semibold">No posts yet!</p>
-                    <p className="text-muted-foreground">Check back soon for more events!</p>
+                    <p className="text-muted-foreground">Be the first to share a missed connection!</p>
                 </div>
               )}
             </div>
