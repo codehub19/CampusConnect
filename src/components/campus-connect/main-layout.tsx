@@ -29,7 +29,7 @@ import ConnectFour from '@/components/campus-connect/connect-four';
 import DotsAndBoxes from '@/components/campus-connect/dots-and-boxes';
 import { useAuth } from '@/hooks/use-auth';
 import type { User, Chat, FriendRequest, GameState, GameType } from '@/lib/types';
-import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where, getDocs, deleteDoc, addDoc, updateDoc, serverTimestamp, arrayUnion, writeBatch, limit, runTransaction, arrayRemove, orderBy } from 'firebase/firestore';
+import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where, getDocs, deleteDoc, addDoc, updateDoc, serverTimestamp, arrayUnion, writeBatch, limit, runTransaction, arrayRemove, orderBy, Timestamp } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import VideoCallView from './video-call-view';
@@ -160,27 +160,36 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
     const waitingDocRef = doc(db, 'waiting_users', user.uid);
     const unsubscribe = onSnapshot(waitingDocRef, async (docSnap) => {
-      // If our doc is deleted, it means we were matched by someone else.
-      if (!docSnap.exists()) {
-        const chatsRef = collection(db, 'chats');
-        const q = query(chatsRef, where('userIds', 'array-contains', user.uid), orderBy('lastMessageTimestamp', 'desc'), limit(1));
-        const chatSnapshot = await getDocs(q);
+      if (docSnap.exists()) return;
 
-        if (!chatSnapshot.empty) {
-            const chatDoc = chatSnapshot.docs[0];
-            const chatData = { id: chatDoc.id, ...chatDoc.data() } as Chat;
-            const partnerId = chatData.userIds.find((id:string) => id !== user.uid);
-            if (partnerId) {
-                const partnerDoc = await getDoc(doc(db, 'users', partnerId));
-                if (partnerDoc.exists()) {
-                    const partnerProfile = partnerDoc.data() as User;
-                    setActiveChat(chatData);
-                    setActiveView({ type: 'chat', data: { user: partnerProfile, chat: chatData } });
-                }
-            }
+      const chatsRef = collection(db, 'chats');
+      const q = query(chatsRef, where('userIds', 'array-contains', user.uid));
+      
+      const chatSnapshot = await getDocs(q);
+
+      if (!chatSnapshot.empty) {
+        const userChats = chatSnapshot.docs.map(d => ({id: d.id, ...d.data()} as Chat));
+        // Sort by timestamp client-side to find the most recent one
+        userChats.sort((a, b) => {
+            const timeA = a.lastMessageTimestamp?.toMillis() || 0;
+            const timeB = b.lastMessageTimestamp?.toMillis() || 0;
+            return timeB - timeA;
+        });
+
+        const chatData = userChats[0]; // This is the latest chat
+        if (chatData) {
+          const partnerId = chatData.userIds.find((id:string) => id !== user.uid);
+          if (partnerId) {
+              const partnerDoc = await getDoc(doc(db, 'users', partnerId));
+              if (partnerDoc.exists()) {
+                  const partnerProfile = partnerDoc.data() as User;
+                  setActiveChat(chatData);
+                  setActiveView({ type: 'chat', data: { user: partnerProfile, chat: chatData } });
+              }
+          }
         }
-        setIsSearching(false);
       }
+      setIsSearching(false);
     });
 
     return () => unsubscribe();
@@ -831,3 +840,4 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     
 
     
+
