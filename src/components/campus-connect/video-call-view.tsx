@@ -15,7 +15,7 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import type { User, Chat } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { getFirestore, doc, updateDoc, getDoc, onSnapshot, collection, addDoc, getDocs, writeBatch, Unsubscribe, DocumentReference } from 'firebase/firestore';
+import { getFirestore, doc, updateDoc, getDoc, onSnapshot, collection, addDoc, getDocs, writeBatch, Unsubscribe } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 
 interface VideoCallViewProps {
@@ -41,6 +41,7 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
   
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  
   const pc = useRef<RTCPeerConnection | null>(null);
   const localStreamRef = useRef<MediaStream | null>(null);
   const isHangingUp = useRef(false);
@@ -54,6 +55,8 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
     
     if (pc.current) {
       pc.current.getSenders().forEach(sender => sender.track?.stop());
+      pc.current.ontrack = null;
+      pc.current.onicecandidate = null;
       pc.current.close();
       pc.current = null;
     }
@@ -67,6 +70,7 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
        const chatRef = doc(db, 'chats', chat.id);
        const chatSnap = await getDoc(chatRef);
        if (chatSnap.exists() && chatSnap.data().call) {
+         // Clear ICE candidates
          const callCandidates = collection(chatRef, 'callCandidates');
          const answerCandidates = collection(chatRef, 'answerCandidates');
          const callCandidatesSnapshot = await getDocs(callCandidates);
@@ -99,7 +103,7 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
         console.error('Error accessing media devices:', error);
         setHasCameraPermission(false);
         const title = error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError' ? 'No Camera/Mic Found' : 'Media Access Denied';
-        const description = error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError' ? 'Could not find a camera or microphone. Please check your hardware and browser settings.' : 'Please enable camera & mic permissions.';
+        const description = error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError' ? 'Could not find a camera or microphone. Please check your hardware and browser settings.' : 'Please enable camera & mic permissions to use video chat.';
         toast({ variant: 'destructive', title, description });
         hangUp(true);
         return null;
@@ -111,7 +115,11 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
         const localStream = await startStreams();
         if (!localStream) return;
 
-        localStream.getTracks().forEach(track => pc.current?.addTrack(track, localStream));
+        localStream.getTracks().forEach(track => {
+            if (pc.current) {
+                pc.current.addTrack(track, localStream)
+            }
+        });
         
         const remoteStream = new MediaStream();
         pc.current.ontrack = event => {
@@ -135,8 +143,12 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
 
         if (isCaller) {
           const remoteCandidatesUnsub = onSnapshot(answerCandidates, snapshot => {
-            snapshot.docChanges().forEach(change => {
-              if (change.type === 'added') pc.current?.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+            snapshot.docChanges().forEach(async change => {
+              if (change.type === 'added') {
+                  if (pc.current?.currentRemoteDescription) {
+                    await pc.current?.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+                  }
+              }
             });
           });
           unsubscribes.push(remoteCandidatesUnsub);
@@ -145,18 +157,22 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
           await pc.current.setLocalDescription(offerDescription);
           await updateDoc(chatRef, { 'call.offer': offerDescription.toJSON() });
 
-          const callUnsub = onSnapshot(chatRef, (docSnap) => {
+          const callUnsub = onSnapshot(chatRef, async (docSnap) => {
               const data = docSnap.data();
               if (pc.current && !pc.current.currentRemoteDescription && data?.call?.answer) {
-                  pc.current.setRemoteDescription(new RTCSessionDescription(data.call.answer));
+                  await pc.current.setRemoteDescription(new RTCSessionDescription(data.call.answer));
               }
           });
           unsubscribes.push(callUnsub);
 
         } else { // Is Answerer
           const remoteCandidatesUnsub = onSnapshot(callCandidates, snapshot => {
-              snapshot.docChanges().forEach(change => {
-                if (change.type === 'added') pc.current?.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+              snapshot.docChanges().forEach(async change => {
+                if (change.type === 'added') {
+                    if (pc.current?.currentRemoteDescription) {
+                        await pc.current?.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+                    }
+                }
               });
           });
           unsubscribes.push(remoteCandidatesUnsub);
@@ -190,7 +206,7 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
           hangUp(true);
         }
     }
-  }, [chat.id, chat.call?.callerId, chat.call?.offer, currentUser.id, db, toast]);
+  }, [chat.id, db, toast]);
 
 
   const toggleMediaStream = (type: 'video' | 'audio', state: boolean) => {
@@ -283,5 +299,3 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
     </DialogContent>
   );
 }
-
-    

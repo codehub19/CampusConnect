@@ -185,6 +185,33 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
                       }
                   }
               }
+          } else {
+             // My waiting doc was deleted, probably because I was matched.
+             // Let's find the new chat.
+            if(isSearching) {
+                const chatsRef = collection(db, 'chats');
+                const q = query(chatsRef, where('userIds', 'array-contains', user.uid), where('isFriendChat', '==', false), orderBy('lastMessageTimestamp', 'desc'), limit(1));
+                const chatSnaps = await getDocs(q);
+                if (!chatSnaps.empty) {
+                    const chatDoc = chatSnaps.docs[0];
+                    const chatData = { id: chatDoc.id, ...chatDoc.data() } as Chat;
+                    const partnerId = chatData.userIds.find(id => id !== user.uid);
+
+                    // Check if chat is recent enough to be a new match
+                    const now = Timestamp.now();
+                    const lastMessageTime = chatData.lastMessageTimestamp || new Timestamp(0,0);
+                    if(now.seconds - lastMessageTime.seconds < 15) {
+                        setIsSearching(false);
+                        if (partnerId) {
+                            const partnerSnap = await getDoc(doc(db, 'users', partnerId));
+                            if (partnerSnap.exists()) {
+                                setActiveChat(chatData);
+                                setActiveView({ type: 'chat', data: { user: partnerSnap.data() as User, chat: chatData } });
+                            }
+                        }
+                    }
+                }
+            }
           }
       });
     }
@@ -300,6 +327,11 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
   const handleFindChat = async () => {
     if (!user || !profile) return;
+    
+    // Force reset state before finding a new chat
+    if (activeView.type !== 'welcome' || activeChat) {
+      handleLeaveChat(true); // Silently leave current chat
+    }
 
     if (isSearching) {
         setIsSearching(false);
@@ -312,27 +344,37 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     toast({ title: 'Searching for a chat...' });
     
     const waitingUsersRef = collection(db, 'waiting_users');
-    const q = query(waitingUsersRef, where('id', '!=', user.uid));
-    const querySnapshot = await getDocs(q);
-
     const blockedUsers = profile.blockedUsers || [];
+    
+    // Get all waiting users (except myself)
+    const waitingQuery = query(waitingUsersRef, where('id', '!=', user.uid));
+    const waitingSnapshot = await getDocs(waitingQuery);
+    const potentialPartnerIds = waitingSnapshot.docs.map(d => d.id);
+
     let potentialPartners = [];
-    if (!querySnapshot.empty) {
-        const userDocs = await getDocs(query(collection(db, 'users'), where('id', 'in', querySnapshot.docs.map(d => d.id))));
-        const userProfiles = Object.fromEntries(userDocs.docs.map(d => [d.id, d.data() as User]));
-        
-        for (const doc of querySnapshot.docs) {
-            const waitingUser = doc.data();
-            const partnerProfile = userProfiles[waitingUser.id];
-            if (partnerProfile && !blockedUsers.includes(waitingUser.id) && !(partnerProfile.blockedUsers || []).includes(user.uid)) {
-                potentialPartners.push(waitingUser);
+    if (potentialPartnerIds.length > 0) {
+        // Batch fetch profiles of potential partners
+        const usersQuery = query(collection(db, 'users'), where('id', 'in', potentialPartnerIds));
+        const usersSnapshot = await getDocs(usersQuery);
+        const userProfiles: { [key: string]: User } = {};
+        usersSnapshot.forEach(doc => {
+            userProfiles[doc.id] = doc.data() as User;
+        });
+
+        // Filter out blocked users
+        for (const waitingDoc of waitingSnapshot.docs) {
+            const partnerProfile = userProfiles[waitingDoc.id];
+            if (partnerProfile && !blockedUsers.includes(partnerProfile.id) && !(partnerProfile.blockedUsers || []).includes(user.uid)) {
+                potentialPartners.push(waitingDoc.data());
             }
         }
     }
 
     if (potentialPartners.length > 0) {
+      // Found a partner, try to match in a transaction
       const partner = potentialPartners[0];
       const partnerWaitingRef = doc(db, 'waiting_users', partner.id);
+      const myWaitingRef = doc(db, 'waiting_users', user.uid);
       
       try {
         await runTransaction(db, async (transaction) => {
@@ -352,10 +394,13 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
             },
             lastMessageTimestamp: serverTimestamp(),
           };
+          
           transaction.set(newChatRef, newChat);
           
-          transaction.update(partnerWaitingRef, { matchedChatId: newChatRef.id });
+          // Atomically remove both users from waiting list
+          transaction.delete(partnerWaitingRef);
           
+          // Set my active view directly
           const partnerSnap = await getDoc(doc(db, 'users', partner.id));
           if (partnerSnap.exists()) {
               setActiveChat({ id: newChatRef.id, ...newChat });
@@ -365,9 +410,11 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         setIsSearching(false);
       } catch (error) {
         console.warn("Match transaction failed (likely a race condition), trying again...", error);
-        handleFindChat(); // Retry
+        // Short delay before retrying
+        setTimeout(handleFindChat, 1000);
       }
     } else {
+        // No partners found, add myself to the waiting list
         await setDoc(doc(db, 'waiting_users', user.uid), {
             id: user.uid,
             name: profile.name,
@@ -814,5 +861,3 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     </SidebarProvider>
   );
 }
-
-    
