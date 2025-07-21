@@ -65,6 +65,12 @@ export interface DotsAndBoxesState extends BaseGameState {
 
 export type GameState = TicTacToeState | ConnectFourState | DotsAndBoxesState;
 
+export interface Call {
+  id: string;
+  callerId: string;
+  offer?: any;
+  answer?: any;
+}
 
 export interface Chat {
   id: string;
@@ -72,12 +78,6 @@ export interface Chat {
   users?: User[]; // Optional: for client-side convenience
   game: GameState | null;
   lastMessageTimestamp?: any;
-  call?: {
-    callerId: string;
-    status: 'ringing' | 'active';
-    offer: any;
-    answer?: any;
-  } | null;
   isFriendChat?: boolean;
   usersData?: {
       [key: string]: {

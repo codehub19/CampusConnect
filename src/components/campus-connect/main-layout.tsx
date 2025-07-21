@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/sidebar';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Dialog } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import ChatView from '@/components/campus-connect/chat-view';
 import AiAssistantView from '@/components/campus-connect/ai-assistant-view';
@@ -28,8 +28,8 @@ import TicTacToe from '@/components/campus-connect/tic-tac-toe';
 import ConnectFour from '@/components/campus-connect/connect-four';
 import DotsAndBoxes from '@/components/campus-connect/dots-and-boxes';
 import { useAuth } from '@/hooks/use-auth';
-import type { User, Chat, FriendRequest, GameState, GameType } from '@/lib/types';
-import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where, getDocs, deleteDoc, addDoc, updateDoc, serverTimestamp, arrayUnion, writeBatch, limit, runTransaction, arrayRemove, orderBy, Unsubscribe } from 'firebase/firestore';
+import type { User, Chat, FriendRequest, GameState, GameType, Call } from '@/lib/types';
+import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where, getDocs, deleteDoc, addDoc, updateDoc, serverTimestamp, arrayUnion, writeBatch, limit, runTransaction, arrayRemove, Unsubscribe } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import VideoCallView from './video-call-view';
@@ -53,16 +53,13 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   const [friends, setFriends] = useState<User[]>([]);
   const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [isSearching, setIsSearching] = useState(false);
-  const [incomingCall, setIncomingCall] = useState<{ chat: Chat, from: User } | null>(null);
+  const [incomingCall, setIncomingCall] = useState<{ callId: string, chat: Chat, from: User } | null>(null);
   const [isVideoCallOpen, setVideoCallOpen] = useState(false);
   const [friendToRemove, setFriendToRemove] = useState<User | null>(null);
+  const [activeCall, setActiveCall] = useState<Call | null>(null);
 
   const { toast } = useToast();
   const db = getFirestore(firebaseApp);
-
-  const cleanupChatListeners = useCallback(() => {
-    // This function will be defined inside useEffect to capture the correct unsubscribe functions
-  }, []);
 
   // Listen for friends
   useEffect(() => {
@@ -106,12 +103,12 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   }, [user, db]);
 
   // Listen for matches while searching
-   useEffect(() => {
-    if (!user || !profile) return;
+  useEffect(() => {
+    if (!user) return;
     
     const waitingDocRef = doc(db, 'waiting_users', user.uid);
     const unsubscribe = onSnapshot(waitingDocRef, async (docSnap) => {
-        if (isSearching && docSnap.exists() && docSnap.data().matchedChatId) {
+        if (docSnap.exists() && docSnap.data().matchedChatId) {
             const matchedChatId = docSnap.data().matchedChatId;
             setIsSearching(false);
             await deleteDoc(waitingDocRef);
@@ -133,9 +130,9 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     });
     
     return () => unsubscribe();
-  }, [user, profile, isSearching, db]);
+  }, [user, db]);
 
-  // Listen for incoming calls, game state, and partner leaving on the active chat
+  // Listen for game state changes and partner leaving on the active chat
   useEffect(() => {
     if (activeView.type !== 'chat' || !user || !activeChat?.id) return;
   
@@ -159,30 +156,42 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         toast({ title: "Partner Left", description: `${partner.name} has left the chat.` });
         handleLeaveChat(true); // Silently leave
       }
-  
-      // Incoming call logic
-      if (chatData.call?.status === 'ringing' && chatData.call.callerId !== user.uid) {
-        if (!isVideoCallOpen && !incomingCall) {
-          setIncomingCall({ chat: chatData, from: partner });
-        }
-      } else if (!chatData.call && incomingCall?.chat.id === chatData.id) {
-        // Call was declined/cancelled by the other user
-        setIncomingCall(null);
-      }
     });
   
     return () => unsubscribe();
-  
-  }, [activeView.type, activeChat?.id, user, isVideoCallOpen, incomingCall, toast]);
+  }, [activeView.type, activeChat?.id, user, toast]);
 
+  // Listen for incoming calls on the active chat
+  useEffect(() => {
+    if (activeView.type !== 'chat' || !user) return;
+    
+    const { chat, user: partner } = activeView.data;
+    const callsRef = collection(db, 'chats', chat.id, 'calls');
+    const q = query(callsRef);
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      snapshot.docChanges().forEach((change) => {
+        if (change.type === 'added') {
+          const callData = change.doc.data() as Call;
+          if (callData.callerId !== user.id && !callData.answer) {
+             if (!isVideoCallOpen && !incomingCall) {
+                setIncomingCall({ callId: change.doc.id, chat: chat, from: partner });
+             }
+          }
+        }
+      });
+    });
+
+    return () => unsubscribe();
+  }, [activeView, user, db, isVideoCallOpen, incomingCall]);
 
   const addIcebreakerMessage = async (chatId: string, currentUser: User, partnerUser: User) => {
     try {
       const result = await generateIcebreaker({
         userName1: currentUser.name,
-        interests1: currentUser.interests,
+        interests1: currentUser.interests || [],
         userName2: partnerUser.name,
-        interests2: partnerUser.interests,
+        interests2: partnerUser.interests || [],
       });
 
       const messagesRef = collection(db, "chats", chatId, "messages");
@@ -503,32 +512,28 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   const handleInitiateCall = async () => {
     if (activeView.type !== 'chat' || !user) return;
     const { chat } = activeView.data;
-    const chatRef = doc(db, 'chats', chat.id);
-    await updateDoc(chatRef, {
-      call: {
-        callerId: user.uid,
-        status: 'ringing',
-        offer: null,
-        answer: null,
-      }
+    const callDocRef = doc(collection(db, 'chats', chat.id, 'calls'));
+    
+    setActiveCall({
+      id: callDocRef.id,
+      callerId: user.id,
     });
     setVideoCallOpen(true);
   };
-
+  
   const handleAnswerCall = async () => {
     if (!incomingCall) return;
-    const chatRef = doc(db, 'chats', incomingCall.chat.id);
-    await updateDoc(chatRef, { 'call.status': 'active' });
-    setActiveChat(incomingCall.chat);
-    setActiveView({ type: 'chat', data: { user: incomingCall.from, chat: incomingCall.chat } });
-    setVideoCallOpen(true);
+    const callData = { id: incomingCall.callId, callerId: incomingCall.from.id };
+    
     setIncomingCall(null);
+    setActiveCall(callData);
+    setVideoCallOpen(true);
   };
 
   const handleDeclineCall = async () => {
     if (!incomingCall) return;
-    const chatRef = doc(db, 'chats', incomingCall.chat.id);
-    await updateDoc(chatRef, { call: null });
+    const callDocRef = doc(db, 'chats', incomingCall.chat.id, 'calls', incomingCall.callId);
+    await deleteDoc(callDocRef);
     setIncomingCall(null);
     toast({
       title: 'Call Declined',
@@ -559,16 +564,15 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   };
 
   const renderView = () => {
-    if (isVideoCallOpen && activeView.type === 'chat' && activeChat?.call) {
+    if (isVideoCallOpen && activeView.type === 'chat' && activeCall) {
       return (
-        <Dialog open={isVideoCallOpen} onOpenChange={setVideoCallOpen}>
           <VideoCallView
             user={activeView.data.user}
             currentUser={profile}
-            chat={activeChat}
+            chat={activeView.data.chat}
+            call={activeCall}
             onOpenChange={setVideoCallOpen}
           />
-        </Dialog>
       )
     }
 
@@ -613,23 +617,21 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         </AlertDialogContent>
       </AlertDialog>
 
-      {incomingCall && (
-        <Dialog open={!!incomingCall} onOpenChange={() => setIncomingCall(null)}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Incoming Call</DialogTitle>
-              <DialogDescription>
-                You have an incoming video call from {incomingCall.from.name}.
-              </DialogDescription>
-            </DialogHeader>
-            <DialogFooter>
-              <Button variant="outline" onClick={handleDeclineCall}>Decline</Button>
-              <Button onClick={handleAnswerCall}>Accept</Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-      )}
-
+      <Dialog open={!!incomingCall && !isVideoCallOpen} onOpenChange={() => setIncomingCall(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Incoming Call</AlertDialogTitle>
+            <AlertDialogDescription>
+              You have an incoming video call from {incomingCall?.from.name}.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleDeclineCall}>Decline</AlertDialogCancel>
+            <AlertDialogAction onClick={handleAnswerCall}>Accept</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </Dialog>
+      
       <Dialog open={isGameCenterOpen} onOpenChange={setGameCenterOpen}>
         <GameCenterView
           onInvite={handleInviteToGame}
@@ -780,5 +782,3 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     </SidebarProvider>
   );
 }
-
-    
