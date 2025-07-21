@@ -79,7 +79,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
       setFriends(fetchedFriends);
     });
     return () => unsubscribe();
-  }, [user, profile?.friends, db]);
+  }, [user?.uid, profile?.friends, db]);
 
   // Listen for friend requests
   useEffect(() => {
@@ -147,7 +147,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
     setCallListener(() => newUnsubscribe); // Store the new unsubscribe function
     return () => newUnsubscribe(); // Cleanup on component unmount
-  }, [activeView.type, user?.id, db, isVideoCallOpen]);
+  }, [activeView.type, user?.id, db, isVideoCallOpen, activeView, callListener]);
 
 
   const addIcebreakerMessage = async (chatId: string, currentUser: User, partnerUser: User) => {
@@ -334,7 +334,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
             await setDoc(doc(db, 'waiting_users', user.uid), {
                 uid: user.uid,
                 displayName: profile.name,
-                isGuest: profile.isGuest,
+                isGuest: profile.isGuest ?? false,
                 timestamp: serverTimestamp(),
                 matchedChatId: null,
             });
