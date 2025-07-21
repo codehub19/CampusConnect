@@ -49,11 +49,14 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
   
   const hangUp = async () => {
     if (pc.current) {
+      pc.current.getSenders().forEach(sender => sender.track?.stop());
       pc.current.close();
+      pc.current = null;
     }
 
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
     }
 
     if(chat.id) {
@@ -63,6 +66,7 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
          await updateDoc(chatRef, { call: null });
        }
 
+       // Clean up candidate collections
        const callCandidates = collection(chatRef, 'callCandidates');
        const answerCandidates = collection(chatRef, 'answerCandidates');
        
@@ -122,35 +126,45 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
         const chatRef = doc(db, 'chats', chat.id);
         const callCandidates = collection(chatRef, 'callCandidates');
         const answerCandidates = collection(chatRef, 'answerCandidates');
+        const isCaller = chat.call?.callerId === currentUser.id;
 
-        // --- Caller logic ---
-        if (chat.call?.callerId === currentUser.id) {
-            pc.current.onicecandidate = event => {
-                event.candidate && addDoc(callCandidates, event.candidate.toJSON());
-            };
-            
-            const offerDescription = await pc.current.createOffer();
-            await pc.current.setLocalDescription(offerDescription);
-            
-            await updateDoc(chatRef, { 
-              'call.offer': offerDescription.toJSON()
+        pc.current.onicecandidate = event => {
+          if (event.candidate) {
+            const candidatesCollection = isCaller ? callCandidates : answerCandidates;
+            addDoc(candidatesCollection, event.candidate.toJSON());
+          }
+        };
+
+        if (isCaller) {
+          const offerDescription = await pc.current.createOffer();
+          await pc.current.setLocalDescription(offerDescription);
+          await updateDoc(chatRef, { 'call.offer': offerDescription.toJSON() });
+
+          onSnapshot(answerCandidates, (snapshot) => {
+            snapshot.docChanges().forEach((change) => {
+              if (change.type === 'added') {
+                pc.current?.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+              }
             });
-        }
-        
-        // --- Answerer logic ---
-        if (chat.call?.callerId !== currentUser.id && chat.call?.offer) {
-            pc.current.onicecandidate = event => {
-                event.candidate && addDoc(answerCandidates, event.candidate.toJSON());
-            };
+          });
 
+        } else { // Is Answerer
+          if (chat.call?.offer) {
             await pc.current.setRemoteDescription(new RTCSessionDescription(chat.call.offer));
             
             const answerDescription = await pc.current.createAnswer();
             await pc.current.setLocalDescription(answerDescription);
 
-            await updateDoc(chatRef, { 
-              'call.answer': answerDescription.toJSON() 
+            await updateDoc(chatRef, { 'call.answer': answerDescription.toJSON() });
+
+            onSnapshot(callCandidates, (snapshot) => {
+              snapshot.docChanges().forEach((change) => {
+                if (change.type === 'added') {
+                  pc.current?.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+                }
+              });
             });
+          }
         }
     };
 
@@ -160,39 +174,23 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
     const unsubscribe = onSnapshot(chatRef, (docSnap) => {
         const data = docSnap.data();
         if (!data?.call) {
-            if(pc.current?.connectionState === 'connected' || pc.current?.connectionState === 'connecting'){
+            if(pc.current && (pc.current.connectionState === 'connected' || pc.current.connectionState === 'connecting')){
                 hangUp();
                 toast({ title: 'Call Ended', description: `${user.name} has ended the call.` });
             }
             return;
         }
-        // Answer logic for caller
+
+        // Caller receives the answer
         if (pc.current && !pc.current.currentRemoteDescription && data.call.answer) {
              pc.current.setRemoteDescription(new RTCSessionDescription(data.call.answer));
         }
     });
 
-    const callCandidatesUnsub = onSnapshot(collection(chatRef, 'callCandidates'), (snapshot) => {
-        snapshot.docChanges().forEach((change) => {
-            if (change.type === 'added') {
-                pc.current?.addIceCandidate(new RTCIceCandidate(change.doc.data()));
-            }
-        });
-    });
-
-    const answerCandidatesUnsub = onSnapshot(collection(chatRef, 'answerCandidates'), (snapshot) => {
-        snapshot.docChanges().forEach((change) => {
-            if (change.type === 'added') {
-                pc.current?.addIceCandidate(new RTCIceCandidate(change.doc.data()));
-            }
-        });
-    });
 
     return () => {
         hangUp();
         unsubscribe();
-        callCandidatesUnsub();
-        answerCandidatesUnsub();
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -290,3 +288,5 @@ export default function VideoCallView({ user, currentUser, chat, onOpenChange }:
     </DialogContent>
   );
 }
+
+    
