@@ -152,8 +152,8 @@ export default function DotsAndBoxes({ game: gameProp, currentUserId, onAcceptGa
         return "Opponent's turn";
     };
 
-    const myPlayerClass = game.players[currentUserId] === 'p1' ? 'bg-primary/50' : 'bg-accent/50';
-    const partnerPlayerClass = game.players[partnerId] === 'p1' ? 'bg-primary/50' : 'bg-accent/50';
+    const myPlayerclassName = game.players[currentUserId] === 'p1' ? 'bg-primary/50' : 'bg-accent/50';
+    const partnerPlayerclassName = game.players[partnerId] === 'p1' ? 'bg-primary/50' : 'bg-accent/50';
     
     return (
         <Card className="h-full flex flex-col border-0 rounded-none shadow-none bg-background">
@@ -179,13 +179,13 @@ export default function DotsAndBoxes({ game: gameProp, currentUserId, onAcceptGa
                         if(r % 2 === 0 && c % 2 !== 0) {
                            const lineIndex = (r/2) * game.gridSize + (c-1)/2;
                            const ownerId = game.h_lines[lineIndex];
-                           const ownerClass = ownerId ? (game.players[ownerId] === 'p1' ? 'bg-primary' : 'bg-accent') : '';
+                           const ownerclassName = ownerId ? (game.players[ownerId] === 'p1' ? 'bg-primary' : 'bg-accent') : '';
                            return (
                              <button 
                                 key={`${r}-${c}`}
                                 onClick={() => handleLineClick('h', lineIndex)}
                                 disabled={!!ownerId || !isMyTurn || game.status !== 'active'}
-                                className={cn("h-4 mx-1 flex-1 bg-secondary hover:bg-primary/30 disabled:cursor-not-allowed rounded-sm", ownerClass)} 
+                                className={cn("h-4 mx-1 flex-1 bg-secondary hover:bg-primary/30 disabled:cursor-not-allowed rounded-sm", ownerclassName)} 
                             />
                            )
                         }
@@ -193,13 +193,13 @@ export default function DotsAndBoxes({ game: gameProp, currentUserId, onAcceptGa
                         if(r % 2 !== 0 && c % 2 === 0) {
                            const lineIndex = (r-1)/2 * (game.gridSize + 1) + c/2;
                            const ownerId = game.v_lines[lineIndex];
-                            const ownerClass = ownerId ? (game.players[ownerId] === 'p1' ? 'bg-primary' : 'bg-accent') : '';
+                            const ownerclassName = ownerId ? (game.players[ownerId] === 'p1' ? 'bg-primary' : 'bg-accent') : '';
                            return (
                               <button 
                                 key={`${r}-${c}`}
                                 onClick={() => handleLineClick('v', lineIndex)}
                                 disabled={!!ownerId || !isMyTurn || game.status !== 'active'}
-                                className={cn("w-4 my-1 bg-secondary hover:bg-primary/30 disabled:cursor-not-allowed rounded-sm", ownerClass)}
+                                className={cn("w-4 my-1 bg-secondary hover:bg-primary/30 disabled:cursor-not-allowed rounded-sm", ownerclassName)}
                              />
                            )
                         }
@@ -207,8 +207,8 @@ export default function DotsAndBoxes({ game: gameProp, currentUserId, onAcceptGa
                         if(r % 2 !== 0 && c % 2 !== 0) {
                             const boxIndex = (r-1)/2 * game.gridSize + (c-1)/2;
                             const ownerId = game.boxes[boxIndex];
-                            const ownerClass = ownerId ? (game.players[ownerId] === 'p1' ? 'bg-primary/30' : 'bg-accent/30') : '';
-                            return <div key={`${r}-${c}`} className={cn("flex-1", ownerClass)} />;
+                            const ownerclassName = ownerId ? (game.players[ownerId] === 'p1' ? 'bg-primary/30' : 'bg-accent/30') : '';
+                            return <div key={`${r}-${c}`} className={cn("flex-1", ownerclassName)} />;
                         }
                         return null;
                      })

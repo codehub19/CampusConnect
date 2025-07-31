@@ -17,7 +17,7 @@ interface GameCenterViewProps {
 }
 
 const games: { type: GameType, name: string, description: string, icon: React.ReactNode, guestAllowed: boolean }[] = [
-    { type: 'ticTacToe', name: 'Tic-Tac-Toe', description: 'Classic 3-in-a-row.', icon: <Grip />, guestAllowed: true },
+    { type: 'ticTacToe', name: 'Tic-Tac-Toe', description: 'classNameic 3-in-a-row.', icon: <Grip />, guestAllowed: true },
     { type: 'connectFour', name: 'Connect Four', description: 'Get four of your discs in a row.', icon: <Swords />, guestAllowed: false },
     { type: 'dotsAndBoxes', name: 'Dots and Boxes', description: 'Complete boxes to score points.', icon: <AppWindow />, guestAllowed: false },
 ]
