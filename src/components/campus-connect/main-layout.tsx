@@ -56,6 +56,8 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   const [isVideoCallOpen, setVideoCallOpen] = useState(false);
   const [activeCallId, setActiveCallId] = useState<string | null>(null);
   const [listeners, setListeners] = useState<{ [key: string]: () => void }>({});
+  const db = getFirestore(firebaseApp);
+  const { toast } = useToast();
 
   const cleanupListeners = (keys: string[] = []) => {
     const newListeners = { ...listeners };
@@ -81,7 +83,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
        return;
     }
   
-    const db = getFirestore(firebaseApp);
     const { user: partner } = activeView.data;
     const chatRef = doc(db, 'chats', activeChat.id);
   
@@ -110,10 +111,9 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   }, [activeView, activeChat?.id]);
 
   useEffect(() => {
-    clearListeners();
+    cleanupListeners(['call']);
     if (activeView.type !== 'chat' || !user?.id || isVideoCallOpen) return;
     
-    const db = getFirestore(firebaseApp);
     const { chat, user: partner } = activeView.data;
     if (!chat.id) return;
 
@@ -153,7 +153,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         interests2: partnerUser.interests || [],
       });
 
-      const db = getFirestore(firebaseApp);
       const messagesRef = collection(db, "chats", chatId, "messages");
       await addDoc(messagesRef, {
         senderId: 'ai-assistant',
@@ -170,7 +169,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     const partnerId = chatData.userIds.find(id => id !== user.uid);
     if (!partnerId) return;
 
-    const db = getFirestore(firebaseApp);
     const partnerSnap = await getDoc(doc(db, 'users', partnerId));
     if (!partnerSnap.exists()) return;
     
@@ -305,7 +303,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   };
 
   const handleLeaveChat = async (isSilent = false) => {
-    const db = getFirestore(firebaseApp);
     if (activeView.type === 'chat' && user) {
       const { chat } = activeView.data;
       if (chat && !chat.isFriendChat) {
@@ -533,7 +530,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
             <h1 className="text-lg font-semibold text-foreground">CampusConnect</h1>
           </div>
         </SidebarHeader>
-        <SidebarContent asChild>
+        <SidebarContent>
             <ScrollArea className="h-full">
                 <div className="p-4">
                     <SidebarMenu>
@@ -619,3 +616,5 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     </SidebarProvider>
   );
 }
+
+    
