@@ -15,12 +15,12 @@ import { Loader2 } from 'lucide-react';
 import { getDatabase, ref, onValue, goOffline, goOnline } from 'firebase/database';
 import { firebaseApp, rtdb } from '@/lib/firebase';
 
-type AppState = 'policy' | 'auth' | 'profile_setup' | 'home' | 'chat' | 'events' | 'missed_connections';
+type AppState = 'loading' | 'policy' | 'auth' | 'profile_setup' | 'home' | 'chat' | 'events' | 'missed_connections';
 
 function AppContent() {
   const { user, loading, profile, updateProfile } = useAuth();
   const [isProfileOpen, setProfileOpen] = useState(false);
-  const [appState, setAppState] = useState<AppState>('auth');
+  const [appState, setAppState] = useState<AppState>('loading');
   const [onlineCount, setOnlineCount] = useState<number | null>(null);
 
   useEffect(() => {
@@ -45,11 +45,10 @@ function AppContent() {
   // Effect to manage state transitions based on auth changes and policy agreement
   useEffect(() => {
     if (loading) {
-        setAppState('auth');
-        return;
+      setAppState('loading');
+      return;
     }
     
-    // This check now runs safely on the client after hydration
     if (typeof window !== 'undefined' && localStorage.getItem('policyAgreed') !== 'true') {
       setAppState('policy');
       return;
@@ -62,7 +61,7 @@ function AppContent() {
     
     if (!profile) {
       // Still waiting for profile to load, stay in a loading-like state
-      setAppState('auth');
+      setAppState('loading');
       return;
     }
 
@@ -73,7 +72,7 @@ function AppContent() {
     
     // If we've gotten past profile setup, default to home.
     // Avoids reverting to 'home' if user navigates away and state changes.
-    if (appState === 'profile_setup' || appState === 'auth' || appState === 'policy') {
+    if (appState === 'profile_setup' || appState === 'auth' || appState === 'policy' || appState === 'loading') {
       setAppState('home');
     }
 
@@ -85,15 +84,14 @@ function AppContent() {
       localStorage.setItem('policyAgreed', 'true');
     }
     // The useEffect will now handle transitioning to the correct state
-    setAppState('auth'); 
+    setAppState('loading');
   };
 
   const navigateTo = (state: AppState) => {
     setAppState(state);
   }
 
-  // This is the key fix: Show a loading spinner until auth and profile are ready.
-  if (loading || (user && !profile && appState !== 'policy' && appState !== 'auth')) {
+  if (appState === 'loading') {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />

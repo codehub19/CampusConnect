@@ -10,7 +10,7 @@ import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
 import type { User, Chat } from '@/lib/types';
 import { cn } from '@/lib/utils';
-import { getFirestore, doc, onSnapshot, collection, addDoc, getDocs, writeBatch, updateDoc, deleteDoc } from 'firebase/firestore';
+import { getFirestore, doc, onSnapshot, collection, addDoc, getDocs, writeBatch, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import {
   Dialog,
@@ -23,7 +23,8 @@ interface VideoCallViewProps {
   user: User; // The person being called
   currentUser: User;
   chat: Chat;
-  callId?: string;
+  callId: string | undefined;
+  setCallId: (callId: string | null) => void;
   onOpenChange: (open: boolean) => void;
 }
 
@@ -36,7 +37,7 @@ const servers = {
   iceCandidatePoolSize: 10,
 };
 
-export default function VideoCallView({ user, currentUser, chat, callId, onOpenChange }: VideoCallViewProps) {
+export default function VideoCallView({ user, currentUser, chat, callId: initialCallId, setCallId, onOpenChange }: VideoCallViewProps) {
   const [isMicOn, setMicOn] = useState(true);
   const [isCameraOn, setCameraOn] = useState(true);
   const [hasCameraPermission, setHasCameraPermission] = useState<boolean | null>(null);
@@ -48,27 +49,37 @@ export default function VideoCallView({ user, currentUser, chat, callId, onOpenC
   const localStreamRef = useRef<MediaStream | null>(null);
   const remoteStreamRef = useRef<MediaStream | null>(null);
   const isHangingUp = useRef(false);
+  const callIdRef = useRef(initialCallId);
 
   const { toast } = useToast();
   const db = getFirestore(firebaseApp);
+  
+  const [listeners, setListeners] = useState<(() => void)[]>([]);
+  const clearListeners = () => {
+    listeners.forEach(unsub => unsub());
+    setListeners([]);
+  };
 
   const hangUp = async (notifyPartner = false) => {
     if (isHangingUp.current) return;
     isHangingUp.current = true;
     
+    clearListeners();
+
     pc.current?.close();
     localStreamRef.current?.getTracks().forEach(track => track.stop());
 
-    if (notifyPartner && chat.id && callId) {
-        const callDocRef = doc(db, 'chats', chat.id, 'calls', callId);
+    if (notifyPartner && chat.id && callIdRef.current) {
+        const callDocRef = doc(db, 'chats', chat.id, 'calls', callIdRef.current);
         await deleteDoc(callDocRef).catch(e => console.warn("Failed to delete call doc:", e));
     }
     
+    setCallId(null);
     onOpenChange(false);
   };
   
   useEffect(() => {
-    const setupCall = async () => {
+    const setupCall = async (callId: string) => {
         pc.current = new RTCPeerConnection(servers);
         remoteStreamRef.current = new MediaStream();
 
@@ -77,7 +88,6 @@ export default function VideoCallView({ user, currentUser, chat, callId, onOpenC
             localStreamRef.current = stream;
             if (localVideoRef.current) localVideoRef.current.srcObject = stream;
             setHasCameraPermission(true);
-
             stream.getTracks().forEach(track => pc.current?.addTrack(track, stream));
         } catch (error) {
             console.error("Media devices error:", error);
@@ -96,7 +106,7 @@ export default function VideoCallView({ user, currentUser, chat, callId, onOpenC
             });
         };
 
-        const callDocRef = doc(db, 'chats', chat.id, 'calls', callId!);
+        const callDocRef = doc(db, 'chats', chat.id, 'calls', callId);
         const offerCandidates = collection(callDocRef, 'offerCandidates');
         const answerCandidates = collection(callDocRef, 'answerCandidates');
 
@@ -116,21 +126,17 @@ export default function VideoCallView({ user, currentUser, chat, callId, onOpenC
         const answer = { type: answerDescription.type, sdp: answerDescription.sdp };
         await updateDoc(callDocRef, { answer });
 
-        onSnapshot(offerCandidates, (snapshot) => {
+        const unsubCandidates = onSnapshot(offerCandidates, (snapshot) => {
             snapshot.docChanges().forEach((change) => {
                 if (change.type === 'added') {
                     pc.current?.addIceCandidate(new RTCIceCandidate(change.doc.data()));
                 }
             });
         });
-
+        setListeners(prev => [...prev, unsubCandidates]);
     };
 
     const createCall = async () => {
-        const callDocRef = doc(collection(db, 'chats', chat.id, 'calls'));
-        const offerCandidates = collection(callDocRef, 'offerCandidates');
-        const answerCandidates = collection(callDocRef, 'answerCandidates');
-
         pc.current = new RTCPeerConnection(servers);
         remoteStreamRef.current = new MediaStream();
 
@@ -139,7 +145,6 @@ export default function VideoCallView({ user, currentUser, chat, callId, onOpenC
             localStreamRef.current = stream;
             if (localVideoRef.current) localVideoRef.current.srcObject = stream;
             setHasCameraPermission(true);
-
             stream.getTracks().forEach(track => pc.current?.addTrack(track, stream));
         } catch (error) {
             console.error("Media devices error:", error);
@@ -158,6 +163,13 @@ export default function VideoCallView({ user, currentUser, chat, callId, onOpenC
             });
         };
 
+        const callDocRef = doc(collection(db, 'chats', chat.id, 'calls'));
+        callIdRef.current = callDocRef.id;
+        setCallId(callDocRef.id);
+        
+        const offerCandidates = collection(callDocRef, 'offerCandidates');
+        const answerCandidates = collection(callDocRef, 'answerCandidates');
+
         pc.current.onicecandidate = event => {
             if (event.candidate) {
                 addDoc(offerCandidates, event.candidate.toJSON());
@@ -170,32 +182,35 @@ export default function VideoCallView({ user, currentUser, chat, callId, onOpenC
         const offer = { type: offerDescription.type, sdp: offerDescription.sdp };
         await setDoc(callDocRef, { offer, callerId: currentUser.id, answer: null });
         
-        onSnapshot(callDocRef, (snapshot) => {
+        const unsubCall = onSnapshot(callDocRef, (snapshot) => {
             const data = snapshot.data();
             if (!pc.current?.currentRemoteDescription && data?.answer) {
                 pc.current?.setRemoteDescription(new RTCSessionDescription(data.answer));
             }
         });
         
-        onSnapshot(answerCandidates, (snapshot) => {
+        const unsubCandidates = onSnapshot(answerCandidates, (snapshot) => {
             snapshot.docChanges().forEach((change) => {
                 if (change.type === 'added') {
                     pc.current?.addIceCandidate(new RTCIceCandidate(change.doc.data()));
                 }
             });
         });
+        
+        setListeners(prev => [...prev, unsubCall, unsubCandidates]);
     }
 
-    if(callId) { // This user is answering
-        setupCall();
-    } else { // This user is initiating
+    if(initialCallId) {
+        setupCall(initialCallId);
+    } else {
         createCall();
     }
 
     return () => {
         hangUp(true);
     };
-  }, [chat.id, callId, db, toast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
 
   const toggleMediaStream = (type: 'video' | 'audio', state: boolean) => {

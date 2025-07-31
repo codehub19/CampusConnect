@@ -62,7 +62,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         onDisconnect(statusRef).set({ state: 'offline', last_changed: rtdbServerTimestamp() });
 
 
-        const unsubProfile = onSnapshot(userDocRef, async (docSnap) => {
+        const unsubProfile = onSnapshot(userDocRef, (docSnap) => {
           if (docSnap.exists()) {
             const userProfile = docSnap.data() as User;
             setProfile(userProfile);
@@ -71,15 +71,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         return () => unsubProfile();
       } else {
-        if (user) {
-           const userDocRef = doc(db, 'users', user.uid);
-           const docSnap = await getDoc(userDocRef);
-           if (docSnap.exists()){
-             await updateDoc(userDocRef, { online: false, lastSeen: serverTimestamp() });
-             const statusRef = ref(rtdb, `/status/${user.uid}`);
-             await set(statusRef, { state: 'offline', last_changed: rtdbServerTimestamp() });
-           }
-        }
         setUser(null);
         setProfile(null);
         setLoading(false);
@@ -163,8 +154,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const logout = async () => {
     if (user) {
       const userDocRef = doc(db, 'users', user.uid);
-      await updateDoc(userDocRef, { online: false, lastSeen: serverTimestamp() });
       const statusRef = ref(rtdb, `/status/${user.uid}`);
+      
+      // Set offline status before signing out
+      await updateDoc(userDocRef, { online: false, lastSeen: serverTimestamp() });
       await set(statusRef, { state: 'offline', last_changed: rtdbServerTimestamp() });
     }
     await signOut(auth);

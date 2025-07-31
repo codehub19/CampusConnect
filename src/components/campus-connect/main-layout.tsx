@@ -56,14 +56,20 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   const [incomingCall, setIncomingCall] = useState<{ callId: string, from: User } | null>(null);
   const [isVideoCallOpen, setVideoCallOpen] = useState(false);
   const [friendToRemove, setFriendToRemove] = useState<User | null>(null);
-  const [callListener, setCallListener] = useState<() => void>(() => () => {});
   const [activeCallId, setActiveCallId] = useState<string | null>(null);
-  const [activeChatListener, setActiveChatListener] = useState<() => void>(() => () => {});
-
+  
+  // Combine all listeners into one object for easier management
+  const [listeners, setListeners] = useState<{ [key: string]: () => void }>({});
 
   const { toast } = useToast();
   const db = getFirestore(firebaseApp);
 
+  // Function to clear all active listeners
+  const cleanupListeners = () => {
+    Object.values(listeners).forEach(unsubscribe => unsubscribe());
+    setListeners({});
+  };
+  
   // Listen for friends
   useEffect(() => {
     if (!user?.uid || !profile || !Array.isArray(profile.friends)) {
@@ -105,8 +111,8 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
   // Listen for game state changes and partner leaving on the active chat
   useEffect(() => {
-    activeChatListener(); // Unsubscribe from previous chat listener
-    if (activeView.type !== 'chat' || !user || !activeChat?.id) return () => {};
+    if (listeners.activeChat) listeners.activeChat();
+    if (activeView.type !== 'chat' || !user || !activeChat?.id) return;
   
     const { user: partner } = activeView.data;
     const chatRef = doc(db, 'chats', activeChat.id);
@@ -129,18 +135,17 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
       }
     });
   
-    setActiveChatListener(() => newUnsubscribe);
-    return () => newUnsubscribe();
+    setListeners(prev => ({...prev, activeChat: newUnsubscribe}));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView.type, activeChat?.id]);
 
-    // Listen for incoming calls on the active chat
+  // Listen for incoming calls on the active chat
   useEffect(() => {
-    callListener(); // Unsubscribe from previous listener
-    if (activeView.type !== 'chat' || !user?.id || isVideoCallOpen) return () => {};
+    if (listeners.call) listeners.call();
+    if (activeView.type !== 'chat' || !user?.id || isVideoCallOpen) return;
     
     const { chat, user: partner } = activeView.data;
-    if (!chat.id) return () => {};
+    if (!chat.id) return;
 
     const callsRef = collection(db, 'chats', chat.id, 'calls');
     const q = query(callsRef, where('callerId', '!=', user.id));
@@ -157,11 +162,15 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
       });
     });
 
-    setCallListener(() => newUnsubscribe); // Store the new unsubscribe function
-    return () => newUnsubscribe();
+    setListeners(prev => ({...prev, call: newUnsubscribe}));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView.type, user?.id, isVideoCallOpen]);
 
+  // Main cleanup effect
+  useEffect(() => {
+    return () => cleanupListeners();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const addIcebreakerMessage = async (chatId: string, currentUser: User, partnerUser: User) => {
     try {
@@ -216,7 +225,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
       let chatData: Chat;
   
       if (!chatDocSnap.exists()) {
-        // Create new chat document
         const newChat: Chat = {
           id: chatId,
           userIds: sortedIds,
@@ -232,7 +240,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         await addIcebreakerMessage(chatId, profile, friend);
         chatData = newChat;
       } else {
-        // Chat exists, update my online status
         chatData = { id: chatDocSnap.id, ...chatDocSnap.data() } as Chat;
         if (!chatData.usersData?.[user.uid]?.online) {
           await updateDoc(chatDocRef, { [`usersData.${user.uid}.online`]: true });
@@ -604,7 +611,8 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
             user={activeView.data.user}
             currentUser={profile}
             chat={activeView.data.chat}
-            callId={activeCallId}
+            callId={activeCallId ?? undefined}
+            setCallId={setActiveCallId}
             onOpenChange={(open) => {
                 if(!open) {
                     setVideoCallOpen(false);
