@@ -33,7 +33,6 @@ const allInterests = ['Gaming', 'Music', 'Sports', 'Movies', 'Reading', 'Hiking'
 export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdate }: ProfileViewProps) {
   const { toast } = useToast();
   const [formData, setFormData] = useState<User>(user);
-  const [friends, setFriends] = useState<User[]>([]);
   const [myEvents, setMyEvents] = useState<Event[]>([]);
   const [myPosts, setMyPosts] = useState<MissedConnectionPost[]>([]);
   const [eventToEdit, setEventToEdit] = useState<Event | null>(null);
@@ -42,20 +41,10 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
   const db = getFirestore(firebaseApp);
 
   useEffect(() => {
-    if (!isOpen || !user?.id) return;
-
-    setFormData(user);
-    
-    if (user.friends && user.friends.length > 0) {
-        const friendsQuery = query(collection(db, 'users'), where('id', 'in', user.friends));
-        const friendsUnsub = onSnapshot(friendsQuery, (snapshot) => {
-            setFriends(snapshot.docs.map(doc => doc.data() as User));
-        });
-        return () => friendsUnsub();
-    } else {
-        setFriends([]);
+    if (isOpen && user) {
+        setFormData(user);
     }
-  }, [user, isOpen, db]);
+  }, [user, isOpen]);
 
   useEffect(() => {
     if (!isOpen || !user?.id) return;
@@ -111,19 +100,6 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
     }
   };
 
-  const handleRemoveFriend = async (friendId: string) => {
-    if (!user?.id) return;
-    const meRef = doc(db, 'users', user.id);
-    const friendRef = doc(db, 'users', friendId);
-    try {
-        await updateDoc(meRef, { friends: arrayRemove(friendId) });
-        await updateDoc(friendRef, { friends: arrayRemove(user.id) });
-        toast({ title: "Friend Removed" });
-    } catch (error) {
-        toast({ variant: 'destructive', title: "Error", description: "Could not remove friend." });
-    }
-  };
-
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => setFormData(prev => ({ ...prev, [e.target.id]: e.target.value }));
   const handleGenderChange = (value: string) => setFormData(prev => ({ ...prev, gender: value as User['gender'] }));
   const handleInterestChange = (interest: string, checked: boolean) => {
@@ -148,14 +124,13 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
           <div className="p-4 sm:p-6">
             <DialogHeader className="mb-6">
                 <DialogTitle className="text-2xl">Profile & Settings</DialogTitle>
-                <DialogDescription>Manage your profile, content, and social connections.</DialogDescription>
+                <DialogDescription>Manage your profile and content.</DialogDescription>
             </DialogHeader>
 
             <Tabs defaultValue="profile" className="w-full">
-              <TabsList className="grid w-full grid-cols-3 mb-6">
+              <TabsList className="grid w-full grid-cols-2 mb-6">
                 <TabsTrigger value="profile">Profile</TabsTrigger>
                 <TabsTrigger value="content">My Content</TabsTrigger>
-                <TabsTrigger value="social">Social</TabsTrigger>
               </TabsList>
               
               <div className="min-h-[450px]">
@@ -242,37 +217,6 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
                             </div>
                         )) : <p className="text-sm text-muted-foreground px-2">You haven't created any posts yet.</p>}
                     </CardContent>
-                  </Card>
-                </TabsContent>
-
-                <TabsContent value="social" className="space-y-6">
-                  <Card>
-                      <CardHeader><CardTitle>Friends ({friends.length})</CardTitle></CardHeader>
-                      <CardContent className="space-y-3">
-                          {friends.length > 0 ? friends.map(friend => (
-                              <div key={friend.id} className="flex items-center gap-3 p-2 rounded-md bg-secondary/50">
-                                  <Avatar className="h-9 w-9"><AvatarImage src={friend.avatar} alt={friend.name} /><AvatarFallback>{friend.name.charAt(0)}</AvatarFallback></Avatar>
-                                  <span className="font-medium flex-grow">{friend.name}</span>
-                                  <AlertDialog>
-                                      <AlertDialogTrigger asChild>
-                                          <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive">
-                                              <UserMinus className="h-4 w-4" />
-                                          </Button>
-                                      </AlertDialogTrigger>
-                                      <AlertDialogContent>
-                                          <AlertDialogHeader>
-                                              <AlertDialogTitle>Remove Friend?</AlertDialogTitle>
-                                              <AlertDialogDescription>Are you sure you want to remove {friend.name} from your friends?</AlertDialogDescription>
-                                          </AlertDialogHeader>
-                                          <AlertDialogFooter>
-                                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                              <AlertDialogAction onClick={() => handleRemoveFriend(friend.id)}>Remove</AlertDialogAction>
-                                          </AlertDialogFooter>
-                                      </AlertDialogContent>
-                                  </AlertDialog>
-                              </div>
-                          )) : <p className="text-sm text-muted-foreground px-2">No friends yet. Start chatting to add some!</p>}
-                      </CardContent>
                   </Card>
                 </TabsContent>
               </div>

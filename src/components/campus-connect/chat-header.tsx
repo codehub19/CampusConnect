@@ -78,31 +78,13 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, onGoTo
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     <DropdownMenuItem 
-                        onSelect={onAddFriend} 
-                        disabled={isFriend || isGuest}
+                        className="text-destructive focus:text-destructive-foreground focus:bg-destructive"
+                        onSelect={onLeaveChat}
                     >
-                        {isFriend ? <UserCheck className="mr-2 h-4 w-4 text-green-500" /> : <UserPlus className="mr-2 h-4 w-4" /> }
-                        <span>{isFriend ? "Already friends" : "Add friend"}</span>
+                      <LogOut className="mr-2 h-4 w-4" />
+                      <span>Leave Chat</span>
                     </DropdownMenuItem>
-                    {!isFriend && (
-                        <DropdownMenuItem 
-                            className="text-destructive focus:text-destructive-foreground focus:bg-destructive"
-                            onSelect={onLeaveChat}
-                        >
-                          <LogOut className="mr-2 h-4 w-4" />
-                          <span>Leave Chat</span>
-                        </DropdownMenuItem>
-                    )}
                     <DropdownMenuSeparator />
-                    {isFriend && (
-                        <DropdownMenuItem 
-                            className="text-destructive focus:text-destructive-foreground focus:bg-destructive"
-                            onSelect={onRemoveFriend}
-                        >
-                          <UserMinus className="mr-2 h-4 w-4" />
-                          <span>Remove Friend</span>
-                        </DropdownMenuItem>
-                    )}
                     <DropdownMenuItem 
                         className="text-destructive focus:text-destructive-foreground focus:bg-destructive"
                         onSelect={onBlockUser}
@@ -112,17 +94,10 @@ export default function ChatHeader({ activeView, onFindChat, onLeaveChat, onGoTo
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
-                {isFriend ? (
-                    <Button onClick={onFindChat} variant="outline" size="sm" className="ml-2 hidden sm:inline-flex">
-                        <Search className="mr-2 h-4 w-4" />
-                        Find Chat
-                    </Button>
-                ) : (
-                    <Button onClick={onLeaveChat} variant="destructive" size="sm" className="ml-2 hidden sm:inline-flex">
-                        <LogOut className="mr-2 h-4 w-4" />
-                        Leave
-                    </Button>
-                )}
+                <Button onClick={onLeaveChat} variant="destructive" size="sm" className="ml-2 hidden sm:inline-flex">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Leave
+                </Button>
             </div>
           </>
         );

@@ -91,7 +91,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         online: true,
         gender: 'Prefer not to say',
         interests: [],
-        friends: [],
         blockedUsers: [],
         isGuest,
         profileComplete: isGuest, // Guests don't need profile setup
@@ -157,8 +156,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const statusRef = ref(rtdb, `/status/${user.uid}`);
       
       // Set offline status before signing out
-      await updateDoc(userDocRef, { online: false, lastSeen: serverTimestamp() });
-      await set(statusRef, { state: 'offline', last_changed: rtdbServerTimestamp() });
+      await updateDoc(userDocRef, { online: false, lastSeen: serverTimestamp() }).catch(e => console.error("Error setting user offline:", e));
+      await set(statusRef, { state: 'offline', last_changed: rtdbServerTimestamp() }).catch(e => console.error("Error setting RTDB status offline:", e));
     }
     await signOut(auth);
   };

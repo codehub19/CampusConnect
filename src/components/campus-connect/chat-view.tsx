@@ -238,7 +238,7 @@ export default function ChatView({ chat, currentUser }: ChatViewProps) {
         )}
         <div className="p-4 border-t">
             <form onSubmit={handleSendMessage} className="flex w-full items-center gap-2">
-            {chat.isFriendChat &&
+            
                 <>
                 <input type="file" ref={fileInputRef} onChange={handleFileSelect} className="hidden" />
                 <Button 
@@ -253,7 +253,7 @@ export default function ChatView({ chat, currentUser }: ChatViewProps) {
                     <span className="sr-only">Attach file</span>
                 </Button>
                 </>
-            }
+            
             <textarea
                 placeholder="Type a message..."
                 className="flex-1 resize-none bg-background focus-visible:ring-1 focus-visible:ring-offset-0 flex min-h-[40px] w-full rounded-md border border-input px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"

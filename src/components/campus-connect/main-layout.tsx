@@ -28,8 +28,8 @@ import TicTacToe from '@/components/campus-connect/tic-tac-toe';
 import ConnectFour from '@/components/campus-connect/connect-four';
 import DotsAndBoxes from '@/components/campus-connect/dots-and-boxes';
 import { useAuth } from '@/hooks/use-auth';
-import type { User, Chat, FriendRequest, GameState, GameType } from '@/lib/types';
-import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where, getDocs, deleteDoc, addDoc, updateDoc, serverTimestamp, arrayUnion, writeBatch, limit, runTransaction, arrayRemove } from 'firebase/firestore';
+import type { User, Chat, GameState, GameType } from '@/lib/types';
+import { getFirestore, collection, onSnapshot, doc, getDoc, setDoc, query, where, getDocs, deleteDoc, addDoc, updateDoc, serverTimestamp, arrayUnion, writeBatch, limit, runTransaction } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import VideoCallView from './video-call-view';
@@ -50,66 +50,21 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   const [activeView, setActiveView] = useState<ActiveView>({ type: 'welcome' });
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
   const [isGameCenterOpen, setGameCenterOpen] = useState(false);
-  const [friends, setFriends] = useState<User[]>([]);
-  const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [incomingCall, setIncomingCall] = useState<{ callId: string, from: User } | null>(null);
   const [isVideoCallOpen, setVideoCallOpen] = useState(false);
-  const [friendToRemove, setFriendToRemove] = useState<User | null>(null);
   const [activeCallId, setActiveCallId] = useState<string | null>(null);
   
-  // Combine all listeners into one object for easier management
   const [listeners, setListeners] = useState<{ [key: string]: () => void }>({});
 
   const { toast } = useToast();
   const db = getFirestore(firebaseApp);
 
-  // Function to clear all active listeners
   const cleanupListeners = () => {
     Object.values(listeners).forEach(unsubscribe => unsubscribe());
     setListeners({});
   };
-  
-  // Listen for friends
-  useEffect(() => {
-    if (!user?.uid || !profile || !Array.isArray(profile.friends)) {
-      setFriends([]);
-      return;
-    }
-    if (profile.friends.length === 0) {
-      setFriends([]);
-      return;
-    }
-    
-    const usersRef = collection(db, 'users');
-    const q = query(usersRef, where('id', 'in', profile.friends));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedFriends: User[] = [];
-      snapshot.forEach((doc) => {
-        fetchedFriends.push(doc.data() as User);
-      });
-      setFriends(fetchedFriends);
-    });
-    return () => unsubscribe();
-  }, [user?.uid, profile, db]);
 
-
-  // Listen for friend requests
-  useEffect(() => {
-    if (!user?.uid) return;
-    const requestsRef = collection(db, 'friend_requests');
-    const q = query(requestsRef, where('toId', '==', user.uid), where('status', '==', 'pending'));
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const fetchedRequests: FriendRequest[] = [];
-      snapshot.forEach((doc) => {
-        fetchedRequests.push({ id: doc.id, ...doc.data() } as FriendRequest);
-      });
-      setFriendRequests(fetchedRequests);
-    });
-    return () => unsubscribe();
-  }, [user?.uid, db]);
-
-  // Listen for game state changes and partner leaving on the active chat
   useEffect(() => {
     if (listeners.activeChat) listeners.activeChat();
     if (activeView.type !== 'chat' || !user || !activeChat?.id) return;
@@ -126,7 +81,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
       }
       
       const chatData = { id: docSnap.id, ...docSnap.data() } as Chat;
-      setActiveChat(chatData); // Keep local activeChat state in sync
+      setActiveChat(chatData);
   
       const partnerUserData = chatData.usersData?.[partner.id];
       if (partnerUserData && !partnerUserData.online && !chatData.isFriendChat) {
@@ -136,10 +91,8 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     });
   
     setListeners(prev => ({...prev, activeChat: newUnsubscribe}));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView.type, activeChat?.id]);
 
-  // Listen for incoming calls on the active chat
   useEffect(() => {
     if (listeners.call) listeners.call();
     if (activeView.type !== 'chat' || !user?.id || isVideoCallOpen) return;
@@ -154,7 +107,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
       snapshot.docChanges().forEach((change) => {
         if (change.type === 'added') {
           const callData = change.doc.data();
-          // Check for offer and ensure it's not an old, answered call
           if (callData.offer && !callData.answer) {
               setIncomingCall({ callId: change.doc.id, from: partner });
           }
@@ -163,13 +115,10 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     });
 
     setListeners(prev => ({...prev, call: newUnsubscribe}));
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView.type, user?.id, isVideoCallOpen]);
 
-  // Main cleanup effect
   useEffect(() => {
     return () => cleanupListeners();
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const addIcebreakerMessage = async (chatId: string, currentUser: User, partnerUser: User) => {
@@ -213,57 +162,12 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     setActiveView({ type: 'chat', data: { user: partnerSnap.data() as User, chat: chatData } });
   }
 
-  const handleSelectChat = async (friend: User) => {
-    if (!user || !profile) return;
-  
-    const sortedIds = [user.uid, friend.id].sort();
-    const chatId = sortedIds.join('_');
-    const chatDocRef = doc(db, "chats", chatId);
-  
-    try {
-      const chatDocSnap = await getDoc(chatDocRef);
-      let chatData: Chat;
-  
-      if (!chatDocSnap.exists()) {
-        const newChat: Chat = {
-          id: chatId,
-          userIds: sortedIds,
-          game: null,
-          isFriendChat: true,
-          usersData: {
-            [user.uid]: { online: true },
-            [friend.id]: { online: friend.online ?? false }
-          },
-          lastMessageTimestamp: serverTimestamp(),
-        };
-        await setDoc(chatDocRef, newChat);
-        await addIcebreakerMessage(chatId, profile, friend);
-        chatData = newChat;
-      } else {
-        chatData = { id: chatDocSnap.id, ...chatDocSnap.data() } as Chat;
-        if (!chatData.usersData?.[user.uid]?.online) {
-          await updateDoc(chatDocRef, { [`usersData.${user.uid}.online`]: true });
-          chatData.usersData![user.uid].online = true;
-        }
-      }
-      openChat(chatData);
-    } catch (error) {
-      console.error("Error opening chat with friend:", error);
-      toast({
-        variant: 'destructive',
-        title: 'Error',
-        description: 'Could not start chat. Please try again.'
-      });
-    }
-  };
-
   const handleSelectAi = () => {
     handleLeaveChat(true);
     setActiveView({ type: 'ai' });
     setActiveChat(null);
   };
   
-  // Listener for being matched by another user
   useEffect(() => {
     if (!user?.uid) return () => {};
 
@@ -330,7 +234,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
                         return;
                     }
 
-                    // Create a unique, consistent chat ID for non-friend chats
                     const newChatRef = doc(collection(db, 'chats'));
                     
                     const newChatData: Chat = {
@@ -417,72 +320,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     }
   };
 
-  const handleAddFriend = async (friendId: string) => {
-    if (!user || !profile || profile.isGuest) return;
-    const requestId = [user.uid, friendId].sort().join('_');
-    const requestRef = doc(db, 'friend_requests', requestId);
-
-    try {
-      await setDoc(requestRef, {
-        fromId: user.uid,
-        toId: friendId,
-        fromName: profile.name,
-        fromAvatar: profile.avatar,
-        status: 'pending',
-        timestamp: serverTimestamp()
-      });
-      toast({ title: "Friend request sent!" });
-    } catch (error) {
-      console.error("Error sending friend request:", error);
-      toast({ variant: 'destructive', title: "Error", description: "Could not send friend request." });
-    }
-  };
-
-  const handleRemoveFriend = async () => {
-    if (!user || !friendToRemove) return;
-
-    const batch = writeBatch(db);
-
-    const meRef = doc(db, 'users', user.uid);
-    batch.update(meRef, { friends: arrayRemove(friendToRemove.id) });
-
-    const friendRef = doc(db, 'users', friendToRemove.id);
-    batch.update(friendRef, { friends: arrayRemove(user.uid) });
-
-    try {
-      await batch.commit();
-      toast({ title: "Friend Removed", description: `You are no longer friends with ${friendToRemove.name}.` });
-      handleLeaveChat(true);
-    } catch (error) {
-      console.error("Error removing friend:", error);
-      toast({ variant: 'destructive', title: 'Error', description: 'Could not remove friend.' });
-    } finally {
-      setFriendToRemove(null);
-    }
-  };
-
-  const handleAcceptRequest = async (requestId: string, fromId: string) => {
-    if (!user) return;
-    const batch = writeBatch(db);
-
-    const meRef = doc(db, 'users', user.uid);
-    batch.update(meRef, { friends: arrayUnion(fromId) });
-
-    const friendRef = doc(db, 'users', fromId);
-    batch.update(friendRef, { friends: arrayUnion(user.uid) });
-
-    const requestRef = doc(db, 'friend_requests', requestId);
-    batch.delete(requestRef);
-
-    await batch.commit();
-    toast({ title: "Friend added!" });
-  };
-
-  const handleDeclineRequest = async (requestId: string) => {
-    await deleteDoc(doc(db, 'friend_requests', requestId));
-    toast({ title: "Request declined." });
-  };
-
   const handleBlockUser = async (userIdToBlock: string) => {
     if (!user) return;
     const userRef = doc(db, 'users', user.uid);
@@ -494,8 +331,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   };
 
   const handleInviteToGame = async (gameType: GameType) => {
-    if (activeView.type !== 'chat') return;
-    if (!user) return;
+    if (activeView.type !== 'chat' || !user) return;
 
     const { chat, user: partner } = activeView.data;
     const chatRef = doc(db, 'chats', chat.id);
@@ -645,25 +481,8 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     }
   };
 
-  const isFriend = (activeView.type === 'chat') ? !!activeChat?.isFriendChat : false;
-
   return (
     <SidebarProvider>
-       <AlertDialog open={!!friendToRemove} onOpenChange={(open) => !open && setFriendToRemove(null)}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove Friend?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to remove {friendToRemove?.name} as a friend? You will no longer see this chat.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction onClick={handleRemoveFriend}>Remove</AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
       <AlertDialog open={!!incomingCall}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -745,59 +564,11 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
           </SidebarGroup>
           <SidebarSeparator />
 
-          {!profile.isGuest && (
-            <>
-              {friendRequests.length > 0 && (
-                <SidebarGroup>
-                  <SidebarMenu>
-                    <p className="px-2 text-xs font-semibold text-muted-foreground mb-2">Friend Requests</p>
-                    {friendRequests.map(req => (
-                      <SidebarMenuItem key={req.id}>
-                        <div className="flex items-center w-full justify-between p-2">
-                          <div className="flex items-center gap-2">
-                            <Avatar className="h-6 w-6">
-                              <AvatarImage src={req.fromAvatar} alt={req.fromName} />
-                              <AvatarFallback>{req.fromName.charAt(0)}</AvatarFallback>
-                            </Avatar>
-                            <span className="text-sm">{req.fromName}</span>
-                          </div>
-                          <div className="flex gap-1">
-                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleAcceptRequest(req.id, req.fromId)}>✓</Button>
-                            <Button size="sm" variant="ghost" className="h-6 w-6 p-0" onClick={() => handleDeclineRequest(req.id)}>×</Button>
-                          </div>
-                        </div>
-                      </SidebarMenuItem>
-                    ))}
-                  </SidebarMenu>
-                </SidebarGroup>
-              )}
-              <SidebarGroup>
-                <SidebarMenu>
-                  <p className="px-2 text-xs font-semibold text-muted-foreground mb-2">Friends</p>
-                  {friends.map(friend => (
-                    <SidebarMenuItem key={friend.id}>
-                      <SidebarMenuButton
-                        onClick={() => handleSelectChat(friend)}
-                        isActive={activeView.type === 'chat' && activeView.data?.user.id === friend.id}
-                        tooltip={friend.name}
-                      >
-                        <Avatar className="h-6 w-6 relative flex items-center justify-center">
-                          <AvatarImage src={friend.avatar} alt={friend.name} />
-                          <AvatarFallback>{friend.name.charAt(0)}</AvatarFallback>
-                          {friend.online && <span className="absolute bottom-0 right-0 block h-2 w-2 rounded-full bg-green-500 ring-2 ring-sidebar-background" />}
-                        </Avatar>
-                        <span>{friend.name}</span>
-                      </SidebarMenuButton>
-                    </SidebarMenuItem>
-                  ))}
-                  {friends.length === 0 && (
-                    <p className="px-2 text-xs text-muted-foreground">No friends yet.</p>
-                  )}
-                </SidebarMenu>
-              </SidebarGroup>
-            </>
-          )}
-
+           <SidebarGroup>
+              <p className="px-2 text-xs font-semibold text-muted-foreground mb-2">CHATS</p>
+              <WelcomeView onFindChat={findNewChat} isSearching={isSearching} />
+            </SidebarGroup>
+            
         </SidebarContent>
         <SidebarHeader>
           <Button onClick={logout} variant="ghost" className="w-full justify-center">
@@ -813,12 +584,12 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
             onLeaveChat={() => handleLeaveChat(false)}
             onGoToWelcome={() => setActiveView({ type: 'welcome' })}
             isSearching={isSearching}
-            onAddFriend={(activeView.type === 'chat') ? () => handleAddFriend(activeView.data.user.id) : () => { }}
-            onRemoveFriend={(activeView.type === 'chat') ? () => setFriendToRemove(activeView.data.user) : () => { }}
+            onAddFriend={() => {}}
+            onRemoveFriend={() => {}}
             onBlockUser={(activeView.type === 'chat') ? () => handleBlockUser(activeView.data.user.id) : () => { }}
             onStartGame={() => setGameCenterOpen(true)}
             onVideoCall={handleInitiateCall}
-            isFriend={isFriend}
+            isFriend={false}
             isGuest={profile.isGuest || ((activeView.type === 'chat') && activeView.data.user.isGuest)}
           />
           <div className="flex-1 min-h-0">

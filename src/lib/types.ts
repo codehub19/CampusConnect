@@ -8,7 +8,6 @@ export interface User {
   gender: 'Male' | 'Female' | 'Other' | 'Prefer not to say';
   interests: string[];
   isGuest?: boolean;
-  friends?: string[];
   blockedUsers?: string[];
   profileComplete?: boolean;
   groupName?: string; // For displaying name in group chats
@@ -88,16 +87,6 @@ export interface Chat {
   groupName?: string;
   groupAvatar?: string;
   groupDescription?: string;
-}
-
-export interface FriendRequest {
-    id: string;
-    fromId: string;
-    toId: string;
-    fromName: string;
-    fromAvatar: string;
-    status: 'pending' | 'accepted' | 'declined';
-    timestamp: any;
 }
 
 export interface MissedConnectionComment {
