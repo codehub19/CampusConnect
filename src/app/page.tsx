@@ -42,41 +42,50 @@ function AppContent() {
   }, [user]);
 
   
-  const getInitialState = (): AppState => {
-    if (loading) return 'auth';
-    if (typeof window !== 'undefined' && localStorage.getItem('policyAgreed') !== 'true') {
-      return 'policy';
-    }
-    if (!user) {
-      return 'auth';
-    }
-    // If the profile is not yet loaded, wait in an auth-like state
-    if (!profile) {
-      return 'auth';
-    }
-    if (!profile.profileComplete && !profile.isGuest) {
-      return 'profile_setup';
-    }
-    return 'home';
-  };
-  
-  // Effect to manage state transitions based on auth changes
+  // Effect to manage state transitions based on auth changes and policy agreement
   useEffect(() => {
-    const initialState = getInitialState();
-    // Only update app state if it's different, to avoid unnecessary re-renders.
-    // Especially important for after profile setup, to not revert to 'home' prematurely.
-    if (initialState !== 'profile_setup' || appState !== 'home') {
-      setAppState(initialState);
+    if (loading) {
+        setAppState('auth');
+        return;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, user, profile]);
+    
+    // This check now runs safely on the client after hydration
+    if (typeof window !== 'undefined' && localStorage.getItem('policyAgreed') !== 'true') {
+      setAppState('policy');
+      return;
+    }
+
+    if (!user) {
+      setAppState('auth');
+      return;
+    }
+    
+    if (!profile) {
+      // Still waiting for profile to load, stay in a loading-like state
+      setAppState('auth');
+      return;
+    }
+
+    if (!profile.profileComplete && !profile.isGuest) {
+      setAppState('profile_setup');
+      return;
+    }
+    
+    // If we've gotten past profile setup, default to home.
+    // Avoids reverting to 'home' if user navigates away and state changes.
+    if (appState === 'profile_setup' || appState === 'auth' || appState === 'policy') {
+      setAppState('home');
+    }
+
+  }, [loading, user, profile, appState]);
 
 
   const handleAgree = () => {
     if (typeof window !== 'undefined') {
       localStorage.setItem('policyAgreed', 'true');
     }
-    setAppState(getInitialState());
+    // The useEffect will now handle transitioning to the correct state
+    setAppState('auth'); 
   };
 
   const navigateTo = (state: AppState) => {
@@ -84,7 +93,7 @@ function AppContent() {
   }
 
   // This is the key fix: Show a loading spinner until auth and profile are ready.
-  if (loading || (user && !profile)) {
+  if (loading || (user && !profile && appState !== 'policy' && appState !== 'auth')) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
