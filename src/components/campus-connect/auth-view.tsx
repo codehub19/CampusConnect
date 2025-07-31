@@ -50,7 +50,7 @@ export default function AuthView({ onlineCount }: AuthViewProps) {
             case 'guest':
                 return (
                     <div>
-                        <h2 class="text-2xl font-bold mb-4 text-white">Guest Chat</h2>
+                        <h2 className="text-2xl font-bold mb-4 text-white">Guest Chat</h2>
                         <Input
                             type="text"
                             id="guest-name"
@@ -68,7 +68,7 @@ export default function AuthView({ onlineCount }: AuthViewProps) {
             case 'signup':
                 return (
                     <div>
-                        <h2 class="text-2xl font-bold mb-4 text-white">Create Account</h2>
+                        <h2 className="text-2xl font-bold mb-4 text-white">Create Account</h2>
                         <div className="space-y-4">
                             <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="bg-secondary border-border" />
                             <Input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="bg-secondary border-border"/>
@@ -82,7 +82,7 @@ export default function AuthView({ onlineCount }: AuthViewProps) {
             case 'login':
                 return (
                      <div>
-                        <h2 class="text-2xl font-bold mb-4 text-white">Log In</h2>
+                        <h2 className="text-2xl font-bold mb-4 text-white">Log In</h2>
                         <div className="space-y-4">
                             <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} className="bg-secondary border-border" />
                             <Input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} className="bg-secondary border-border" />
@@ -97,17 +97,17 @@ export default function AuthView({ onlineCount }: AuthViewProps) {
             default:
                 return (
                     <div>
-                        <h2 class="text-3xl font-bold mb-2 text-center text-white">CampusConnect</h2>
-                        <p class="text-center text-muted-foreground mb-6">Connect with fellow students!</p>
+                        <h2 className="text-3xl font-bold mb-2 text-center text-white">CampusConnect</h2>
+                        <p className="text-center text-muted-foreground mb-6">Connect with fellow students!</p>
                         
                         <div className="space-y-4">
                             <Button onClick={() => handleAuthAction(signInWithGoogle)} className="w-full bg-white text-gray-800 font-bold hover:bg-gray-200" disabled={isLoading}>
                                 {isLoading ? <Loader2 className="animate-spin" /> : <><GoogleIcon /> Sign in with Google</>}
                             </Button>
-                             <div class="relative flex py-2 items-center">
-                                <div class="flex-grow border-t border-border"></div>
-                                <span class="flex-shrink mx-4 text-muted-foreground text-sm">OR</span>
-                                <div class="flex-grow border-t border-border"></div>
+                             <div className="relative flex py-2 items-center">
+                                <div className="flex-grow border-t border-border"></div>
+                                <span className="flex-shrink mx-4 text-muted-foreground text-sm">OR</span>
+                                <div className="flex-grow border-t border-border"></div>
                             </div>
                             <Button onClick={() => setView('guest')} variant="secondary" className="w-full font-bold" disabled={isLoading}>
                                 Chat as a Guest
@@ -116,7 +116,7 @@ export default function AuthView({ onlineCount }: AuthViewProps) {
                                 Sign Up with Email
                             </Button>
                         </div>
-                         <p class="text-center mt-6 text-muted-foreground">Already have an account? <Button variant="link" onClick={() => setView('login')} className="font-semibold text-primary p-0 h-auto">Log In</Button></p>
+                         <p className="text-center mt-6 text-muted-foreground">Already have an account? <Button variant="link" onClick={() => setView('login')} className="font-semibold text-primary p-0 h-auto">Log In</Button></p>
                     </div>
                 );
         }
