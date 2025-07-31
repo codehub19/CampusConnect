@@ -58,9 +58,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   
   const [listeners, setListeners] = useState<{ [key: string]: () => void }>({});
 
-  const { toast } = useToast();
-  const db = getFirestore(firebaseApp);
-
   const cleanupListeners = () => {
     Object.values(listeners).forEach(unsubscribe => unsubscribe());
     setListeners({});
@@ -95,7 +92,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   }, [activeView.type, activeChat?.id]);
 
   useEffect(() => {
-    clearListeners();
+    cleanupListeners();
     if (activeView.type !== 'chat' || !user?.id || isVideoCallOpen) return;
     
     const { chat, user: partner } = activeView.data;
