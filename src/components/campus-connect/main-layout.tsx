@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Bot, MessageSquare, Home, HeartCrack, UserX, Loader2, Video, Gamepad2, X, LogOut } from 'lucide-react';
+import { Bot, MessageSquare, Home, HeartCrack, Loader2, Video, Gamepad2 } from 'lucide-react';
 import {
   SidebarProvider,
   Sidebar,
@@ -121,6 +121,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView.type, user?.id, isVideoCallOpen]);
 
+
   useEffect(() => {
     return () => cleanupListeners();
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -154,14 +155,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     const partnerSnap = await getDoc(doc(db, 'users', partnerId));
     if (!partnerSnap.exists()) return;
     
-    if (isSearching) {
-        setIsSearching(false);
-        const waitingDocRef = doc(db, 'waiting_users', user.uid);
-        const waitingDocSnap = await getDoc(waitingDocRef);
-        if (waitingDocSnap.exists()) {
-            await deleteDoc(waitingDocRef);
-        }
-    }
+    setIsSearching(false);
 
     setActiveChat(chatData);
     setActiveView({ type: 'chat', data: { user: partnerSnap.data() as User, chat: chatData } });
@@ -176,13 +170,14 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   useEffect(() => {
     if (!user?.uid) return () => {};
 
-    const waitingDocRef = doc(db, 'waiting_users', user.uid);
-    const unsubscribe = onSnapshot(waitingDocRef, async (docSnap) => {
-        if (docSnap.exists() && docSnap.data().matchedChatId) {
-            const matchedChatId = docSnap.data().matchedChatId;
+    const userDocRef = doc(db, 'users', user.uid);
+    const unsubscribe = onSnapshot(userDocRef, async (docSnap) => {
+        const userData = docSnap.data() as User;
+        if (userData?.pendingChatId) {
+            const matchedChatId = userData.pendingChatId;
             setIsSearching(false);
             
-            await deleteDoc(waitingDocRef);
+            await updateDoc(userDocRef, { pendingChatId: null });
             
             const chatRef = doc(db, 'chats', matchedChatId);
             const chatSnap = await getDoc(chatRef);
@@ -232,10 +227,12 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
             }
 
             const partnerWaitingRef = partnerDoc.ref;
+            const partnerUserDocRef = doc(db, 'users', partnerProfile.id);
+
             try {
                 await runTransaction(db, async (transaction) => {
                     const freshPartnerDoc = await transaction.get(partnerWaitingRef);
-                    if (!freshPartnerDoc.exists() || freshPartnerDoc.data().matchedChatId) {
+                    if (!freshPartnerDoc.exists()) {
                         return; // Partner already matched by someone else
                     }
 
@@ -253,17 +250,16 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
                         lastMessageTimestamp: serverTimestamp(),
                     };
                     transaction.set(newChatRef, newChatData);
-                    transaction.update(partnerWaitingRef, { matchedChatId: newChatRef.id });
+                    transaction.delete(partnerWaitingRef);
+                    transaction.update(partnerUserDocRef, { pendingChatId: newChatRef.id });
                     
-                    // Since state updates don't happen inside transactions, we prepare to update state after.
-                    // By setting matchMade to true, we ensure we will open this chat after the loop.
                     setActiveChat(newChatData);
                     setActiveView({ type: 'chat', data: { user: partnerProfile, chat: newChatData } });
                     await addIcebreakerMessage(newChatRef.id, profile, partnerProfile);
                     matchMade = true; 
                 });
 
-                if (matchMade) break; // Exit loop if a match was successfully made
+                if (matchMade) break;
             } catch (error) {
                 console.warn("Transaction to match with user failed, trying next:", error);
             }
@@ -271,15 +267,11 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
         if (matchMade) {
             setIsSearching(false);
-            toast.dismiss(); // Dismiss the "Searching..." toast
+            toast.dismiss();
         } else {
-            // No suitable match found, add self to waiting list
             await setDoc(doc(db, 'waiting_users', user.uid), {
                 uid: user.uid,
-                displayName: profile.name,
-                isGuest: profile.isGuest ?? false,
                 timestamp: serverTimestamp(),
-                matchedChatId: null,
             });
         }
     } catch (error) {
@@ -522,63 +514,65 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
           </div>
         </SidebarHeader>
         <SidebarContent>
-           <ScrollArea className="p-4">
-            <SidebarMenu>
-              <SidebarMenuItem>
-                <div className="w-full justify-start gap-2 flex items-center p-2">
-                  <Avatar className="h-8 w-8">
-                    <AvatarImage src={profile.avatar} alt={profile.name} data-ai-hint="profile avatar" />
-                    <AvatarFallback>{profile.name.charAt(0)}</AvatarFallback>
-                  </Avatar>
-                  <div className="flex flex-col items-start">
-                    <span className="font-medium">{profile.name}</span>
-                  </div>
+            <ScrollArea className="h-full">
+                <div className="p-4">
+                    <SidebarMenu>
+                    <SidebarMenuItem>
+                        <div className="w-full justify-start gap-2 flex items-center p-2">
+                        <Avatar className="h-8 w-8">
+                            <AvatarImage src={profile.avatar} alt={profile.name} data-ai-hint="profile avatar" />
+                            <AvatarFallback>{profile.name.charAt(0)}</AvatarFallback>
+                        </Avatar>
+                        <div className="flex flex-col items-start">
+                            <span className="font-medium">{profile.name}</span>
+                        </div>
+                        </div>
+                    </SidebarMenuItem>
+                    </SidebarMenu>
+
+                    <SidebarSeparator />
+                    <SidebarGroup>
+                    <SidebarMenu>
+                        <SidebarMenuItem>
+                        <SidebarMenuButton
+                            onClick={onNavigateHome}
+                            tooltip="Home"
+                        >
+                            <Home />
+                            <span>Home</span>
+                        </SidebarMenuButton>
+                        </SidebarMenuItem>
+                        <SidebarMenuItem>
+                        <SidebarMenuButton
+                            onClick={handleSelectAi}
+                            isActive={activeView.type === 'ai'}
+                            tooltip="AI Assistant"
+                        >
+                            <Bot />
+                            <span>AI Assistant</span>
+                        </SidebarMenuButton>
+                        </SidebarMenuItem>
+                        <SidebarMenuItem>
+                        <SidebarMenuButton
+                            onClick={onNavigateToMissedConnections}
+                            tooltip="Missed Connections"
+                        >
+                            <HeartCrack />
+                            <span>Missed Connections</span>
+                        </SidebarMenuButton>
+                        </SidebarMenuItem>
+                    </SidebarMenu>
+                    </SidebarGroup>
+                    <SidebarSeparator />
+
+                    <SidebarGroup>
+                        <p className="px-2 text-xs font-semibold text-muted-foreground mb-2">CHATS</p>
+                        <div className="p-4">
+                            <WelcomeView onFindChat={findNewChat} isSearching={isSearching} />
+                        </div>
+                    </SidebarGroup>
                 </div>
-              </SidebarMenuItem>
-            </SidebarMenu>
-
-            <SidebarSeparator />
-            <SidebarGroup>
-              <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    onClick={onNavigateHome}
-                    tooltip="Home"
-                  >
-                    <Home />
-                    <span>Home</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    onClick={handleSelectAi}
-                    isActive={activeView.type === 'ai'}
-                    tooltip="AI Assistant"
-                  >
-                    <Bot />
-                    <span>AI Assistant</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-                <SidebarMenuItem>
-                  <SidebarMenuButton
-                    onClick={onNavigateToMissedConnections}
-                    tooltip="Missed Connections"
-                  >
-                    <HeartCrack />
-                    <span>Missed Connections</span>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              </SidebarMenu>
-            </SidebarGroup>
-            <SidebarSeparator />
-
-            <SidebarGroup>
-                <p className="px-2 text-xs font-semibold text-muted-foreground mb-2">CHATS</p>
-                 <div className="p-4">
-                    <WelcomeView onFindChat={findNewChat} isSearching={isSearching} />
-                 </div>
-              </SidebarGroup>
-          </ScrollArea>
+            </ScrollArea>
         </SidebarContent>
       </Sidebar>
       <SidebarInset>
