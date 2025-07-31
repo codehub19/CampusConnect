@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Bot, MessageSquare, Home, HeartCrack, UserX, Loader2, Video, Gamepad2, X } from 'lucide-react';
+import { Bot, MessageSquare, Home, HeartCrack, UserX, Loader2, Video, Gamepad2, X, LogOut } from 'lucide-react';
 import {
   SidebarProvider,
   Sidebar,
@@ -19,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
 import { Dialog } from '@/components/ui/dialog';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import ChatView from '@/components/campus-connect/chat-view';
 import AiAssistantView from '@/components/campus-connect/ai-assistant-view';
 import WelcomeView from '@/components/campus-connect/welcome-view';
@@ -46,7 +47,7 @@ interface MainLayoutProps {
 }
 
 export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: MainLayoutProps) {
-  const { user, profile, logout } = useAuth();
+  const { user, profile } = useAuth();
   const [activeView, setActiveView] = useState<ActiveView>({ type: 'welcome' });
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
   const [isGameCenterOpen, setGameCenterOpen] = useState(false);
@@ -94,7 +95,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   }, [activeView.type, activeChat?.id]);
 
   useEffect(() => {
-    if (listeners.call) listeners.call();
+    clearListeners();
     if (activeView.type !== 'chat' || !user?.id || isVideoCallOpen) return;
     
     const { chat, user: partner } = activeView.data;
@@ -110,6 +111,8 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
           if (callData.offer && !callData.answer) {
               setIncomingCall({ callId: change.doc.id, from: partner });
           }
+        } else if (change.type === 'removed') {
+            setIncomingCall(null);
         }
       });
     });
@@ -514,61 +517,62 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
             <h1 className="text-lg font-semibold text-foreground">CampusConnect</h1>
           </div>
         </SidebarHeader>
-        <SidebarContent>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <div className="w-full justify-start gap-2 flex items-center p-2">
-                <Avatar className="h-8 w-8">
-                  <AvatarImage src={profile.avatar} alt={profile.name} data-ai-hint="profile avatar" />
-                  <AvatarFallback>{profile.name.charAt(0)}</AvatarFallback>
-                </Avatar>
-                <div className="flex flex-col items-start">
-                  <span className="font-medium">{profile.name}</span>
-                </div>
-              </div>
-            </SidebarMenuItem>
-          </SidebarMenu>
-
-          <SidebarSeparator />
-          <SidebarGroup>
+        <SidebarContent asChild>
+          <ScrollArea>
             <SidebarMenu>
               <SidebarMenuItem>
-                <SidebarMenuButton
-                  onClick={onNavigateHome}
-                  tooltip="Home"
-                >
-                  <Home />
-                  <span>Home</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  onClick={handleSelectAi}
-                  isActive={activeView.type === 'ai'}
-                  tooltip="AI Assistant"
-                >
-                  <Bot />
-                  <span>AI Assistant</span>
-                </SidebarMenuButton>
-              </SidebarMenuItem>
-              <SidebarMenuItem>
-                <SidebarMenuButton
-                  onClick={onNavigateToMissedConnections}
-                  tooltip="Missed Connections"
-                >
-                  <HeartCrack />
-                  <span>Missed Connections</span>
-                </SidebarMenuButton>
+                <div className="w-full justify-start gap-2 flex items-center p-2">
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={profile.avatar} alt={profile.name} data-ai-hint="profile avatar" />
+                    <AvatarFallback>{profile.name.charAt(0)}</AvatarFallback>
+                  </Avatar>
+                  <div className="flex flex-col items-start">
+                    <span className="font-medium">{profile.name}</span>
+                  </div>
+                </div>
               </SidebarMenuItem>
             </SidebarMenu>
-          </SidebarGroup>
-          <SidebarSeparator />
 
-           <SidebarGroup>
-              <p className="px-2 text-xs font-semibold text-muted-foreground mb-2">CHATS</p>
-              <WelcomeView onFindChat={findNewChat} isSearching={isSearching} />
+            <SidebarSeparator />
+            <SidebarGroup>
+              <SidebarMenu>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={onNavigateHome}
+                    tooltip="Home"
+                  >
+                    <Home />
+                    <span>Home</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={handleSelectAi}
+                    isActive={activeView.type === 'ai'}
+                    tooltip="AI Assistant"
+                  >
+                    <Bot />
+                    <span>AI Assistant</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+                <SidebarMenuItem>
+                  <SidebarMenuButton
+                    onClick={onNavigateToMissedConnections}
+                    tooltip="Missed Connections"
+                  >
+                    <HeartCrack />
+                    <span>Missed Connections</span>
+                  </SidebarMenuButton>
+                </SidebarMenuItem>
+              </SidebarMenu>
             </SidebarGroup>
-            
+            <SidebarSeparator />
+
+            <SidebarGroup>
+                <p className="px-2 text-xs font-semibold text-muted-foreground mb-2">CHATS</p>
+                <WelcomeView onFindChat={findNewChat} isSearching={isSearching} />
+              </SidebarGroup>
+          </ScrollArea>
         </SidebarContent>
         <SidebarHeader>
         </SidebarHeader>
