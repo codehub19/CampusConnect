@@ -60,14 +60,29 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   
   const [listeners, setListeners] = useState<{ [key: string]: () => void }>({});
 
-  const cleanupListeners = () => {
-    Object.values(listeners).forEach(unsubscribe => unsubscribe());
-    setListeners({});
+  const cleanupListeners = (keys: string[] = []) => {
+    const newListeners = { ...listeners };
+    const keysToClean = keys.length > 0 ? keys : Object.keys(newListeners);
+    
+    keysToClean.forEach(key => {
+      if (newListeners[key]) {
+        newListeners[key]();
+        delete newListeners[key];
+      }
+    });
+
+    if (keys.length > 0) {
+      setListeners(newListeners);
+    } else {
+      setListeners({});
+    }
   };
 
   useEffect(() => {
-    if (listeners.activeChat) listeners.activeChat();
-    if (activeView.type !== 'chat' || !user || !activeChat?.id) return;
+    if (activeView.type !== 'chat' || !user || !activeChat?.id) {
+       cleanupListeners(['activeChat']);
+       return;
+    }
   
     const { user: partner } = activeView.data;
     const chatRef = doc(db, 'chats', activeChat.id);
@@ -91,12 +106,16 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     });
   
     setListeners(prev => ({...prev, activeChat: newUnsubscribe}));
+    
+    return () => newUnsubscribe();
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeView.type, activeChat?.id]);
+  }, [activeView, activeChat?.id]);
 
   useEffect(() => {
-    cleanupListeners();
-    if (activeView.type !== 'chat' || !user?.id || isVideoCallOpen) return;
+    if (activeView.type !== 'chat' || !user?.id || isVideoCallOpen) {
+      cleanupListeners(['call']);
+      return;
+    }
     
     const { chat, user: partner } = activeView.data;
     if (!chat.id) return;
@@ -118,6 +137,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     });
 
     setListeners(prev => ({...prev, call: newUnsubscribe}));
+    return () => newUnsubscribe();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView.type, user?.id, isVideoCallOpen]);
 
