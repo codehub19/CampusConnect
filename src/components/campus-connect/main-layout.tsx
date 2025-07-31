@@ -516,7 +516,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
             <h1 className="text-lg font-semibold text-foreground">CampusConnect</h1>
           </div>
         </SidebarHeader>
-        <SidebarContent asChild>
+        <SidebarContent>
           <ScrollArea className="p-4">
             <SidebarMenu>
               <SidebarMenuItem>
@@ -600,3 +600,5 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     </SidebarProvider>
   );
 }
+
+    
