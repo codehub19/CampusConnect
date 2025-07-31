@@ -1,6 +1,6 @@
 // This file is machine-generated - edit at your own risk.
 import { initializeApp, getApp, getApps } from "firebase/app";
-import { getFirestore, enableIndexedDbPersistence } from "firebase/firestore";
+import { initializeFirestore, CACHE_SIZE_UNLIMITED } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getDatabase } from "firebase/database";
 
@@ -22,15 +22,6 @@ export const storage = getStorage(firebaseApp);
 export const rtdb = getDatabase(firebaseApp);
 
 // Enable offline persistence for Firestore
-const db = getFirestore(firebaseApp);
-if (typeof window !== 'undefined') {
-  try {
-    enableIndexedDbPersistence(db);
-  } catch (err) {
-    if (err.code === 'failed-precondition') {
-      console.warn('Firestore persistence failed: Multiple tabs open');
-    } else if (err.code === 'unimplemented') {
-      console.warn('Firestore persistence not available in this browser');
-    }
-  }
-}
+const db = initializeFirestore(firebaseApp, {
+  cacheSizeBytes: CACHE_SIZE_UNLIMITED,
+});
