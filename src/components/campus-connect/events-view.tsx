@@ -10,7 +10,7 @@ import EventCard from './event-card';
 import type { Event } from '@/lib/types';
 import CreateEventView from './create-event-view';
 import GroupChatView from './group-chat-view';
-import { getFirestore, collection, query, orderBy, onSnapshot, where } from 'firebase/firestore';
+import { getFirestore, collection, query, orderBy, onSnapshot, where, Timestamp } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
 
@@ -43,10 +43,13 @@ export default function EventsView({ onNavigateHome }: EventsViewProps) {
   const { profile, user } = useAuth();
 
   useEffect(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0); // Set to the beginning of the day
+
     const eventsRef = collection(db, 'events');
     const q = query(
         eventsRef, 
-        where('date', '>=', new Date()),
+        where('date', '>=', Timestamp.fromDate(today)),
         orderBy('date', 'asc')
     );
 

@@ -1,5 +1,6 @@
 
 
+
 export interface User {
   id: string;
   name: string;
@@ -73,7 +74,6 @@ export interface Call {
 export interface Chat {
   id: string;
   userIds: string[];
-  users?: User[]; // Optional: for client-side convenience
   game: GameState | null;
   lastMessageTimestamp?: any;
   isFriendChat?: boolean;
@@ -82,11 +82,6 @@ export interface Chat {
           online: boolean;
       }
   }
-  // Group Chat specific fields
-  isGroupChat?: boolean;
-  groupName?: string;
-  groupAvatar?: string;
-  groupDescription?: string;
 }
 
 export interface MissedConnectionComment {

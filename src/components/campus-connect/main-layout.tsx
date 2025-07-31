@@ -91,6 +91,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     });
   
     setListeners(prev => ({...prev, activeChat: newUnsubscribe}));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView.type, activeChat?.id]);
 
   useEffect(() => {
@@ -117,10 +118,12 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     });
 
     setListeners(prev => ({...prev, call: newUnsubscribe}));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeView.type, user?.id, isVideoCallOpen]);
 
   useEffect(() => {
     return () => cleanupListeners();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const addIcebreakerMessage = async (chatId: string, currentUser: User, partnerUser: User) => {
@@ -233,7 +236,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
                 await runTransaction(db, async (transaction) => {
                     const freshPartnerDoc = await transaction.get(partnerWaitingRef);
                     if (!freshPartnerDoc.exists() || freshPartnerDoc.data().matchedChatId) {
-                        return;
+                        return; // Partner already matched by someone else
                     }
 
                     const newChatRef = doc(collection(db, 'chats'));
@@ -252,22 +255,25 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
                     transaction.set(newChatRef, newChatData);
                     transaction.update(partnerWaitingRef, { matchedChatId: newChatRef.id });
                     
+                    // Since state updates don't happen inside transactions, we prepare to update state after.
+                    // By setting matchMade to true, we ensure we will open this chat after the loop.
                     setActiveChat(newChatData);
                     setActiveView({ type: 'chat', data: { user: partnerProfile, chat: newChatData } });
                     await addIcebreakerMessage(newChatRef.id, profile, partnerProfile);
-                    matchMade = true;
+                    matchMade = true; 
                 });
 
-                if (matchMade) break;
+                if (matchMade) break; // Exit loop if a match was successfully made
             } catch (error) {
-                console.warn("Transaction failed, trying next user:", error);
+                console.warn("Transaction to match with user failed, trying next:", error);
             }
         }
 
         if (matchMade) {
             setIsSearching(false);
-            toast.dismiss();
+            toast.dismiss(); // Dismiss the "Searching..." toast
         } else {
+            // No suitable match found, add self to waiting list
             await setDoc(doc(db, 'waiting_users', user.uid), {
                 uid: user.uid,
                 displayName: profile.name,
@@ -281,8 +287,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         toast({ variant: 'destructive', title: 'Error', description: 'Could not find a chat. Please try again.' });
         setIsSearching(false);
         const waitingDocRef = doc(db, 'waiting_users', user.uid);
-        const waitingDocSnap = await getDoc(waitingDocRef);
-        if (waitingDocSnap.exists()) {
+        if ((await getDoc(waitingDocRef)).exists()) {
             await deleteDoc(waitingDocRef);
         }
     }
@@ -517,7 +522,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
           </div>
         </SidebarHeader>
         <SidebarContent>
-          <ScrollArea className="p-4">
+           <ScrollArea className="p-4">
             <SidebarMenu>
               <SidebarMenuItem>
                 <div className="w-full justify-start gap-2 flex items-center p-2">
@@ -569,12 +574,12 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
 
             <SidebarGroup>
                 <p className="px-2 text-xs font-semibold text-muted-foreground mb-2">CHATS</p>
-                <WelcomeView onFindChat={findNewChat} isSearching={isSearching} />
+                 <div className="p-4">
+                    <WelcomeView onFindChat={findNewChat} isSearching={isSearching} />
+                 </div>
               </SidebarGroup>
           </ScrollArea>
         </SidebarContent>
-        <SidebarHeader>
-        </SidebarHeader>
       </Sidebar>
       <SidebarInset>
         <div className="h-screen flex flex-col bg-card">
@@ -600,5 +605,3 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     </SidebarProvider>
   );
 }
-
-    
