@@ -49,6 +49,7 @@ interface MainLayoutProps {
 export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: MainLayoutProps) {
   const { user, profile } = useAuth();
   const db = getFirestore(firebaseApp);
+  const { toast } = useToast();
   const [activeView, setActiveView] = useState<ActiveView>({ type: 'welcome' });
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
   const [isGameCenterOpen, setGameCenterOpen] = useState(false);
@@ -599,5 +600,3 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     </SidebarProvider>
   );
 }
-
-    
