@@ -48,6 +48,7 @@ interface MainLayoutProps {
 
 export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: MainLayoutProps) {
   const { user, profile } = useAuth();
+  const db = getFirestore(firebaseApp);
   const [activeView, setActiveView] = useState<ActiveView>({ type: 'welcome' });
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
   const [isGameCenterOpen, setGameCenterOpen] = useState(false);
@@ -515,7 +516,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
           </div>
         </SidebarHeader>
         <SidebarContent asChild>
-          <ScrollArea>
+          <ScrollArea className="p-4">
             <SidebarMenu>
               <SidebarMenuItem>
                 <div className="w-full justify-start gap-2 flex items-center p-2">
@@ -598,3 +599,5 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     </SidebarProvider>
   );
 }
+
+    
