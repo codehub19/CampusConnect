@@ -571,9 +571,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
             
         </SidebarContent>
         <SidebarHeader>
-          <Button onClick={logout} variant="ghost" className="w-full justify-center">
-            Logout
-          </Button>
         </SidebarHeader>
       </Sidebar>
       <SidebarInset>

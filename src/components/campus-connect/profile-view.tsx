@@ -18,8 +18,9 @@ import { getFirestore, collection, query, where, onSnapshot, doc, deleteDoc, upd
 import { firebaseApp } from '@/lib/firebase';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { format } from 'date-fns';
-import { Pencil, Trash2, Users, Newspaper, Calendar, UserMinus } from 'lucide-react';
+import { Pencil, Trash2, Users, Newspaper, Calendar, UserMinus, LogOut } from 'lucide-react';
 import CreateEventView from './create-event-view';
+import { useAuth } from '@/hooks/use-auth';
 
 interface ProfileViewProps {
   user: User;
@@ -32,6 +33,7 @@ const allInterests = ['Gaming', 'Music', 'Sports', 'Movies', 'Reading', 'Hiking'
 
 export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdate }: ProfileViewProps) {
   const { toast } = useToast();
+  const { logout } = useAuth();
   const [formData, setFormData] = useState<User>(user);
   const [myEvents, setMyEvents] = useState<Event[]>([]);
   const [myPosts, setMyPosts] = useState<MissedConnectionPost[]>([]);
@@ -116,6 +118,11 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
     toast({ title: 'Profile Saved' });
     onOpenChange(false);
   };
+  
+  const handleLogout = () => {
+    onOpenChange(false);
+    logout();
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -179,8 +186,12 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
                                   </div>
                               </div>
                           </CardContent>
-                          <CardFooter>
-                              <Button type="submit" className="ml-auto">Save Changes</Button>
+                          <CardFooter className="justify-between">
+                            <Button variant="ghost" onClick={handleLogout} className="text-muted-foreground">
+                              <LogOut className="mr-2 h-4 w-4" />
+                              Logout
+                            </Button>
+                            <Button type="submit">Save Changes</Button>
                           </CardFooter>
                       </Card>
                   </form>
