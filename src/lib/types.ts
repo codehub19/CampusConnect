@@ -2,6 +2,7 @@
 
 
 
+
 export interface User {
   id: string;
   name: string;
@@ -13,7 +14,6 @@ export interface User {
   blockedUsers?: string[];
   profileComplete?: boolean;
   groupName?: string; // For displaying name in group chats
-  pendingChatId?: string | null;
 }
 
 export type MessageContent = 

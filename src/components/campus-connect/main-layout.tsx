@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { Bot, MessageSquare, Home, HeartCrack, Loader2, Video, Gamepad2 } from 'lucide-react';
+import { Bot, MessageSquare, Home, HeartCrack, Loader2, Video, Gamepad2, Users, LogOut } from 'lucide-react';
 import {
   SidebarProvider,
   Sidebar,
@@ -47,9 +47,7 @@ interface MainLayoutProps {
 }
 
 export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: MainLayoutProps) {
-  const { user, profile } = useAuth();
-  const db = getFirestore(firebaseApp);
-  const { toast } = useToast();
+  const { user, profile, logout } = useAuth();
   const [activeView, setActiveView] = useState<ActiveView>({ type: 'welcome' });
   const [activeChat, setActiveChat] = useState<Chat | null>(null);
   const [isGameCenterOpen, setGameCenterOpen] = useState(false);
@@ -57,7 +55,6 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   const [incomingCall, setIncomingCall] = useState<{ callId: string, from: User } | null>(null);
   const [isVideoCallOpen, setVideoCallOpen] = useState(false);
   const [activeCallId, setActiveCallId] = useState<string | null>(null);
-  
   const [listeners, setListeners] = useState<{ [key: string]: () => void }>({});
 
   const cleanupListeners = (keys: string[] = []) => {
@@ -84,6 +81,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
        return;
     }
   
+    const db = getFirestore(firebaseApp);
     const { user: partner } = activeView.data;
     const chatRef = doc(db, 'chats', activeChat.id);
   
@@ -112,11 +110,10 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   }, [activeView, activeChat?.id]);
 
   useEffect(() => {
-    if (activeView.type !== 'chat' || !user?.id || isVideoCallOpen) {
-      cleanupListeners(['call']);
-      return;
-    }
+    clearListeners();
+    if (activeView.type !== 'chat' || !user?.id || isVideoCallOpen) return;
     
+    const db = getFirestore(firebaseApp);
     const { chat, user: partner } = activeView.data;
     if (!chat.id) return;
 
@@ -156,6 +153,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
         interests2: partnerUser.interests || [],
       });
 
+      const db = getFirestore(firebaseApp);
       const messagesRef = collection(db, "chats", chatId, "messages");
       await addDoc(messagesRef, {
         senderId: 'ai-assistant',
@@ -172,6 +170,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
     const partnerId = chatData.userIds.find(id => id !== user.uid);
     if (!partnerId) return;
 
+    const db = getFirestore(firebaseApp);
     const partnerSnap = await getDoc(doc(db, 'users', partnerId));
     if (!partnerSnap.exists()) return;
     
@@ -306,6 +305,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
   };
 
   const handleLeaveChat = async (isSilent = false) => {
+    const db = getFirestore(firebaseApp);
     if (activeView.type === 'chat' && user) {
       const { chat } = activeView.data;
       if (chat && !chat.isFriendChat) {
@@ -533,7 +533,7 @@ export function MainLayout({ onNavigateHome, onNavigateToMissedConnections }: Ma
             <h1 className="text-lg font-semibold text-foreground">CampusConnect</h1>
           </div>
         </SidebarHeader>
-        <SidebarContent>
+        <SidebarContent asChild>
             <ScrollArea className="h-full">
                 <div className="p-4">
                     <SidebarMenu>
