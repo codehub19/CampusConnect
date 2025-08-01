@@ -57,14 +57,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const statusRef = ref(rtdb, `/status/${firebaseUser.uid}`);
         
         // Firestore and RTDB online status
-        await updateDoc(userDocRef, { online: true });
+        await updateDoc(userDocRef, { online: true }).catch(() => {}); // Fails if doc doesn't exist, which is fine
         await set(statusRef, { state: 'online', last_changed: rtdbServerTimestamp() });
         onDisconnect(statusRef).set({ state: 'offline', last_changed: rtdbServerTimestamp() });
 
 
         const unsubProfile = onSnapshot(userDocRef, (docSnap) => {
           if (docSnap.exists()) {
-            const userProfile = docSnap.data() as User;
+            const userProfile = { id: docSnap.id, ...docSnap.data() } as User;
             setProfile(userProfile);
           }
            setLoading(false);
@@ -89,7 +89,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         name: data.name || 'Anonymous',
         avatar: data.avatar || `https://placehold.co/100x100/FFFFFF/121820?text=${(data.name || 'A').charAt(0)}`,
         online: true,
-        gender: 'Prefer not to say',
+        gender: 'prefer-not-to-say',
+        preference: 'anyone',
         interests: [],
         blockedUsers: [],
         isGuest,

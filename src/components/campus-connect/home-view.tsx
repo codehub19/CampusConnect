@@ -4,20 +4,21 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, ArrowRight, HeartCrack, Lightbulb } from "lucide-react";
+import { CalendarDays, ArrowRight, HeartCrack, Lightbulb, Users } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import SuggestionView from "./suggestion-view";
 
 interface HomeViewProps {
   onNavigateToEvents: () => void;
   onNavigateToMissedConnections: () => void;
+  onNavigateToChat: () => void;
   userName: string;
   onOpenProfile: () => void;
   userAvatar?: string;
   onlineCount: number | null;
 }
 
-export default function HomeView({ onNavigateToEvents, onNavigateToMissedConnections, userName, onOpenProfile, userAvatar, onlineCount }: HomeViewProps) {
+export default function HomeView({ onNavigateToEvents, onNavigateToMissedConnections, onNavigateToChat, userName, onOpenProfile, userAvatar, onlineCount }: HomeViewProps) {
   const [isSuggestionOpen, setSuggestionOpen] = useState(false);
 
   return (
@@ -39,7 +40,32 @@ export default function HomeView({ onNavigateToEvents, onNavigateToMissedConnect
             <h1 className="text-4xl sm:text-5xl font-bold text-foreground">Welcome, {userName}!</h1>
             <p className="text-lg text-muted-foreground mt-2">Choose how you want to connect today.</p>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-6xl">
+            <Card 
+            className="bg-card/80 border-border shadow-lg hover:shadow-primary/20 hover:border-primary/50 transition-all duration-300 transform hover:-translate-y-1 flex flex-col cursor-pointer"
+            onClick={onNavigateToChat}
+            >
+            <CardHeader>
+                <div className="flex items-center gap-4">
+                <div className="p-3 bg-primary/10 rounded-lg">
+                    <Users className="h-8 w-8 text-primary" />
+                </div>
+                <div>
+                    <CardTitle className="text-2xl font-bold">1-on-1 Chat</CardTitle>
+                    <CardDescription>Chat randomly with someone.</CardDescription>
+                </div>
+                </div>
+            </CardHeader>
+            <CardContent className="flex-grow flex flex-col justify-between">
+                <p className="text-muted-foreground mb-6">
+                Connect with another student on campus for a random chat. Includes video calls and simple games.
+                </p>
+                <Button className="w-full font-bold text-lg py-6 mt-auto">
+                Find a Chat <ArrowRight className="ml-2 h-5 w-5" />
+                </Button>
+            </CardContent>
+            </Card>
+
             <Card 
             className="bg-card/80 border-border shadow-lg hover:shadow-accent/20 hover:border-accent/50 transition-all duration-300 transform hover:-translate-y-1 flex flex-col cursor-pointer"
             onClick={onNavigateToEvents}

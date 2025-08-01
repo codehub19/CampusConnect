@@ -1,16 +1,37 @@
 
+import type { User as FirebaseUser } from 'firebase/auth';
+
 export interface User {
   id: string;
   name: string;
   avatar: string;
   online: boolean;
-  gender: 'Male' | 'Female' | 'Other' | 'Prefer not to say';
-  interests: string[];
   isGuest?: boolean;
-  blockedUsers?: string[];
   profileComplete?: boolean;
-  groupName?: string; // For displaying name in group chats
+  gender: 'male' | 'female' | 'other' | 'prefer-not-to-say';
+  preference: 'anyone' | 'males' | 'females';
+  interests: string[];
+  blockedUsers?: string[];
   pendingChatId?: string | null;
+}
+
+export interface Chat {
+  id: string;
+  memberIds: string[];
+  members: {
+    [uid: string]: {
+      name: string;
+      avatar: string;
+      online: boolean;
+      active: boolean;
+    }
+  };
+  lastMessage?: {
+    text: string;
+    timestamp: any;
+  };
+  createdAt: any;
+  game?: GameState | null;
 }
 
 export type MessageContent = 
@@ -24,7 +45,8 @@ export interface Message {
   senderId: string;
   content: MessageContent;
   timestamp: any;
-  text?: string; // Kept for backwards compatibility and simple text use
+  text?: string; 
+  status?: 'sent' | 'read';
 }
 
 export interface MissedConnectionComment {
@@ -41,7 +63,7 @@ export interface MissedConnectionPost {
   location: string;
   timeOfDay: string;
   authorId: string;
-  authorName: string; // Keep for internal reference, but don't display
+  authorName: string; 
   timestamp: any;
   status: 'pending' | 'approved' | 'rejected';
   reportCount?: number;
@@ -67,4 +89,31 @@ export interface Event {
   chatId: string;
   authorId: string;
   timestamp: any;
+}
+
+export interface WaitingUser {
+  uid: string;
+  name: string;
+  gender: User['gender'];
+  preference: User['preference'];
+  timestamp: any;
+}
+
+// Games
+export interface GameState {
+  type: 'tic-tac-toe' | 'connect-four' | 'dots-and-boxes';
+  status: 'pending' | 'active' | 'win' | 'draw';
+  initiatorId: string;
+  turn: string | null;
+  winner: string | null;
+  players: { [key: string]: 'X' | 'O' | 1 | 2 | 'p1' | 'p2' | null };
+  board: any[];
+  [key: string]: any; // for game-specific properties
+}
+
+export interface Call {
+    offer: any;
+    answer?: any;
+    answered: boolean;
+    callerId: string;
 }

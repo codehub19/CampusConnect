@@ -10,11 +10,12 @@ import HomeView from '@/components/campus-connect/home-view';
 import EventsView from '@/components/campus-connect/events-view';
 import MissedConnectionsView from '@/components/campus-connect/missed-connections-view';
 import ProfileView from '@/components/campus-connect/profile-view';
+import MainLayout from '@/components/campus-connect/main-layout';
 import { Loader2 } from 'lucide-react';
 import { goOffline, goOnline } from 'firebase/database';
 import { rtdb } from '@/lib/firebase';
 
-type AppState = 'loading' | 'policy' | 'auth' | 'profile_setup' | 'home' | 'events' | 'missed_connections';
+type AppState = 'loading' | 'policy' | 'auth' | 'profile_setup' | 'home' | 'events' | 'missed_connections' | 'chat';
 
 function AppContent() {
   const { user, loading, profile, updateProfile } = useAuth();
@@ -29,8 +30,6 @@ function AppContent() {
         return;
     }
     goOnline(rtdb);
-    // Note: The onValue listener for onlineCount was removed as it was only used in the AuthView.
-    // If you need it elsewhere, you'll need to re-add the `ref` and `onValue` imports and logic.
   }, [user]);
 
   
@@ -106,7 +105,8 @@ function AppContent() {
           case 'home':
             return <HomeView 
               onNavigateToEvents={() => navigateTo('events')} 
-              onNavigateToMissedConnections={() => navigateTo('missed_connections')} 
+              onNavigateToMissedConnections={() => navigateTo('missed_connections')}
+              onNavigateToChat={() => navigateTo('chat')}
               userName={profile?.name || 'User'}
               onOpenProfile={() => setProfileOpen(true)}
               userAvatar={profile?.avatar}
@@ -116,6 +116,8 @@ function AppContent() {
             return <EventsView onNavigateHome={() => navigateTo('home')} />;
           case 'missed_connections':
             return <MissedConnectionsView onNavigateHome={() => navigateTo('home')} />;
+          case 'chat':
+            return <MainLayout onNavigateHome={() => navigateTo('home')} />;
           default:
             return <AuthView onlineCount={onlineCount} />;
         }

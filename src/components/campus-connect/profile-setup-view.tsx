@@ -1,16 +1,16 @@
 
 "use client";
 
-import React, { useState, useRef } from 'react';
+import React, { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { useAuth } from '@/hooks/use-auth';
 import { useToast } from '@/hooks/use-toast';
 import type { User } from '@/lib/types';
 import { Loader2 } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 const allInterests = ['Gaming', 'Music', 'Sports', 'Movies', 'Reading', 'Hiking', 'Art', 'Coding', 'Cooking'];
 
@@ -20,6 +20,8 @@ export default function ProfileSetupView() {
   
   const [formData, setFormData] = useState<Partial<User>>({
     name: profile?.name || '',
+    gender: profile?.gender || 'Prefer not to say',
+    preference: profile?.preference || 'anyone',
     interests: profile?.interests || [],
   });
   const [isLoading, setIsLoading] = useState(false);
@@ -75,6 +77,32 @@ export default function ProfileSetupView() {
             <div className="grid gap-2">
               <Label htmlFor="name">Display Name</Label>
               <Input id="name" value={formData.name} onChange={handleInputChange} placeholder="What should we call you?" />
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                    <Label htmlFor="gender">Your Gender</Label>
+                    <Select value={formData.gender} onValueChange={(value) => setFormData(p => ({...p, gender: value as User['gender']}))}>
+                        <SelectTrigger id="gender"><SelectValue placeholder="Select gender" /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="male">Male</SelectItem>
+                            <SelectItem value="female">Female</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                            <SelectItem value="prefer-not-to-say">Prefer not to say</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
+                 <div className="grid gap-2">
+                    <Label htmlFor="preference">Chat With</Label>
+                    <Select value={formData.preference} onValueChange={(value) => setFormData(p => ({...p, preference: value as User['preference']}))}>
+                        <SelectTrigger id="preference"><SelectValue placeholder="Select preference" /></SelectTrigger>
+                        <SelectContent>
+                            <SelectItem value="anyone">Anyone</SelectItem>
+                            <SelectItem value="males">Males</SelectItem>
+                            <SelectItem value="females">Females</SelectItem>
+                        </SelectContent>
+                    </Select>
+                </div>
             </div>
             
             <div className="grid gap-2">
