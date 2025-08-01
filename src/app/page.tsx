@@ -15,6 +15,7 @@ import { Loader2 } from 'lucide-react';
 import { goOffline, goOnline } from 'firebase/database';
 import { rtdb } from '@/lib/firebase';
 import AiAssistantView from '@/components/campus-connect/ai-assistant-view';
+import { Button } from '@/components/ui/button';
 
 type AppState = 'loading' | 'policy' | 'auth' | 'profile_setup' | 'home' | 'events' | 'missed_connections' | 'chat' | 'ai_chat';
 
