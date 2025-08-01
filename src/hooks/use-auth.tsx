@@ -98,6 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         friends: [],
         isGuest,
         profileComplete: isGuest, // Guests don't need profile setup
+        pendingChatId: null,
         ...data,
       };
       await setDoc(userDocRef, defaultProfile);

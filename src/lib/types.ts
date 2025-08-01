@@ -15,6 +15,7 @@ export interface User {
   friends?: string[];
   pendingChatId?: string | null;
   matchedChatId?: string | null; // Used for matchmaking
+  uid?: string; // from waiting_users
 }
 
 export interface Chat {
