@@ -17,6 +17,7 @@ import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '../ui/skeleton';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu';
 import ChatHeader from './chat-header';
+import GameCenterView from './game-center-view';
 
 type ActiveView = 
   | { type: 'welcome' }
@@ -31,6 +32,7 @@ function MainHeader({ onNavigateHome }: { onNavigateHome: () => void }) {
              <div className="flex items-center gap-2">
                 <SidebarTrigger className="md:hidden" />
             </div>
+             <h2 className="font-semibold text-lg">Welcome</h2>
          </div>
       )
     }
@@ -139,7 +141,7 @@ function LayoutUI({ onNavigateHome, onFindNewChat, chats, chatUsers, isLoadingCh
                 </SidebarFooter>
             </Sidebar>
             <SidebarInset>
-                <MainHeader onNavigateHome={onNavigateHome} />
+                 <MainHeader onNavigateHome={onNavigateHome} />
                 {renderActiveView()}
             </SidebarInset>
         </SidebarProvider>
@@ -157,7 +159,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
     const [isGameCenterOpen, setGameCenterOpen] = useState(false);
     
     const unsubscribeUserDoc = useRef<() => void | null>(null);
-    const { toast } = useToast();
+    const { toast, dismiss } = useToast();
     const db = getFirestore(firebaseApp);
 
     const cleanupListeners = useCallback(() => {
@@ -181,7 +183,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                     if (id !== user.uid) userIdsToFetch.add(id);
                 });
             });
-
+            
             // Client-side sorting
             fetchedChats.sort((a, b) => {
               const timeA = a.createdAt?.seconds || 0;
@@ -337,7 +339,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         }
         
         setIsSearching(false);
-        toast.dismiss();
+        dismiss();
 
         if (matchFound) return;
         
@@ -389,6 +391,14 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                 <VideoCallView
                     chatId={activeView.data.chat.id}
                     onClose={() => setIsVideoCallOpen(false)}
+                />
+            }
+             {activeView.type === 'chat' && isGameCenterOpen &&
+                <GameCenterView
+                    isOpen={isGameCenterOpen}
+                    onOpenChange={setGameCenterOpen}
+                    chatId={activeView.data.chat.id}
+                    partnerId={activeView.data.user.id}
                 />
             }
             <LayoutUI 
