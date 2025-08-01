@@ -16,53 +16,33 @@ import { firebaseApp } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '../ui/skeleton';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu';
+import ChatHeader from './chat-header';
 
 type ActiveView = 
   | { type: 'welcome' }
   | { type: 'chat', data: { chat: Chat, user: UserProfile } };
 
 function MainHeader({ onNavigateHome }: { onNavigateHome: () => void }) {
-    const { activeView, onBlockUser, onLeaveChat, onVideoCallToggle } = useMainLayout();
+    const { activeView, onBlockUser, onLeaveChat, onVideoCallToggle, onGameToggle } = useMainLayout();
+
+    if (activeView.type !== 'chat') {
+      return (
+         <div className="flex h-14 items-center justify-between gap-4 border-b bg-background p-2 px-4">
+             <div className="flex items-center gap-2">
+                <SidebarTrigger className="md:hidden" />
+            </div>
+         </div>
+      )
+    }
 
     return (
-        <div className="flex h-14 items-center justify-between gap-4 border-b bg-background p-2 px-4">
-            <div className="flex items-center gap-2">
-                <SidebarTrigger className="md:hidden" />
-                <Button variant="ghost" size="icon" className="md:hidden" onClick={onNavigateHome}><ArrowLeft /></Button>
-                <div className="flex items-center gap-3">
-                    {activeView.type === 'chat' && (
-                        <>
-                            <Avatar className="h-8 w-8">
-                                <AvatarImage src={activeView.data.user.avatar} alt={activeView.data.user.name} />
-                                <AvatarFallback>{activeView.data.user.name.charAt(0)}</AvatarFallback>
-                            </Avatar>
-                            <span className="font-semibold">{activeView.data.user.name}</span>
-                        </>
-                    )}
-                </div>
-            </div>
-            <div className="flex items-center gap-2">
-                 {activeView.type === 'chat' && (
-                    <>
-                       <Button variant="ghost" size="icon" onClick={() => onVideoCallToggle(true)}>
-                          <Video className="h-5 w-5" />
-                          <span className="sr-only">Start video call</span>
-                        </Button>
-                        <DropdownMenu>
-                            <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon">
-                                    <MoreVertical className="h-5 w-5" />
-                                </Button>
-                            </DropdownMenuTrigger>
-                            <DropdownMenuContent>
-                                <DropdownMenuItem onSelect={onBlockUser} className="text-destructive">Block User</DropdownMenuItem>
-                                <DropdownMenuItem onSelect={onLeaveChat}>Leave Chat</DropdownMenuItem>
-                            </DropdownMenuContent>
-                        </DropdownMenu>
-                    </>
-                 )}
-            </div>
-        </div>
+       <ChatHeader
+          partner={activeView.data.user}
+          onGameClick={() => onGameToggle(true)}
+          onVideoCallClick={() => onVideoCallToggle(true)}
+          onBlockUser={onBlockUser}
+          onLeaveChat={onLeaveChat}
+        />
     )
 }
 
@@ -72,6 +52,7 @@ type MainLayoutContextType = {
   onBlockUser: () => void;
   onLeaveChat: () => void;
   onVideoCallToggle: (isOpen: boolean) => void;
+  onGameToggle: (isOpen: boolean) => void;
   isSearching: boolean;
 };
 
@@ -147,9 +128,9 @@ function LayoutUI({ onNavigateHome, onFindNewChat, chats, chatUsers, isLoadingCh
                     </SidebarMenu>
                 </SidebarContent>
                 <SidebarFooter className="p-2 space-y-2">
-                    <Button onClick={onFindNewChat}>
+                    <Button onClick={onFindNewChat} disabled={isSearching}>
                         <Search className="mr-2 h-4 w-4" />
-                        {isSearching ? 'Stop Searching' : 'Find New Chat'}
+                        {isSearching ? 'Searching...' : 'Find New Chat'}
                     </Button>
                     <Button variant="ghost" onClick={onLogout}>
                         <LogOut className="mr-2 h-4 w-4" />
@@ -173,6 +154,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
     const [isLoadingChats, setIsLoadingChats] = useState(true);
     const [isSearching, setIsSearching] = useState(false);
     const [isVideoCallOpen, setIsVideoCallOpen] = useState(false);
+    const [isGameCenterOpen, setGameCenterOpen] = useState(false);
     
     const unsubscribeUserDoc = useRef<() => void | null>(null);
     const { toast } = useToast();
@@ -187,7 +169,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
 
     useEffect(() => {
         if (!user) return;
-        const q = query(collection(db, 'chats'), where('memberIds', 'array-contains', user.uid), orderBy('createdAt', 'desc'));
+        const q = query(collection(db, 'chats'), where('memberIds', 'array-contains', user.uid));
         const unsubscribe = onSnapshot(q, async (snapshot) => {
             const fetchedChats: Chat[] = [];
             const userIdsToFetch = new Set<string>();
@@ -198,6 +180,13 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                 chat.memberIds.forEach(id => {
                     if (id !== user.uid) userIdsToFetch.add(id);
                 });
+            });
+
+            // Client-side sorting
+            fetchedChats.sort((a, b) => {
+              const timeA = a.createdAt?.seconds || 0;
+              const timeB = b.createdAt?.seconds || 0;
+              return timeB - timeA;
             });
 
             if (userIdsToFetch.size > 0) {
@@ -215,10 +204,18 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
 
             setChats(fetchedChats);
             setIsLoadingChats(false);
+        }, (error) => {
+            console.error("Firestore query failed:", error);
+            setIsLoadingChats(false);
+            toast({
+                variant: 'destructive',
+                title: 'Could not load chats',
+                description: 'Please check your connection or try again later.',
+            });
         });
 
         return () => unsubscribe();
-    }, [user, db, chatUsers]);
+    }, [user, db, chatUsers, toast]);
 
     useEffect(() => {
         if (isSearching && user) {
@@ -285,8 +282,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
 
         const querySnapshot = await getDocs(q);
         let matchFound = false;
-        let partner: UserProfile | null = null;
-
+        
         for (const docSnap of querySnapshot.docs) {
             const waitingUser = docSnap.data() as UserProfile;
             
@@ -294,66 +290,66 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
             const theyMatchMyPreference = waitingUser.gender ? (profile.preference === 'anyone' || profile.preference === `${waitingUser.gender}s`) : true;
 
             if (!blockedUsers.includes(waitingUser.id) && !(waitingUser.blockedUsers || []).includes(user.uid) && iMatchTheirPreference && theyMatchMyPreference) {
-                 partner = waitingUser;
-                 matchFound = true;
-                 break;
+                 
+                 const partnerFinal = waitingUser;
+                 try {
+                     const newChatId = await runTransaction(db, async (transaction) => {
+                         const waitingUserDocRef = doc(db, 'waiting_users', partnerFinal.id);
+                         const waitingUserDoc = await transaction.get(waitingUserDocRef);
+                         if (!waitingUserDoc.exists()) return null;
+     
+                         transaction.delete(waitingUserDocRef);
+     
+                         const newChatRef = doc(collection(db, 'chats'));
+                         const chatData: Omit<Chat, 'id'> = {
+                             memberIds: [user.uid, partnerFinal.id],
+                             members: {
+                                 [user.uid]: { name: profile.name, avatar: profile.avatar, online: true, active: true },
+                                 [partnerFinal.id]: { name: partnerFinal.name, avatar: partnerFinal.avatar, online: true, active: true },
+                             },
+                             createdAt: serverTimestamp()
+                         }
+                         transaction.set(newChatRef, chatData);
+     
+                         transaction.update(doc(db, 'users', partnerFinal.id), { pendingChatId: newChatRef.id });
+                         return newChatRef.id;
+                     });
+     
+                     if (newChatId) {
+                         const newChatDoc = await getDoc(doc(db, 'chats', newChatId));
+                         if (newChatDoc.exists()) {
+                             setActiveView({
+                                 type: 'chat',
+                                 data: {
+                                     chat: { id: newChatId, ...newChatDoc.data() } as Chat,
+                                     user: partnerFinal,
+                                 },
+                             });
+                         }
+                         matchFound = true;
+                     }
+                 } catch (error) {
+                     console.error("Matchmaking transaction failed:", error);
+                     toast({ variant: 'destructive', title: "Matchmaking failed", description: "Please try again." });
+                 }
+                 if (matchFound) break;
             }
         }
         
-        if (matchFound && partner) {
-            const partnerFinal = partner;
-            try {
-                const newChatId = await runTransaction(db, async (transaction) => {
-                    const waitingUserDocRef = doc(db, 'waiting_users', partnerFinal.id);
-                    const waitingUserDoc = await transaction.get(waitingUserDocRef);
-                    if (!waitingUserDoc.exists()) return null;
+        setIsSearching(false);
+        toast.dismiss();
 
-                    transaction.delete(waitingUserDocRef);
-
-                    const newChatRef = doc(collection(db, 'chats'));
-                    const chatData: Omit<Chat, 'id'> = {
-                        memberIds: [user.uid, partnerFinal.id],
-                        members: {
-                            [user.uid]: { name: profile.name, avatar: profile.avatar, online: true, active: true },
-                            [partnerFinal.id]: { name: partnerFinal.name, avatar: partnerFinal.avatar, online: true, active: true },
-                        },
-                        createdAt: serverTimestamp()
-                    }
-                    transaction.set(newChatRef, chatData);
-
-                    transaction.update(doc(db, 'users', partnerFinal.id), { pendingChatId: newChatRef.id });
-                    return newChatRef.id;
-                });
-
-                if (newChatId) {
-                    const newChatDoc = await getDoc(doc(db, 'chats', newChatId));
-                    if (newChatDoc.exists()) {
-                        setActiveView({
-                            type: 'chat',
-                            data: {
-                                chat: { id: newChatId, ...newChatDoc.data() } as Chat,
-                                user: partner,
-                            },
-                        });
-                    }
-                    setIsSearching(false);
-                    toast.dismiss();
-                } else {
-                    await findNewChat(); // Transaction failed, retry
-                }
-            } catch (error) {
-                console.error("Matchmaking transaction failed:", error);
-                setIsSearching(false);
-                toast({ variant: 'destructive', title: "Matchmaking failed", description: "Please try again." });
-            }
-        } else {
-            await setDoc(doc(db, 'waiting_users', user.uid), {
-                ...profile,
-                id: user.uid,
-                uid: user.uid,
-                timestamp: serverTimestamp(),
-            });
-        }
+        if (matchFound) return;
+        
+        // No match found, so wait
+        setIsSearching(true);
+        toast({ title: "No users found, waiting for someone to join..." });
+        await setDoc(doc(db, 'waiting_users', user.uid), {
+            ...profile,
+            id: user.uid,
+            uid: user.uid,
+            timestamp: serverTimestamp(),
+        });
     };
 
     const handleBlockUser = async () => {
@@ -383,6 +379,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         onBlockUser: handleBlockUser,
         onLeaveChat: handleLeaveChat,
         onVideoCallToggle: setIsVideoCallOpen,
+        onGameToggle: setGameCenterOpen,
         isSearching
     };
 
