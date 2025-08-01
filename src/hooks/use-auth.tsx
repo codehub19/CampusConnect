@@ -54,12 +54,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (firebaseUser) {
         setUser(firebaseUser);
         const userDocRef = doc(db, 'users', firebaseUser.uid);
-        const statusRef = ref(rtdb, `/status/${firebaseUser.uid}`);
         
         // Firestore and RTDB online status
-        await updateDoc(userDocRef, { online: true }).catch(() => {}); // Fails if doc doesn't exist, which is fine
-        await set(statusRef, { state: 'online', last_changed: rtdbServerTimestamp() });
-        onDisconnect(statusRef).set({ state: 'offline', last_changed: rtdbServerTimestamp() });
+        if (rtdb) {
+            const statusRef = ref(rtdb, `/status/${firebaseUser.uid}`);
+            await updateDoc(userDocRef, { online: true }).catch(() => {}); // Fails if doc doesn't exist, which is fine
+            await set(statusRef, { state: 'online', last_changed: rtdbServerTimestamp() });
+            onDisconnect(statusRef).set({ state: 'offline', last_changed: rtdbServerTimestamp() });
+        }
 
 
         const unsubProfile = onSnapshot(userDocRef, (docSnap) => {
@@ -93,6 +95,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         preference: 'anyone',
         interests: [],
         blockedUsers: [],
+        friends: [],
         isGuest,
         profileComplete: isGuest, // Guests don't need profile setup
         ...data,
@@ -152,7 +155,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
-    if (user) {
+    if (user && rtdb) {
       const userDocRef = doc(db, 'users', user.uid);
       const statusRef = ref(rtdb, `/status/${user.uid}`);
       

@@ -12,7 +12,9 @@ export interface User {
   preference: 'anyone' | 'males' | 'females';
   interests: string[];
   blockedUsers?: string[];
+  friends?: string[];
   pendingChatId?: string | null;
+  matchedChatId?: string | null; // Used for matchmaking
 }
 
 export interface Chat {
@@ -26,6 +28,7 @@ export interface Chat {
       active: boolean;
     }
   };
+  isFriendChat?: boolean;
   lastMessage?: {
     text: string;
     timestamp: any;
@@ -116,4 +119,13 @@ export interface Call {
     answer?: any;
     answered: boolean;
     callerId: string;
+}
+
+export interface FriendRequest {
+  id: string;
+  fromId: string;
+  toId: string;
+  fromName: string;
+  status: 'pending' | 'accepted' | 'declined';
+  timestamp: any;
 }

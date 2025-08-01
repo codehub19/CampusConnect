@@ -14,8 +14,9 @@ import MainLayout from '@/components/campus-connect/main-layout';
 import { Loader2 } from 'lucide-react';
 import { goOffline, goOnline } from 'firebase/database';
 import { rtdb } from '@/lib/firebase';
+import AiAssistantView from '@/components/campus-connect/ai-assistant-view';
 
-type AppState = 'loading' | 'policy' | 'auth' | 'profile_setup' | 'home' | 'events' | 'missed_connections' | 'chat';
+type AppState = 'loading' | 'policy' | 'auth' | 'profile_setup' | 'home' | 'events' | 'missed_connections' | 'chat' | 'ai_chat';
 
 function AppContent() {
   const { user, loading, profile, updateProfile } = useAuth();
@@ -63,7 +64,7 @@ function AppContent() {
     
     // If we've gotten past profile setup, default to home.
     // Avoids reverting to 'home' if user navigates away and state changes.
-    if (appState === 'profile_setup' || appState === 'auth' || appState === 'policy' || appState === 'loading') {
+    if (['profile_setup', 'auth', 'policy', 'loading'].includes(appState)) {
       setAppState('home');
     }
 
@@ -107,6 +108,7 @@ function AppContent() {
               onNavigateToEvents={() => navigateTo('events')} 
               onNavigateToMissedConnections={() => navigateTo('missed_connections')}
               onNavigateToChat={() => navigateTo('chat')}
+              onNavigateToAIChat={() => navigateTo('ai_chat')}
               userName={profile?.name || 'User'}
               onOpenProfile={() => setProfileOpen(true)}
               userAvatar={profile?.avatar}
@@ -118,6 +120,15 @@ function AppContent() {
             return <MissedConnectionsView onNavigateHome={() => navigateTo('home')} />;
           case 'chat':
             return <MainLayout onNavigateHome={() => navigateTo('home')} />;
+          case 'ai_chat':
+            return (
+              <div className="flex h-screen">
+                <div className="w-full max-w-2xl mx-auto flex flex-col h-full p-4">
+                  <Button onClick={() => navigateTo('home')} className="mb-4 self-start">Back to Home</Button>
+                  <AiAssistantView />
+                </div>
+              </div>
+            );
           default:
             return <AuthView onlineCount={onlineCount} />;
         }

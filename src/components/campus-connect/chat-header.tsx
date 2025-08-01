@@ -2,7 +2,7 @@
 "use client";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarImage, AvatarFallback } from "@/components/ui/avatar";
-import { Gamepad2, Phone, Video, MoreVertical, X } from "lucide-react";
+import { Gamepad2, Phone, Video, MoreVertical, UserPlus, Check } from "lucide-react";
 import type { User } from "@/lib/types";
 import {
   DropdownMenu,
@@ -10,6 +10,11 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { useAuth } from "@/hooks/use-auth";
+import { addDoc, collection, doc, getFirestore, setDoc, serverTimestamp } from "firebase/firestore";
+import { firebaseApp } from "@/lib/firebase";
+import { useToast } from "@/hooks/use-toast";
+
 
 interface ChatHeaderProps {
   partner: User;
@@ -20,8 +25,35 @@ interface ChatHeaderProps {
 }
 
 export default function ChatHeader({ partner, onGameClick, onVideoCallClick, onLeaveChat, onBlockUser }: ChatHeaderProps) {
+  const { user, profile } = useAuth();
+  const db = getFirestore(firebaseApp);
+  const { toast } = useToast();
+
+  const isFriend = profile?.friends?.includes(partner.id);
+  const isGuest = profile?.isGuest || partner.isGuest;
+  
+  const handleAddFriend = async () => {
+    if (!user || !partner || isFriend || isGuest) return;
+    const requestId = [user.uid, partner.id].sort().join('_');
+    const requestRef = doc(db, "friend_requests", requestId);
+
+    try {
+      await setDoc(requestRef, {
+        fromId: user.uid,
+        toId: partner.id,
+        fromName: profile?.name,
+        status: 'pending',
+        timestamp: serverTimestamp(),
+      });
+      toast({title: "Friend request sent!"});
+    } catch(e) {
+      console.error(e);
+      toast({variant: 'destructive', title: 'Error sending request.'});
+    }
+  }
+
   return (
-    <div className="flex items-center justify-between p-4 border-b">
+    <>
       <div className="flex items-center gap-4">
         <Avatar>
           <AvatarImage src={partner.avatar} alt={partner.name} />
@@ -35,7 +67,18 @@ export default function ChatHeader({ partner, onGameClick, onVideoCallClick, onL
           </div>
         </div>
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-1">
+        {!isFriend && !isGuest && (
+            <Button variant="ghost" size="icon" onClick={handleAddFriend} title="Add Friend">
+                <UserPlus className="h-5 w-5" />
+            </Button>
+        )}
+        {isFriend && (
+             <div className="flex items-center gap-1 text-sm text-muted-foreground mr-2" title="You are friends">
+                <Check className="h-5 w-5 text-green-500" />
+                <span>Friends</span>
+            </div>
+        )}
         <Button variant="ghost" size="icon" onClick={onGameClick}>
           <Gamepad2 className="h-5 w-5" />
           <span className="sr-only">Play a game</span>
@@ -56,6 +99,6 @@ export default function ChatHeader({ partner, onGameClick, onVideoCallClick, onL
             </DropdownMenuContent>
         </DropdownMenu>
       </div>
-    </div>
+    </>
   );
 }
