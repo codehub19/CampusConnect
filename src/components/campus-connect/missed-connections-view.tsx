@@ -124,7 +124,7 @@ export default function MissedConnectionsView({ onNavigateHome }: MissedConnecti
     const q = query(
         postsRef, 
         orderBy('timestamp', 'desc'),
-        where('timestamp', '>', fortyEightHoursAgo)
+        where('timestamp', '>=', fortyEightHoursAgo)
     );
 
     const unsubscribe = onSnapshot(q, (snapshot) => {

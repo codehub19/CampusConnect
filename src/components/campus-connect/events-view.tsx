@@ -44,9 +44,12 @@ export default function EventsView({ onNavigateHome }: EventsViewProps) {
 
   useEffect(() => {
     const eventsRef = collection(db, 'events');
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
     const q = query(
         eventsRef, 
-        where('date', '>', new Date()),
+        where('date', '>=', startOfToday),
         orderBy('date', 'asc')
     );
 
