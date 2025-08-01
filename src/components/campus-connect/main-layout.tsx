@@ -1,12 +1,11 @@
-
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Sidebar, SidebarProvider, SidebarTrigger, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, SidebarInset, SidebarRail } from "@/components/ui/sidebar";
+import { Sidebar, SidebarProvider, SidebarTrigger, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, SidebarInset, SidebarRail, useSidebar } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { LogOut, Search, MessageSquare, ArrowLeft } from 'lucide-react';
+import { LogOut, Search, MessageSquare, ArrowLeft, Gamepad2, Video, MoreVertical } from 'lucide-react';
 import ChatView from './chat-view';
 import WelcomeView from './welcome-view';
 import VideoCallView from './video-call-view';
@@ -15,17 +14,74 @@ import { collection, query, where, onSnapshot, getFirestore, getDocs, doc, runTr
 import { firebaseApp } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '../ui/skeleton';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ui/dropdown-menu';
 
 type ActiveView = 
   | { type: 'welcome' }
   | { type: 'chat', data: { chat: Chat, user: UserProfile } };
 
-export default function MainLayout({ onNavigateHome }: { onNavigateHome: () => void; }) {
+function MainHeader() {
+    const { user, profile } = useAuth();
+    const { activeView } = useMainLayout();
+
+    return (
+        <div className="flex h-14 items-center justify-between gap-4 border-b bg-background p-2 px-4">
+            <div className="flex items-center gap-2">
+                <SidebarTrigger className="md:hidden" />
+                <div className="flex items-center gap-3">
+                    {activeView.type === 'chat' && (
+                        <>
+                            <Avatar className="h-8 w-8">
+                                <AvatarImage src={activeView.data.user.avatar} alt={activeView.data.user.name} />
+                                <AvatarFallback>{activeView.data.user.name.charAt(0)}</AvatarFallback>
+                            </Avatar>
+                            <span className="font-semibold">{activeView.data.user.name}</span>
+                        </>
+                    )}
+                </div>
+            </div>
+            <div className="flex items-center gap-2">
+                 {activeView.type === 'chat' && (
+                    <>
+                        {/* Add Chat specific actions here like video call etc. */}
+                    </>
+                 )}
+            </div>
+        </div>
+    )
+}
+
+type MainLayoutContextType = {
+  activeView: ActiveView;
+  setActiveView: React.Dispatch<React.SetStateAction<ActiveView>>;
+  onNavigateHome: () => void;
+};
+
+const MainLayoutContext = React.createContext<MainLayoutContextType | null>(null);
+
+const useMainLayout = () => {
+    const context = React.useContext(MainLayoutContext);
+    if (!context) {
+        throw new Error('useMainLayout must be used within a MainLayoutProvider');
+    }
+    return context;
+};
+
+const MainLayoutProvider = ({ children, onNavigateHome }: { children: React.ReactNode, onNavigateHome: () => void }) => {
+    const [activeView, setActiveView] = useState<ActiveView>({ type: 'welcome' });
+    return (
+        <MainLayoutContext.Provider value={{ activeView, setActiveView, onNavigateHome }}>
+            {children}
+        </MainLayoutContext.Provider>
+    )
+}
+
+function MainLayoutContent() {
   const { user, profile, logout } = useAuth();
+  const { activeView, setActiveView, onNavigateHome } = useMainLayout();
   const [chats, setChats] = useState<Chat[]>([]);
   const [chatUsers, setChatUsers] = useState<Record<string, UserProfile>>({});
   const [isLoadingChats, setIsLoadingChats] = useState(true);
-  const [activeView, setActiveView] = useState<ActiveView>({ type: 'welcome' });
   const [isSearching, setIsSearching] = useState(false);
   const [isVideoCallOpen, setIsVideoCallOpen] = useState(false);
   
@@ -78,10 +134,10 @@ export default function MainLayout({ onNavigateHome }: { onNavigateHome: () => v
   
   useEffect(() => {
      // This effect handles the listener for when a waiting user is found by someone else.
-    if (isSearching) {
+    if (isSearching && user) {
         if (unsubscribeUserDoc.current) unsubscribeUserDoc.current();
 
-        const userDocRef = doc(db, 'users', user!.uid);
+        const userDocRef = doc(db, 'users', user.uid);
         unsubscribeUserDoc.current = onSnapshot(userDocRef, async (docSnap) => {
             const data = docSnap.data();
             if (data?.pendingChatId) {
@@ -91,16 +147,26 @@ export default function MainLayout({ onNavigateHome }: { onNavigateHome: () => v
                 setIsSearching(false);
                 cleanupListeners();
                 
-                await updateDoc(userDocRef, { pendingChatId: deleteField() });
-                
+                // Use a transaction or batched write to be safe
+                const batch = writeBatch(db);
+                batch.update(userDocRef, { pendingChatId: deleteField() });
+                await batch.commit();
+
                 const chatDoc = await getDoc(doc(db, 'chats', chatId));
                 if (chatDoc.exists()) {
                     const chatData = { id: chatDoc.id, ...chatDoc.data() } as Chat;
-                    const partnerId = chatData.memberIds.find(id => id !== user!.uid);
-                    if (partnerId) {
-                        const partnerDoc = await getDoc(doc(db, 'users', partnerId));
-                        if(partnerDoc.exists()){
-                            setActiveView({ type: 'chat', data: { chat: chatData, user: partnerDoc.data() as UserProfile } });
+                    const partnerId = chatData.memberIds.find(id => id !== user.uid);
+                     if (partnerId) {
+                        let partner = chatUsers[partnerId];
+                        if (!partner) {
+                            const partnerDoc = await getDoc(doc(db, 'users', partnerId));
+                            if (partnerDoc.exists()) {
+                                partner = partnerDoc.data() as UserProfile;
+                                setChatUsers(prev => ({...prev, [partnerId]: partner}));
+                            }
+                        }
+                        if (partner) {
+                            setActiveView({ type: 'chat', data: { chat: chatData, user: partner } });
                         }
                     }
                 }
@@ -111,7 +177,7 @@ export default function MainLayout({ onNavigateHome }: { onNavigateHome: () => v
     }
 
     return () => cleanupListeners();
-  }, [isSearching, user, db, cleanupListeners]);
+  }, [isSearching, user, db, cleanupListeners, chatUsers]);
 
   const handleSelectChat = (chat: Chat) => {
     const partnerId = chat.memberIds.find(id => id !== user?.uid);
@@ -124,7 +190,8 @@ export default function MainLayout({ onNavigateHome }: { onNavigateHome: () => v
     if (!user || !profile) return;
     if (isSearching) {
       // Stop searching
-      await setDoc(doc(db, 'waiting_users', user.uid), { status: 'cancelled' }, { merge: true });
+      const waitingUserRef = doc(db, 'waiting_users', user.uid);
+      await deleteDoc(waitingUserRef);
       setIsSearching(false);
       toast({ title: 'Search canceled' });
       return;
@@ -146,13 +213,8 @@ export default function MainLayout({ onNavigateHome }: { onNavigateHome: () => v
     for (const docSnap of querySnapshot.docs) {
         const waitingUser = docSnap.data() as UserProfile;
         
-        const myPreference = profile.preference;
-        const theirPreference = waitingUser.preference;
-        const myGender = profile.gender;
-        const theirGender = waitingUser.gender;
-
-        const iMatchTheirPreference = theirPreference === 'anyone' || theirPreference === `${myGender}s`;
-        const theyMatchMyPreference = myPreference === 'anyone' || myPreference === `${theirGender}s`;
+        const iMatchTheirPreference = profile.gender ? (waitingUser.preference === 'anyone' || waitingUser.preference === `${profile.gender}s`) : true;
+        const theyMatchMyPreference = waitingUser.gender ? (profile.preference === 'anyone' || profile.preference === `${waitingUser.gender}s`) : true;
         
         if (
             !blockedUsers.includes(waitingUser.id) && 
@@ -160,20 +222,16 @@ export default function MainLayout({ onNavigateHome }: { onNavigateHome: () => v
             iMatchTheirPreference && theyMatchMyPreference
         ) {
             
-            // Found a potential partner, try to claim them in a transaction
             try {
                 const newChatId = await runTransaction(db, async (transaction) => {
                     const waitingUserDocRef = doc(db, 'waiting_users', waitingUser.id);
                     const waitingUserDoc = await transaction.get(waitingUserDocRef);
 
-                    if (!waitingUserDoc.exists()) {
-                        // They were already matched, continue to next user
-                        return null;
-                    }
+                    if (!waitingUserDoc.exists()) return null;
                     
                     transaction.delete(waitingUserDocRef);
 
-                    const newChatDoc = doc(collection(db, 'chats'));
+                    const newChatRef = doc(collection(db, 'chats'));
                     const chatData: Omit<Chat, 'id'> = {
                         memberIds: [user.uid, waitingUser.id],
                         members: {
@@ -182,27 +240,26 @@ export default function MainLayout({ onNavigateHome }: { onNavigateHome: () => v
                         },
                         createdAt: serverTimestamp()
                     }
-                    transaction.set(newChatDoc, chatData);
+                    transaction.set(newChatRef, chatData);
                     
-                    // Notify the other user by setting their pendingChatId
-                    transaction.update(doc(db, 'users', waitingUser.id), { pendingChatId: newChatDoc.id });
-
-                    return newChatDoc.id;
+                    transaction.update(doc(db, 'users', waitingUser.id), { pendingChatId: newChatRef.id });
+                    return newChatRef.id;
                 });
                 
                 if (newChatId) {
                     matchFound = true;
                     const newChatDoc = await getDoc(doc(db, 'chats', newChatId));
-                    setActiveView({
-                        type: 'chat',
-                        data: {
-                            chat: { id: newChatId, ...newChatDoc.data() } as Chat,
-                            user: waitingUser,
-                        },
-                    });
-                    break; // Exit loop once a match is successfully made
+                     if (newChatDoc.exists()) {
+                        setActiveView({
+                            type: 'chat',
+                            data: {
+                                chat: { id: newChatId, ...newChatDoc.data() } as Chat,
+                                user: waitingUser,
+                            },
+                        });
+                    }
+                    break;
                 }
-
             } catch (error) {
                 console.error("Matchmaking transaction failed:", error);
             }
@@ -213,9 +270,9 @@ export default function MainLayout({ onNavigateHome }: { onNavigateHome: () => v
         setIsSearching(false);
         toast.dismiss();
     } else {
-        // No match found, add to waiting pool
         await setDoc(doc(db, 'waiting_users', user.uid), {
             ...profile,
+            id: user.uid,
             uid: user.uid,
             timestamp: serverTimestamp(),
         });
@@ -242,13 +299,11 @@ export default function MainLayout({ onNavigateHome }: { onNavigateHome: () => v
       }
       <Sidebar>
         <SidebarHeader>
-          <div className="flex items-center justify-between">
-             <Button variant="ghost" size="icon" onClick={onNavigateHome}>
-                <ArrowLeft />
-             </Button>
-            <h2 className="font-semibold text-lg">My Chats</h2>
-            <SidebarTrigger />
-          </div>
+            <div className="flex items-center justify-between">
+                <Button variant="ghost" size="icon" onClick={onNavigateHome}><ArrowLeft /></Button>
+                <h2 className="font-semibold text-lg">My Chats</h2>
+                <div className="w-7 h-7" />
+            </div>
         </SidebarHeader>
         <SidebarContent className="p-2">
             <SidebarMenu>
@@ -291,9 +346,19 @@ export default function MainLayout({ onNavigateHome }: { onNavigateHome: () => v
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
+        <MainHeader />
         {renderActiveView()}
       </SidebarInset>
       <SidebarRail />
     </SidebarProvider>
   );
+}
+
+
+export default function MainLayoutWrapper({ onNavigateHome }: { onNavigateHome: () => void; }) {
+    return (
+        <MainLayoutProvider onNavigateHome={onNavigateHome}>
+            <MainLayoutContent />
+        </MainLayoutProvider>
+    )
 }

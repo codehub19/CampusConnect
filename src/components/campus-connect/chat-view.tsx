@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useRef, useEffect, UIEvent, useCallback } from 'react';
@@ -174,13 +173,7 @@ export default function ChatView({ chat, partner, onVideoCallToggle }: ChatViewP
             chatId={chat.id}
             partnerId={partner.id}
         />
-        <ChatHeader 
-            partner={partner} 
-            onGameClick={() => setGameCenterOpen(true)}
-            onVideoCallClick={() => onVideoCallToggle(true)}
-            onLeaveChat={handleLeaveChat}
-            onBlockUser={handleBlockUser}
-        />
+        
         <div className={cn("flex flex-1 min-h-0", gameState && "flex-col md:flex-row")}>
              {gameState && (
                 <div className="w-full md:w-2/5 md:max-w-md border-b md:border-b-0 md:border-r">
