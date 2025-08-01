@@ -35,6 +35,7 @@ const MainLayoutContext = React.createContext<{
   onFindNewChat: () => void;
   onStopSearching: () => void;
   onStartChatWithFriend: (friendId: string) => void;
+  onNavigateHome: () => void;
 } | null>(null);
 
 const useMainLayout = () => {
@@ -45,9 +46,9 @@ const useMainLayout = () => {
     return context;
 };
 
-function LayoutUI() {
-    const { profile, user } = useAuth();
-    const { onFindNewChat, isSearching, onStopSearching, onStartChatWithFriend, activeView } = useMainLayout();
+function LayoutUI({ onNavigateHome }: { onNavigateHome: () => void }) {
+    const { profile, user, logout } = useAuth();
+    const { onFindNewChat, isSearching, onStopSearching, onStartChatWithFriend } = useMainLayout();
     const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
     const [friends, setFriends] = useState<UserProfile[]>([]);
     const db = getFirestore(firebaseApp);
@@ -105,9 +106,9 @@ function LayoutUI() {
             <Sidebar>
                 <SidebarHeader>
                      <div className="flex items-center justify-between">
-                         <Button variant="ghost" size="icon" onClick={() => (useMainLayout as any).onNavigateHome()}><ArrowLeft /></Button>
+                         <Button variant="ghost" size="icon" onClick={onNavigateHome}><ArrowLeft /></Button>
                          <h2 className="font-semibold text-lg">{profile?.name}</h2>
-                         <Button variant="ghost" size="icon" onClick={() => (useAuth as any).logout()}><LogOut /></Button>
+                         <Button variant="ghost" size="icon" onClick={logout}><LogOut /></Button>
                     </div>
                 </SidebarHeader>
                 <SidebarContent>
@@ -118,7 +119,7 @@ function LayoutUI() {
                         </TabsList>
                         <TabsContent value="random" className="text-center p-4 space-y-4">
                              <p className="text-sm text-muted-foreground">Find a random user to chat with.</p>
-                             <Button onClick={handleFindClick} disabled={isSearching} className="w-full">
+                             <Button onClick={handleFindClick} className="w-full">
                                 <Search className="mr-2 h-4 w-4" />
                                 {isSearching ? 'Searching...' : 'Find New Chat'}
                             </Button>
@@ -154,36 +155,36 @@ function LayoutUI() {
                     </Tabs>
                 </SidebarContent>
             </Sidebar>
-            <SidebarInset>
-                <MainHeader />
-                {activeView.type === 'chat' 
-                    ? <ChatView key={activeView.data.chat.id} chat={activeView.data.chat} partner={activeView.data.user} />
-                    : <WelcomeView />
-                }
-            </SidebarInset>
+            <MainHeader />
         </SidebarProvider>
     );
 }
 
 function MainHeader() {
-    const { onVideoCallToggle, onGameToggle, onBlockUser, onLeaveChat, activeView } = useMainLayout();
+    const { onBlockUser, onLeaveChat, onVideoCallToggle, onGameToggle, activeView } = useMainLayout();
     const { isMobile } = useSidebar();
 
     return (
-       <div className={cn("flex h-14 items-center justify-between gap-4 border-b bg-background p-2 px-4", isMobile && 'pl-12')}>
-             {isMobile && <div className="absolute left-2 top-1/2 -translate-y-1/2"><SidebarTrigger /></div> }
-            {activeView.type === 'chat' ? (
-                <ChatHeader
-                    partner={activeView.data.user}
-                    onGameClick={() => onGameToggle(true)}
-                    onVideoCallClick={() => onVideoCallToggle(true)}
-                    onBlockUser={onBlockUser}
-                    onLeaveChat={onLeaveChat}
-                />
-            ) : (
-                 <h2 className="font-semibold text-lg">Welcome</h2>
-            )}
-       </div>
+       <SidebarInset>
+             <div className={cn("flex h-14 items-center justify-between gap-4 border-b bg-background p-2 px-4", isMobile && 'pl-12')}>
+                {isMobile && <div className="absolute left-2 top-1/2 -translate-y-1/2"><SidebarTrigger /></div> }
+                {activeView.type === 'chat' ? (
+                    <ChatHeader
+                        partner={activeView.data.user}
+                        onGameClick={() => onGameToggle(true)}
+                        onVideoCallClick={() => onVideoCallToggle(true)}
+                        onBlockUser={onBlockUser}
+                        onLeaveChat={onLeaveChat}
+                    />
+                ) : (
+                    <h2 className="font-semibold text-lg">Welcome</h2>
+                )}
+             </div>
+              {activeView.type === 'chat' 
+                    ? <ChatView key={activeView.data.chat.id} chat={activeView.data.chat} partner={activeView.data.user} />
+                    : <WelcomeView />
+                }
+       </SidebarInset>
     );
 }
 
@@ -251,55 +252,82 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         toast({ title: 'Searching for a chat...' });
 
         const waitingUsersRef = collection(db, 'waiting_users');
+        const blockedUsers = profile.blockedUsers || [];
         const q = query(waitingUsersRef, where('uid', '!=', user.uid));
 
         const querySnapshot = await getDocs(q);
         let partner: UserProfile | null = null;
+        let matchFound = false;
         
         for (const docSnap of querySnapshot.docs) {
             const waitingUser = docSnap.data() as UserProfile;
-            if (waitingUser.matchedChatId) continue; // Already being matched
 
+            // Skip if user is already being matched
+            if (waitingUser.matchedChatId) continue;
+            
+            // Skip if this user has blocked the waiting user
+            if (blockedUsers.includes(waitingUser.id)) continue;
+
+            const partnerProfileDoc = await getDoc(doc(db, "users", waitingUser.id));
+            if (!partnerProfileDoc.exists()) continue;
+            const partnerProfile = partnerProfileDoc.data() as UserProfile;
+            
+            // Skip if the waiting user has blocked this user
+            if (partnerProfile.blockedUsers?.includes(user.uid)) continue;
+            
+            // Check preferences
             const iMatchTheirPreference = profile.gender ? (waitingUser.preference === 'anyone' || waitingUser.preference === `${profile.gender}s`) : true;
             const theyMatchMyPreference = waitingUser.gender ? (profile.preference === 'anyone' || profile.preference === `${waitingUser.gender}s`) : true;
-            
-            const partnerProfileDoc = await getDoc(doc(db, "users", waitingUser.id));
-            const partnerProfile = partnerProfileDoc.data() as UserProfile;
 
-            if (!profile.blockedUsers?.includes(waitingUser.id) && !partnerProfile.blockedUsers?.includes(user.uid) && iMatchTheirPreference && theyMatchMyPreference) {
-                partner = waitingUser;
-                break;
+            if (iMatchTheirPreference && theyMatchMyPreference) {
+                try {
+                    await runTransaction(db, async (transaction) => {
+                        const waitingUserDocRef = doc(db, "waiting_users", waitingUser.id);
+                        const waitingUserDoc = await transaction.get(waitingUserDocRef);
+
+                        // Check if another user matched with them in the meantime
+                        if (!waitingUserDoc.exists() || waitingUserDoc.data().matchedChatId) {
+                            return; // Abort transaction, try next user
+                        }
+                        
+                        // Create the chat
+                        const newChatRef = doc(collection(db, 'chats'));
+                        transaction.set(newChatRef, {
+                            createdAt: serverTimestamp(),
+                            memberIds: [user.uid, waitingUser.id].sort(),
+                            members: {
+                                [user.uid]: { name: profile.name, avatar: profile.avatar, online: true, active: true },
+                                [waitingUser.id]: { name: waitingUser.name, avatar: waitingUser.avatar, online: true, active: true },
+                            },
+                            isFriendChat: false,
+                        });
+                        
+                        // Mark the user as matched to prevent others from picking them
+                        transaction.update(waitingUserDocRef, { matchedChatId: newChatRef.id });
+                        
+                        partner = partnerProfile;
+                        matchFound = true;
+                        
+                        const chatData = (await transaction.get(newChatRef)).data();
+                        setActiveView({ type: 'chat', data: { chat: {id: newChatRef.id, ...chatData} as Chat, user: partner } });
+                    });
+
+                    if (matchFound) break; // Exit loop if a match was successfully made
+
+                } catch(error) {
+                    console.error("Matchmaking transaction failed:", error);
+                }
             }
         }
         
-        if (partner) {
-             const partnerFinal = partner;
-             try {
-                const newChatRef = await addDoc(collection(db, 'chats'), {
-                    createdAt: serverTimestamp(),
-                    memberIds: [user.uid, partnerFinal.id].sort(),
-                    members: {
-                        [user.uid]: { name: profile.name, avatar: profile.avatar, online: true, active: true },
-                        [partnerFinal.id]: { name: partnerFinal.name, avatar: partnerFinal.avatar, online: true, active: true },
-                    },
-                    isFriendChat: false,
-                });
-                
-                await updateDoc(doc(db, "waiting_users", partnerFinal.id), { matchedChatId: newChatRef.id });
-
-                const chatDoc = await getDoc(newChatRef);
-                setActiveView({ type: 'chat', data: { chat: {id: chatDoc.id, ...chatDoc.data()} as Chat, user: partnerFinal } });
-                 
-             } catch (error) {
-                  console.error("Matchmaking creation failed:", error);
-                  toast({ variant: 'destructive', title: "Matchmaking failed", description: "Please try again." });
-             }
-        } else {
-             // No partner found, start waiting
-             await setDoc(doc(db, 'waiting_users', user.uid), { ...profile, id: user.uid, uid: user.uid, timestamp: serverTimestamp(), matchedChatId: null });
-        }
         setIsSearching(false);
         dismiss();
+
+        if (matchFound) return;
+        
+        // No partner found, start waiting
+        await setDoc(doc(db, 'waiting_users', user.uid), { ...profile, id: user.uid, uid: user.uid, timestamp: serverTimestamp(), matchedChatId: null });
+        setIsSearching(true); // Keep searching state while waiting
     };
 
     const stopSearching = async () => {
@@ -363,6 +391,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         onFindNewChat: findNewChat,
         onStopSearching: stopSearching,
         onStartChatWithFriend: startChatWithFriend,
+        onNavigateHome,
     };
 
     return (
@@ -378,7 +407,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                     partnerId={activeView.data.user.id}
                 />
             }
-            <LayoutUI />
+            <LayoutUI onNavigateHome={onNavigateHome} />
         </MainLayoutContext.Provider>
     );
 }
