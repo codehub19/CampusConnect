@@ -20,7 +20,7 @@ export default function ProfileSetupView() {
   
   const [formData, setFormData] = useState<Partial<User>>({
     name: profile?.name || '',
-    gender: profile?.gender || 'Prefer not to say',
+    gender: profile?.gender || 'prefer-not-to-say',
     preference: profile?.preference || 'anyone',
     interests: profile?.interests || [],
   });

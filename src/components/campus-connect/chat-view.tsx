@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useRef, useEffect, UIEvent, useCallback } from 'react';
@@ -13,7 +14,6 @@ import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'fire
 import { firebaseApp } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
 import Image from 'next/image';
-import ChatHeader from './chat-header';
 import { useToast } from '@/hooks/use-toast';
 import GameCenterView from './game-center-view';
 import TicTacToe from './tic-tac-toe';
@@ -24,10 +24,9 @@ import { generateIcebreaker } from '@/ai/flows/generate-icebreaker';
 interface ChatViewProps {
   chat: Chat;
   partner: User;
-  onVideoCallToggle: (isOpen: boolean) => void;
 }
 
-export default function ChatView({ chat, partner, onVideoCallToggle }: ChatViewProps) {
+export default function ChatView({ chat, partner }: ChatViewProps) {
   const { user, profile } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isGameCenterOpen, setGameCenterOpen] = useState(false);
@@ -50,18 +49,6 @@ export default function ChatView({ chat, partner, onVideoCallToggle }: ChatViewP
     }, 100);
   };
   
-  const handleLeaveChat = async () => {
-    // This is handled by MainLayout now, but we can add a confirmation
-  };
-
-  const handleBlockUser = async () => {
-    if (!user || !partner) return;
-    const userRef = doc(db, 'users', user.uid);
-    await updateDoc(userRef, { blockedUsers: [...(profile?.blockedUsers || []), partner.id] });
-    toast({ title: "User Blocked", description: `You will not be matched with ${partner.name} again.`});
-    // Further logic to end chat will be handled by parent
-  };
-
   useEffect(() => {
     const messagesRef = collection(db, "chats", chat.id, "messages");
     const q = query(messagesRef, orderBy("timestamp", "asc"));

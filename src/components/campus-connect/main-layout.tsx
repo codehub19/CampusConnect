@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -10,7 +11,7 @@ import ChatView from './chat-view';
 import WelcomeView from './welcome-view';
 import VideoCallView from './video-call-view';
 import type { Chat, User as UserProfile } from '@/lib/types';
-import { collection, query, where, onSnapshot, getFirestore, getDocs, doc, runTransaction, addDoc, serverTimestamp, setDoc, updateDoc, deleteField } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getFirestore, getDocs, doc, runTransaction, addDoc, serverTimestamp, setDoc, updateDoc, deleteField, writeBatch, deleteDoc, orderBy } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '../ui/skeleton';
@@ -20,14 +21,14 @@ type ActiveView =
   | { type: 'welcome' }
   | { type: 'chat', data: { chat: Chat, user: UserProfile } };
 
-function MainHeader() {
-    const { user, profile } = useAuth();
-    const { activeView } = useMainLayout();
+function MainHeader({ onNavigateHome }: { onNavigateHome: () => void }) {
+    const { activeView, onBlockUser, onLeaveChat, onVideoCallToggle } = useMainLayout();
 
     return (
         <div className="flex h-14 items-center justify-between gap-4 border-b bg-background p-2 px-4">
             <div className="flex items-center gap-2">
                 <SidebarTrigger className="md:hidden" />
+                <Button variant="ghost" size="icon" className="md:hidden" onClick={onNavigateHome}><ArrowLeft /></Button>
                 <div className="flex items-center gap-3">
                     {activeView.type === 'chat' && (
                         <>
@@ -43,7 +44,21 @@ function MainHeader() {
             <div className="flex items-center gap-2">
                  {activeView.type === 'chat' && (
                     <>
-                        {/* Add Chat specific actions here like video call etc. */}
+                       <Button variant="ghost" size="icon" onClick={() => onVideoCallToggle(true)}>
+                          <Video className="h-5 w-5" />
+                          <span className="sr-only">Start video call</span>
+                        </Button>
+                        <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon">
+                                    <MoreVertical className="h-5 w-5" />
+                                </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent>
+                                <DropdownMenuItem onSelect={onBlockUser} className="text-destructive">Block User</DropdownMenuItem>
+                                <DropdownMenuItem onSelect={onLeaveChat}>Leave Chat</DropdownMenuItem>
+                            </DropdownMenuContent>
+                        </DropdownMenu>
                     </>
                  )}
             </div>
@@ -55,6 +70,9 @@ type MainLayoutContextType = {
   activeView: ActiveView;
   setActiveView: React.Dispatch<React.SetStateAction<ActiveView>>;
   onNavigateHome: () => void;
+  onBlockUser: () => void;
+  onLeaveChat: () => void;
+  onVideoCallToggle: (isOpen: boolean) => void;
 };
 
 const MainLayoutContext = React.createContext<MainLayoutContextType | null>(null);
@@ -67,18 +85,10 @@ const useMainLayout = () => {
     return context;
 };
 
-const MainLayoutProvider = ({ children, onNavigateHome }: { children: React.ReactNode, onNavigateHome: () => void }) => {
-    const [activeView, setActiveView] = useState<ActiveView>({ type: 'welcome' });
-    return (
-        <MainLayoutContext.Provider value={{ activeView, setActiveView, onNavigateHome }}>
-            {children}
-        </MainLayoutContext.Provider>
-    )
-}
 
 function MainLayoutContent() {
   const { user, profile, logout } = useAuth();
-  const { activeView, setActiveView, onNavigateHome } = useMainLayout();
+  const [activeView, setActiveView] = useState<ActiveView>({ type: 'welcome' });
   const [chats, setChats] = useState<Chat[]>([]);
   const [chatUsers, setChatUsers] = useState<Record<string, UserProfile>>({});
   const [isLoadingChats, setIsLoadingChats] = useState(true);
@@ -88,6 +98,7 @@ function MainLayoutContent() {
   const unsubscribeUserDoc = useRef<() => void | null>(null);
   const { toast } = useToast();
   const db = getFirestore(firebaseApp);
+  const { onNavigateHome } = useMainLayout();
 
   const cleanupListeners = useCallback(() => {
     if (unsubscribeUserDoc.current) {
@@ -98,7 +109,7 @@ function MainLayoutContent() {
 
   useEffect(() => {
     if (!user) return;
-    const q = query(collection(db, 'chats'), where('memberIds', 'array-contains', user.uid));
+    const q = query(collection(db, 'chats'), where('memberIds', 'array-contains', user.uid), orderBy('createdAt', 'desc'));
     const unsubscribe = onSnapshot(q, async (snapshot) => {
       const fetchedChats: Chat[] = [];
       const userIdsToFetch = new Set<string>();
@@ -133,24 +144,17 @@ function MainLayoutContent() {
 
   
   useEffect(() => {
-     // This effect handles the listener for when a waiting user is found by someone else.
     if (isSearching && user) {
         if (unsubscribeUserDoc.current) unsubscribeUserDoc.current();
-
         const userDocRef = doc(db, 'users', user.uid);
         unsubscribeUserDoc.current = onSnapshot(userDocRef, async (docSnap) => {
             const data = docSnap.data();
             if (data?.pendingChatId) {
                 const chatId = data.pendingChatId;
-
-                // Found a chat, stop searching and clean up
                 setIsSearching(false);
                 cleanupListeners();
                 
-                // Use a transaction or batched write to be safe
-                const batch = writeBatch(db);
-                batch.update(userDocRef, { pendingChatId: deleteField() });
-                await batch.commit();
+                await updateDoc(userDocRef, { pendingChatId: deleteField() });
 
                 const chatDoc = await getDoc(doc(db, 'chats', chatId));
                 if (chatDoc.exists()) {
@@ -161,7 +165,7 @@ function MainLayoutContent() {
                         if (!partner) {
                             const partnerDoc = await getDoc(doc(db, 'users', partnerId));
                             if (partnerDoc.exists()) {
-                                partner = partnerDoc.data() as UserProfile;
+                                partner = { id: partnerDoc.id, ...partnerDoc.data()} as UserProfile;
                                 setChatUsers(prev => ({...prev, [partnerId]: partner}));
                             }
                         }
@@ -175,7 +179,6 @@ function MainLayoutContent() {
     } else {
         cleanupListeners();
     }
-
     return () => cleanupListeners();
   }, [isSearching, user, db, cleanupListeners, chatUsers]);
 
@@ -189,7 +192,6 @@ function MainLayoutContent() {
   const findNewChat = async () => {
     if (!user || !profile) return;
     if (isSearching) {
-      // Stop searching
       const waitingUserRef = doc(db, 'waiting_users', user.uid);
       await deleteDoc(waitingUserRef);
       setIsSearching(false);
@@ -202,13 +204,11 @@ function MainLayoutContent() {
 
     const waitingUsersRef = collection(db, 'waiting_users');
     const blockedUsers = profile.blockedUsers || [];
-    const q = query(
-        waitingUsersRef, 
-        where('uid', '!=', user.uid),
-    );
+    const q = query(waitingUsersRef, where('uid', '!=', user.uid));
     
     const querySnapshot = await getDocs(q);
     let matchFound = false;
+    let partner: UserProfile | null = null;
 
     for (const docSnap of querySnapshot.docs) {
         const waitingUser = docSnap.data() as UserProfile;
@@ -216,59 +216,59 @@ function MainLayoutContent() {
         const iMatchTheirPreference = profile.gender ? (waitingUser.preference === 'anyone' || waitingUser.preference === `${profile.gender}s`) : true;
         const theyMatchMyPreference = waitingUser.gender ? (profile.preference === 'anyone' || profile.preference === `${waitingUser.gender}s`) : true;
         
-        if (
-            !blockedUsers.includes(waitingUser.id) && 
-            !(waitingUser.blockedUsers || []).includes(user.uid) &&
-            iMatchTheirPreference && theyMatchMyPreference
-        ) {
-            
-            try {
-                const newChatId = await runTransaction(db, async (transaction) => {
-                    const waitingUserDocRef = doc(db, 'waiting_users', waitingUser.id);
-                    const waitingUserDoc = await transaction.get(waitingUserDocRef);
-
-                    if (!waitingUserDoc.exists()) return null;
-                    
-                    transaction.delete(waitingUserDocRef);
-
-                    const newChatRef = doc(collection(db, 'chats'));
-                    const chatData: Omit<Chat, 'id'> = {
-                        memberIds: [user.uid, waitingUser.id],
-                        members: {
-                            [user.uid]: { name: profile.name, avatar: profile.avatar, online: true, active: true },
-                            [waitingUser.id]: { name: waitingUser.name, avatar: waitingUser.avatar, online: true, active: true },
-                        },
-                        createdAt: serverTimestamp()
-                    }
-                    transaction.set(newChatRef, chatData);
-                    
-                    transaction.update(doc(db, 'users', waitingUser.id), { pendingChatId: newChatRef.id });
-                    return newChatRef.id;
-                });
-                
-                if (newChatId) {
-                    matchFound = true;
-                    const newChatDoc = await getDoc(doc(db, 'chats', newChatId));
-                     if (newChatDoc.exists()) {
-                        setActiveView({
-                            type: 'chat',
-                            data: {
-                                chat: { id: newChatId, ...newChatDoc.data() } as Chat,
-                                user: waitingUser,
-                            },
-                        });
-                    }
-                    break;
-                }
-            } catch (error) {
-                console.error("Matchmaking transaction failed:", error);
-            }
+        if (!blockedUsers.includes(waitingUser.id) && !(waitingUser.blockedUsers || []).includes(user.uid) && iMatchTheirPreference && theyMatchMyPreference) {
+             partner = waitingUser;
+             matchFound = true;
+             break;
         }
     }
 
-    if(matchFound){
-        setIsSearching(false);
-        toast.dismiss();
+    if(matchFound && partner){
+        const partnerFinal = partner; 
+        try {
+            const newChatId = await runTransaction(db, async (transaction) => {
+                const waitingUserDocRef = doc(db, 'waiting_users', partnerFinal.id);
+                const waitingUserDoc = await transaction.get(waitingUserDocRef);
+                if (!waitingUserDoc.exists()) return null;
+                
+                transaction.delete(waitingUserDocRef);
+
+                const newChatRef = doc(collection(db, 'chats'));
+                const chatData: Omit<Chat, 'id'> = {
+                    memberIds: [user.uid, partnerFinal.id],
+                    members: {
+                        [user.uid]: { name: profile.name, avatar: profile.avatar, online: true, active: true },
+                        [partnerFinal.id]: { name: partnerFinal.name, avatar: partnerFinal.avatar, online: true, active: true },
+                    },
+                    createdAt: serverTimestamp()
+                }
+                transaction.set(newChatRef, chatData);
+                
+                transaction.update(doc(db, 'users', partnerFinal.id), { pendingChatId: newChatRef.id });
+                return newChatRef.id;
+            });
+            
+            if (newChatId) {
+                const newChatDoc = await getDoc(doc(db, 'chats', newChatId));
+                 if (newChatDoc.exists()) {
+                    setActiveView({
+                        type: 'chat',
+                        data: {
+                            chat: { id: newChatId, ...newChatDoc.data() } as Chat,
+                            user: partner,
+                        },
+                    });
+                }
+                setIsSearching(false);
+                toast.dismiss();
+            } else {
+                 await findNewChat(); // Transaction failed, retry
+            }
+        } catch (error) {
+            console.error("Matchmaking transaction failed:", error);
+            setIsSearching(false);
+            toast({ variant: 'destructive', title: "Matchmaking failed", description: "Please try again." });
+        }
     } else {
         await setDoc(doc(db, 'waiting_users', user.uid), {
             ...profile,
@@ -278,19 +278,50 @@ function MainLayoutContent() {
         });
     }
   };
+  
+  const handleBlockUser = async () => {
+    if(activeView.type !== 'chat') return;
+    const partnerId = activeView.data.user.id;
+    if (!user || !partnerId) return;
+
+    await updateDoc(doc(db, 'users', user.uid), { blockedUsers: [...(profile?.blockedUsers || []), partnerId] });
+    toast({ title: "User Blocked", description: `You will not be matched with ${activeView.data.user.name} again.`});
+    setActiveView({type: 'welcome'});
+  };
+
+  const handleLeaveChat = async () => {
+      if(activeView.type !== 'chat') return;
+      const chatId = activeView.data.chat.id;
+      if (!user || !chatId) return;
+
+      const chatRef = doc(db, 'chats', chatId);
+      await updateDoc(chatRef, { [`members.${user.uid}.active`]: false });
+      toast({ title: "You have left the chat."});
+      setActiveView({type: 'welcome'});
+  }
 
   const renderActiveView = () => {
     switch (activeView.type) {
       case 'chat':
-        return <ChatView key={activeView.data.chat.id} chat={activeView.data.chat} partner={activeView.data.user} onVideoCallToggle={setIsVideoCallOpen} />;
+        return <ChatView key={activeView.data.chat.id} chat={activeView.data.chat} partner={activeView.data.user} />;
       case 'welcome':
       default:
         return <WelcomeView />;
     }
   };
+  
+  const providerValue = {
+      activeView,
+      setActiveView,
+      onNavigateHome,
+      onBlockUser: handleBlockUser,
+      onLeaveChat: handleLeaveChat,
+      onVideoCallToggle: setIsVideoCallOpen
+  };
 
   return (
-    <SidebarProvider>
+    <MainLayoutContext.Provider value={providerValue}>
+      <SidebarProvider>
       {activeView.type === 'chat' && isVideoCallOpen &&
         <VideoCallView 
           chatId={activeView.data.chat.id}
@@ -305,8 +336,8 @@ function MainLayoutContent() {
                 <div className="w-7 h-7" />
             </div>
         </SidebarHeader>
-        <SidebarContent className="p-2">
-            <SidebarMenu>
+        <SidebarContent>
+             <SidebarMenu>
                 {isLoadingChats ? (
                     Array.from({length: 3}).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)
                 ) : chats.length === 0 ? (
@@ -346,19 +377,18 @@ function MainLayoutContent() {
         </SidebarFooter>
       </Sidebar>
       <SidebarInset>
-        <MainHeader />
+        <MainHeader onNavigateHome={onNavigateHome} />
         {renderActiveView()}
       </SidebarInset>
       <SidebarRail />
     </SidebarProvider>
+    </MainLayoutContext.Provider>
   );
 }
 
 
 export default function MainLayoutWrapper({ onNavigateHome }: { onNavigateHome: () => void; }) {
     return (
-        <MainLayoutProvider onNavigateHome={onNavigateHome}>
-            <MainLayoutContent />
-        </MainLayoutProvider>
+        <MainLayoutContent onNavigateHome={onNavigateHome}/>
     )
 }

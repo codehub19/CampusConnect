@@ -1,6 +1,7 @@
 
 "use client";
 
+import React from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import type { GameState } from '@/lib/types';
 import { doc, getFirestore, runTransaction, updateDoc } from 'firebase/firestore';
