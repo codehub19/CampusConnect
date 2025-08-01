@@ -1,8 +1,4 @@
 
-
-
-
-
 export interface User {
   id: string;
   name: string;
@@ -14,6 +10,7 @@ export interface User {
   blockedUsers?: string[];
   profileComplete?: boolean;
   groupName?: string; // For displaying name in group chats
+  pendingChatId?: string | null;
 }
 
 export type MessageContent = 
@@ -28,62 +25,6 @@ export interface Message {
   content: MessageContent;
   timestamp: any;
   text?: string; // Kept for backwards compatibility and simple text use
-}
-
-export type GameType = 'ticTacToe' | 'connectFour' | 'dotsAndBoxes';
-
-export interface BaseGameState {
-    type: GameType;
-    status: 'pending' | 'active' | 'finished' | 'draw';
-    winner: string | null;
-    initiatorId: string;
-    players: { [key: string]: any };
-}
-
-export interface TicTacToeState extends BaseGameState {
-    type: 'ticTacToe';
-    board: (string | null)[];
-    turn: string | null;
-    players: { [key:string]: 'X' | 'O' };
-}
-
-export interface ConnectFourState extends BaseGameState {
-    type: 'connectFour';
-    board: (number | null)[];
-    turn: string | null;
-    players: { [key:string]: 1 | 2 };
-}
-
-export interface DotsAndBoxesState extends BaseGameState {
-    type: 'dotsAndBoxes';
-    gridSize: number;
-    h_lines: (string | null)[];
-    v_lines: (string | null)[];
-    boxes: (string | null)[];
-    scores: { [key: string]: number };
-    turn: string | null;
-    players: { [key: string]: 'p1' | 'p2' };
-}
-
-export type GameState = TicTacToeState | ConnectFourState | DotsAndBoxesState;
-
-export interface Call {
-  callerId: string;
-  offer?: any;
-  answer?: any;
-}
-
-export interface Chat {
-  id: string;
-  userIds: string[];
-  game: GameState | null;
-  lastMessageTimestamp?: any;
-  isFriendChat?: boolean;
-  usersData?: {
-      [key: string]: {
-          online: boolean;
-      }
-  }
 }
 
 export interface MissedConnectionComment {

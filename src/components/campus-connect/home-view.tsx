@@ -4,12 +4,11 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Users, CalendarDays, ArrowRight, HeartCrack, Lightbulb } from "lucide-react";
+import { CalendarDays, ArrowRight, HeartCrack, Lightbulb } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import SuggestionView from "./suggestion-view";
 
 interface HomeViewProps {
-  onNavigateTo1v1Chat: () => void;
   onNavigateToEvents: () => void;
   onNavigateToMissedConnections: () => void;
   userName: string;
@@ -18,7 +17,7 @@ interface HomeViewProps {
   onlineCount: number | null;
 }
 
-export default function HomeView({ onNavigateTo1v1Chat, onNavigateToEvents, onNavigateToMissedConnections, userName, onOpenProfile, userAvatar, onlineCount }: HomeViewProps) {
+export default function HomeView({ onNavigateToEvents, onNavigateToMissedConnections, userName, onOpenProfile, userAvatar, onlineCount }: HomeViewProps) {
   const [isSuggestionOpen, setSuggestionOpen] = useState(false);
 
   return (
@@ -40,32 +39,7 @@ export default function HomeView({ onNavigateTo1v1Chat, onNavigateToEvents, onNa
             <h1 className="text-4xl sm:text-5xl font-bold text-foreground">Welcome, {userName}!</h1>
             <p className="text-lg text-muted-foreground mt-2">Choose how you want to connect today.</p>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-6xl">
-            <Card 
-            className="bg-card/80 border-border shadow-lg hover:shadow-primary/20 hover:border-primary/50 transition-all duration-300 transform hover:-translate-y-1 flex flex-col cursor-pointer"
-            onClick={onNavigateTo1v1Chat}
-            >
-            <CardHeader>
-                <div className="flex items-center gap-4">
-                <div className="p-3 bg-primary/10 rounded-lg">
-                    <Users className="h-8 w-8 text-primary" />
-                </div>
-                <div>
-                    <CardTitle className="text-2xl font-bold">1-on-1 Chat</CardTitle>
-                    <CardDescription>Connect with a random student or a friend.</CardDescription>
-                </div>
-                </div>
-            </CardHeader>
-            <CardContent className="flex-grow flex flex-col justify-between">
-                <p className="text-muted-foreground mb-6">
-                Jump into a private conversation. Find new people based on your interests or catch up with existing friends.
-                </p>
-                <Button className="w-full font-bold text-lg py-6 mt-auto">
-                Start Chatting <ArrowRight className="ml-2 h-5 w-5" />
-                </Button>
-            </CardContent>
-            </Card>
-            
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 w-full max-w-4xl">
             <Card 
             className="bg-card/80 border-border shadow-lg hover:shadow-accent/20 hover:border-accent/50 transition-all duration-300 transform hover:-translate-y-1 flex flex-col cursor-pointer"
             onClick={onNavigateToEvents}
@@ -92,7 +66,7 @@ export default function HomeView({ onNavigateTo1v1Chat, onNavigateToEvents, onNa
             </Card>
 
             <Card 
-            className="bg-card/80 border-border shadow-lg hover:shadow-pink-500/10 hover:border-pink-500/50 transition-all duration-300 transform hover:-translate-y-1 flex flex-col cursor-pointer md:col-span-2 lg:col-span-1"
+            className="bg-card/80 border-border shadow-lg hover:shadow-pink-500/10 hover:border-pink-500/50 transition-all duration-300 transform hover:-translate-y-1 flex flex-col cursor-pointer"
             onClick={onNavigateToMissedConnections}
             >
             <CardHeader>

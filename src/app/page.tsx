@@ -3,7 +3,6 @@
 
 import { AuthProvider, useAuth } from '@/hooks/use-auth';
 import AuthView from '@/components/campus-connect/auth-view';
-import { MainLayout } from '@/components/campus-connect/main-layout';
 import PolicyView from '@/components/campus-connect/policy-view';
 import { useState, useEffect } from 'react';
 import ProfileSetupView from '@/components/campus-connect/profile-setup-view';
@@ -12,10 +11,10 @@ import EventsView from '@/components/campus-connect/events-view';
 import MissedConnectionsView from '@/components/campus-connect/missed-connections-view';
 import ProfileView from '@/components/campus-connect/profile-view';
 import { Loader2 } from 'lucide-react';
-import { getDatabase, ref, onValue, goOffline, goOnline } from 'firebase/database';
-import { firebaseApp, rtdb } from '@/lib/firebase';
+import { goOffline, goOnline } from 'firebase/database';
+import { rtdb } from '@/lib/firebase';
 
-type AppState = 'loading' | 'policy' | 'auth' | 'profile_setup' | 'home' | 'chat' | 'events' | 'missed_connections';
+type AppState = 'loading' | 'policy' | 'auth' | 'profile_setup' | 'home' | 'events' | 'missed_connections';
 
 function AppContent() {
   const { user, loading, profile, updateProfile } = useAuth();
@@ -30,15 +29,8 @@ function AppContent() {
         return;
     }
     goOnline(rtdb);
-
-    const statusRef = ref(rtdb, 'status');
-    const unsubscribe = onValue(statusRef, (snapshot) => {
-        const statuses = snapshot.val() || {};
-        const count = Object.values(statuses).filter((status: any) => status.state === 'online').length;
-        setOnlineCount(count);
-    });
-
-    return () => unsubscribe();
+    // Note: The onValue listener for onlineCount was removed as it was only used in the AuthView.
+    // If you need it elsewhere, you'll need to re-add the `ref` and `onValue` imports and logic.
   }, [user]);
 
   
@@ -113,7 +105,6 @@ function AppContent() {
             return <ProfileSetupView />;
           case 'home':
             return <HomeView 
-              onNavigateTo1v1Chat={() => navigateTo('chat')} 
               onNavigateToEvents={() => navigateTo('events')} 
               onNavigateToMissedConnections={() => navigateTo('missed_connections')} 
               userName={profile?.name || 'User'}
@@ -121,8 +112,6 @@ function AppContent() {
               userAvatar={profile?.avatar}
               onlineCount={onlineCount}
             />;
-          case 'chat':
-            return <MainLayout onNavigateHome={() => navigateTo('home')} onNavigateToMissedConnections={() => navigateTo('missed_connections')} />;
           case 'events':
             return <EventsView onNavigateHome={() => navigateTo('home')} />;
           case 'missed_connections':
