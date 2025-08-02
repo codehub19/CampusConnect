@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Mic, MicOff, Video, VideoOff, PhoneOff, PhoneCall } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -9,7 +9,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { getFirestore, collection, doc, onSnapshot, addDoc, setDoc, deleteDoc, getDocs, writeBatch, query, updateDoc } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import type { Call } from '@/lib/types';
-import { Alert, AlertTitle, AlertDescription } from '@/components/ui/alert';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 
 const servers = {
   iceServers: [
@@ -27,7 +27,7 @@ interface VideoCallViewProps {
 
 export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
   const { user, profile } = useAuth();
-  const { toast, dismiss } = useToast();
+  const { toast } = useToast();
   const db = getFirestore(firebaseApp);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -40,14 +40,15 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
   const [isAudioMuted, setAudioMuted] = useState(false);
   const [isVideoMuted, setVideoMuted] = useState(false);
   const [isCallActive, setIsCallActive] = useState(false);
+  const [incomingCall, setIncomingCall] = useState<{id: string, data: Call} | null>(null);
+  
   const isPolitelyEndingCall = useRef(false);
 
   const callDocUnsubscribe = useRef<() => void | null>(null);
   const answerCandidatesUnsubscribe = useRef<() => void | null>(null);
   const offerCandidatesUnsubscribe = useRef<() => void | null>(null);
 
-
-  const cleanupPeerConnection = () => {
+  const cleanupPeerConnection = useCallback(() => {
     if (pc.current) {
         pc.current.ontrack = null;
         pc.current.onicecandidate = null;
@@ -60,9 +61,9 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
     }
      if (localVideoRef.current) localVideoRef.current.srcObject = null;
      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
-  };
+  }, []);
 
-  const hangUp = async (notify = true) => {
+  const hangUp = useCallback(async (notify = true) => {
     if (isPolitelyEndingCall.current && !notify) return;
     if (notify) {
         isPolitelyEndingCall.current = true;
@@ -91,7 +92,7 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
     setIsCallActive(false);
     isPolitelyEndingCall.current = false;
     onClose();
-  };
+  }, [chatId, db, cleanupPeerConnection, onClose]);
 
   const startCall = async () => {
     if (isCallActive || !chatId || !user) return;
@@ -229,24 +230,7 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
           if (change.type === 'added') {
               const callData = change.doc.data() as Call;
               if (!isCallActive && callData.callerId !== user?.uid && !callData.answered) {
-                  const {id: toastId} = toast({
-                    title: 'Incoming Call',
-                    description: `${profile?.name || 'Someone'} is calling...`,
-                    duration: 30000,
-                    action: (
-                        <div className="flex gap-2">
-                           <Button onClick={() => {
-                               answerCall(change.doc.id, callData.offer)
-                               dismiss(toastId)
-                           }}>Accept</Button>
-                           <Button variant="destructive" onClick={async () => {
-                               const callDocRef = doc(db, 'chats', chatId, 'calls', change.doc.id);
-                               await deleteDoc(callDocRef);
-                               dismiss(toastId);
-                           }}>Decline</Button>
-                        </div>
-                    )
-                  })
+                  setIncomingCall({id: change.doc.id, data: callData});
               }
           } else if (change.type === 'removed') {
               if (isCallActive) {
@@ -261,7 +245,7 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
       unsubscribe();
       if(isCallActive) hangUp(true);
     };
-  }, [chatId, db, user, isCallActive, profile?.name, toast, dismiss, hangUp]);
+  }, [chatId, db, user, isCallActive, profile?.name, toast, hangUp]);
 
 
   const toggleAudio = () => {
@@ -276,8 +260,36 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
     setVideoMuted(prev => !prev);
   }
 
+  const handleDecline = async () => {
+    if(!incomingCall) return;
+    const callDocRef = doc(db, 'chats', chatId, 'calls', incomingCall.id);
+    await deleteDoc(callDocRef);
+    setIncomingCall(null);
+  }
+
+  const handleAccept = () => {
+    if(!incomingCall) return;
+    answerCall(incomingCall.id, incomingCall.data.offer)
+    setIncomingCall(null);
+  }
+
   return (
     <div className="fixed inset-0 bg-black/90 flex flex-col items-center justify-center z-50">
+        <AlertDialog open={!!incomingCall}>
+            <AlertDialogContent>
+                <AlertDialogHeader>
+                    <AlertDialogTitle>Incoming Call</AlertDialogTitle>
+                    <AlertDialogDescription>
+                       {profile?.name || 'Someone'} is calling...
+                    </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                    <AlertDialogCancel onClick={handleDecline}>Decline</AlertDialogCancel>
+                    <AlertDialogAction onClick={handleAccept}>Accept</AlertDialogAction>
+                </AlertDialogFooter>
+            </AlertDialogContent>
+        </AlertDialog>
+
         <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-contain" />
         <video ref={localVideoRef} autoPlay playsInline muted className="absolute bottom-6 right-6 w-1/3 max-w-[150px] md:w-1/4 md:max-w-xs rounded-xl shadow-2xl border-2 border-primary" />
         
@@ -302,12 +314,15 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
         )}
         
         {hasCameraPermission === false && (
-            <Alert variant="destructive" className="absolute top-1/2 -translate-y-1/2 max-w-sm">
-                <AlertTitle>Camera Access Required</AlertTitle>
-                <AlertDescription>
-                    Please allow camera access to use this feature. You may need to refresh the page and grant permissions.
-                </AlertDescription>
-            </Alert>
+            <div className="absolute inset-0 flex items-center justify-center bg-black/50">
+              <div className="bg-background p-6 rounded-lg max-w-sm text-center">
+                  <h3 className="text-lg font-bold">Camera Access Required</h3>
+                  <p className="text-sm text-muted-foreground mt-2">
+                      Please allow camera access to use this feature. You may need to refresh the page and grant permissions in your browser settings.
+                  </p>
+                  <Button onClick={onClose} className="mt-4">Close</Button>
+              </div>
+            </div>
         )}
     </div>
   );
