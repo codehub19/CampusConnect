@@ -59,16 +59,41 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
     });
     
     const chatDocRef = doc(db, 'chats', chat.id);
-    const unsubscribeChat = onSnapshot(chatDocRef, (doc) => {
-        const chatData = doc.data();
-        setGameState(chatData?.game || null);
+    const unsubscribeChat = onSnapshot(chatDocRef, (docSnap) => {
+        const chatData = docSnap.data();
+        const gameData = chatData?.game;
+        setGameState(gameData || null);
+
+        if (gameData?.status === 'pending' && gameData?.initiatorId !== user?.uid) {
+            toast({
+                title: 'Game Invitation!',
+                description: `${partner.name} wants to play ${gameData.gameType || gameData.type}!`,
+                duration: 15000,
+                action: (
+                    <div className="flex gap-2">
+                        <Button onClick={async () => {
+                            const chatRef = doc(db, 'chats', chat.id);
+                            const gameUpdate: any = { 'game.status': 'active', 'game.turn': gameData.initiatorId };
+                            if (gameData.type === 'tic-tac-toe') {
+                                gameUpdate['game.players'] = { [gameData.initiatorId]: 'X', [user!.uid]: 'O' };
+                            }
+                            await updateDoc(chatRef, gameUpdate);
+                        }}>Accept</Button>
+                        <Button variant="destructive" onClick={async () => {
+                             const chatRef = doc(db, 'chats', chat.id);
+                             await updateDoc(chatRef, { game: null });
+                        }}>Decline</Button>
+                    </div>
+                )
+            });
+        }
     });
 
     return () => {
         unsubscribeMessages();
         unsubscribeChat();
     };
-  }, [chat.id, db]);
+  }, [chat.id, db, user?.uid, partner.name, toast]);
 
   useEffect(() => {
     if (isAtBottomRef.current) {
@@ -144,7 +169,8 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
   
   const renderGame = () => {
     if (!gameState || !user) return null;
-    switch (gameState.type) {
+    const gameType = gameState.gameType || gameState.type;
+    switch (gameType) {
       case 'tic-tac-toe': return <TicTacToe chatId={chat.id} gameState={gameState} />;
       case 'connect-four': return <ConnectFour chatId={chat.id} gameState={gameState} />;
       case 'dots-and-boxes': return <DotsAndBoxes chatId={chat.id} gameState={gameState} />;
@@ -167,34 +193,34 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
                     {renderGame()}
                 </div>
              )}
-            <div className="flex flex-col relative flex-1 overflow-hidden">
-                <ScrollArea className="flex-1 p-4" ref={scrollAreaRef} onScroll={handleScroll}>
-                <div className="space-y-4">
-                    {messages.map((message, index) => {
-                    const isSender = message.senderId === user?.uid;
-                    return (
-                    <div
-                        key={message.id}
-                        className={cn('flex items-end gap-2', isSender ? 'justify-end' : 'justify-start')}
-                    >
-                        {!isSender && (
-                        <Avatar className="h-8 w-8">
-                            <AvatarImage src={partner.avatar} alt={partner.name} />
-                            <AvatarFallback>{partner.name.charAt(0)}</AvatarFallback>
-                        </Avatar>
-                        )}
-                        <div className={cn(
-                            'max-w-xs md:max-w-md lg:max-w-lg rounded-lg px-3 py-2 text-sm shadow',
-                            isSender
-                            ? 'bg-primary text-primary-foreground rounded-br-none'
-                            : 'bg-secondary text-secondary-foreground rounded-bl-none'
-                        )}>
-                            {message.content.type === 'text' && <p>{message.content.value as string}</p>}
-                            {message.content.type === 'image' && <Image src={(message.content.value as any).url} alt={(message.content.value as any).name} width={200} height={200} className="rounded-md"/>}
+            <div className="flex flex-col flex-1 overflow-hidden">
+                 <ScrollArea className="flex-grow p-4" ref={scrollAreaRef} onScroll={handleScroll}>
+                    <div className="space-y-4">
+                        {messages.map((message, index) => {
+                        const isSender = message.senderId === user?.uid;
+                        return (
+                        <div
+                            key={message.id}
+                            className={cn('flex items-end gap-2', isSender ? 'justify-end' : 'justify-start')}
+                        >
+                            {!isSender && (
+                            <Avatar className="h-8 w-8">
+                                <AvatarImage src={partner.avatar} alt={partner.name} />
+                                <AvatarFallback>{partner.name.charAt(0)}</AvatarFallback>
+                            </Avatar>
+                            )}
+                            <div className={cn(
+                                'max-w-xs md:max-w-md lg:max-w-lg rounded-lg px-3 py-2 text-sm shadow',
+                                isSender
+                                ? 'bg-primary text-primary-foreground rounded-br-none'
+                                : 'bg-secondary text-secondary-foreground rounded-bl-none'
+                            )}>
+                                {message.content.type === 'text' && <p>{message.content.value as string}</p>}
+                                {message.content.type === 'image' && <Image src={(message.content.value as any).url} alt={(message.content.value as any).name} width={200} height={200} className="rounded-md"/>}
+                            </div>
                         </div>
+                        )})}
                     </div>
-                    )})}
-                </div>
                 </ScrollArea>
                 {showScrollToBottom && (
                     <Button
@@ -237,3 +263,4 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
     </div>
   );
 }
+

@@ -18,21 +18,10 @@ interface DotsAndBoxesProps {
 export default function DotsAndBoxes({ chatId, gameState }: DotsAndBoxesProps) {
     const { user } = useAuth();
     const db = getFirestore(firebaseApp);
-    const { status, initiatorId, players, turn, scores, gridSize, h_lines, v_lines, boxes } = gameState;
+    const { status, players, turn, scores, gridSize, h_lines, v_lines, boxes } = gameState;
 
     const myPlayerId = user ? players[user.uid] as string : null;
     const isMyTurn = turn === user?.uid;
-    
-    const handleAccept = async () => {
-        const chatRef = doc(db, 'chats', chatId);
-        await updateDoc(chatRef, { 'game.status': 'active', 'game.turn': initiatorId });
-    }
-
-    const handleDecline = async () => {
-        const chatRef = doc(db, 'chats', chatId);
-        await updateDoc(chatRef, { game: null });
-        toast({ title: 'Game declined' });
-    }
 
     const handleMove = async (type: 'h' | 'v', index: number) => {
         if (!isMyTurn || status !== 'active') return;
@@ -97,7 +86,7 @@ export default function DotsAndBoxes({ chatId, gameState }: DotsAndBoxesProps) {
     };
     
     const getStatusText = () => {
-        if (status === 'pending') return initiatorId === user?.uid ? "Waiting for opponent..." : "invites you to play!";
+        if (status === 'pending') return "Waiting for opponent...";
         if (status === 'active') return isMyTurn ? "Your turn" : "Opponent's turn";
         if (status === 'draw') return "It's a draw!";
         if(status === 'win') {
@@ -113,23 +102,11 @@ export default function DotsAndBoxes({ chatId, gameState }: DotsAndBoxesProps) {
         await updateDoc(chatRef, { game: null });
     };
 
-    if (status === 'pending' && initiatorId !== user?.uid) {
-        return (
-            <div className="p-4 h-full flex flex-col items-center justify-center text-center">
-                <p className="font-semibold mb-4">Your opponent wants to play Dots & Boxes!</p>
-                <div className="flex gap-2">
-                    <Button onClick={handleAccept}>Accept</Button>
-                    <Button variant="destructive" onClick={handleDecline}>Decline</Button>
-                </div>
-            </div>
-        )
-    }
-
     return (
         <div className="p-4 h-full flex flex-col items-center justify-center text-center">
             <h3 className="font-bold text-lg mb-2">Dots & Boxes</h3>
              <div className="text-center text-sm">
-                <p><span className={cn(players[user!.uid] === 'p1' ? "text-yellow-400" : "text-red-400")}>You: {scores[user!.uid]}</span> | <span>Opponent: {scores[Object.keys(scores).find(id => id !== user!.uid)!]}</span></p>
+                <p><span className={cn(players[user!.uid] === 'p1' ? "text-yellow-400" : "text-red-500")}>You: {scores[user!.uid]}</span> | <span>Opponent: {scores[Object.keys(scores).find(id => id !== user!.uid)!]}</span></p>
                 <p className="mt-1 h-5">{getStatusText()}</p>
              </div>
              <div className="p-4">
@@ -143,7 +120,7 @@ export default function DotsAndBoxes({ chatId, gameState }: DotsAndBoxesProps) {
                             <button
                                 className={cn("flex-grow h-2.5 mx-1", h_lines[r*gridSize+c] ? (players[h_lines[r*gridSize+c]]==='p1' ? 'bg-yellow-400' : 'bg-red-500') : "bg-secondary hover:bg-primary")}
                                 onClick={() => handleMove('h', r * gridSize + c)}
-                                disabled={!isMyTurn || !!h_lines[r * gridSize + c]}
+                                disabled={!isMyTurn || !!h_lines[r * gridSize + c] || status !== 'active'}
                             />
                             )}
                         </React.Fragment>
@@ -156,7 +133,7 @@ export default function DotsAndBoxes({ chatId, gameState }: DotsAndBoxesProps) {
                             <button
                                 className={cn("w-2.5 my-1 flex-grow", v_lines[r*(gridSize+1)+c] ? (players[v_lines[r*(gridSize+1)+c]]==='p1' ? 'bg-yellow-400' : 'bg-red-500') : "bg-secondary hover:bg-primary")}
                                 onClick={() => handleMove('v', r * (gridSize + 1) + c)}
-                                disabled={!isMyTurn || !!v_lines[r * (gridSize + 1) + c]}
+                                disabled={!isMyTurn || !!v_lines[r * (gridSize + 1) + c] || status !== 'active'}
                             />
                             {c < gridSize && <div className={cn("w-[calc(100%/4-0.625rem)] aspect-square", boxes[r*gridSize+c] && (players[boxes[r*gridSize+c]] === 'p1' ? 'bg-yellow-400/20' : 'bg-red-400/20'))} />}
                             </React.Fragment>
@@ -167,7 +144,10 @@ export default function DotsAndBoxes({ chatId, gameState }: DotsAndBoxesProps) {
                 ))}
              </div>
              {(status === 'win' || status === 'draw') ? (
-                 <Button onClick={handleQuit} variant="secondary" className="mt-4">Back to Game Center</Button>
+                 <Button onClick={() => {
+                     const gameCenter = document.querySelector<HTMLDivElement>('#game-center-modal');
+                     if(gameCenter) gameCenter.classList.remove('hidden');
+                 }} variant="secondary" className="mt-4">Play Another Game</Button>
             ) : (
                  <Button onClick={handleQuit} variant="destructive" className="mt-4">Quit Game</Button>
             )}

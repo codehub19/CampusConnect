@@ -27,6 +27,7 @@ export interface Chat {
       avatar: string;
       online: boolean;
       active: boolean;
+      isGuest?: boolean;
     }
   };
   isFriendChat?: boolean;
@@ -101,10 +102,12 @@ export interface WaitingUser {
   gender: User['gender'];
   preference: User['preference'];
   timestamp: any;
+  matchedChatId?: string;
 }
 
 // Games
 export interface GameState {
+  gameType: 'tic-tac-toe' | 'connect-four' | 'dots-and-boxes';
   type: 'tic-tac-toe' | 'connect-four' | 'dots-and-boxes';
   status: 'pending' | 'active' | 'win' | 'draw';
   initiatorId: string;

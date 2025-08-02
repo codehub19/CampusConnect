@@ -17,30 +17,12 @@ export default function TicTacToe({ chatId, gameState }: TicTacToeProps) {
     const { user } = useAuth();
     const db = getFirestore(firebaseApp);
 
-    const { status, initiatorId, players, turn, winner, board } = gameState;
+    const { status, players, turn, winner, board } = gameState;
     const mySymbol = user ? players[user.uid] : null;
     const isMyTurn = turn === user?.uid;
-    
-    const handleAccept = async () => {
-        const chatRef = doc(db, 'chats', chatId);
-        await updateDoc(chatRef, {
-            'game.status': 'active',
-            'game.players': {
-                [initiatorId]: 'X',
-                [user!.uid]: 'O',
-            },
-            'game.turn': initiatorId
-        });
-    }
-
-    const handleDecline = async () => {
-        const chatRef = doc(db, 'chats', chatId);
-        await updateDoc(chatRef, { game: null });
-        toast({ title: 'Game declined' });
-    }
 
     const handleMove = async (index: number) => {
-        if (!isMyTurn || board[index] !== null) return;
+        if (!isMyTurn || board[index] !== null || status !== 'active') return;
         const chatRef = doc(db, 'chats', chatId);
 
         try {
@@ -91,7 +73,7 @@ export default function TicTacToe({ chatId, gameState }: TicTacToeProps) {
     const getStatusText = () => {
         switch (status) {
             case 'pending':
-                return initiatorId === user?.uid ? "Waiting for opponent..." : "invites you to play!";
+                return "Waiting for opponent to accept...";
             case 'active':
                 return isMyTurn ? `Your turn (${mySymbol})` : "Opponent's turn";
             case 'win':
@@ -103,22 +85,10 @@ export default function TicTacToe({ chatId, gameState }: TicTacToeProps) {
         }
     };
 
-    if (status === 'pending' && initiatorId !== user?.uid) {
-        return (
-            <div className="p-4 h-full flex flex-col items-center justify-center text-center">
-                <p className="font-semibold mb-4">Your opponent wants to play Tic-Tac-Toe!</p>
-                <div className="flex gap-2">
-                    <Button onClick={handleAccept}>Accept</Button>
-                    <Button variant="destructive" onClick={handleDecline}>Decline</Button>
-                </div>
-            </div>
-        )
-    }
-
     return (
         <div className="p-4 h-full flex flex-col items-center justify-center text-center">
             <h3 className="font-bold text-lg mb-2">Tic-Tac-Toe</h3>
-            <p className="mb-4">{getStatusText()}</p>
+            <p className="mb-4 h-6">{getStatusText()}</p>
             <div className="grid grid-cols-3 gap-2 w-full max-w-[200px]">
                 {board.map((cell, index) => (
                     <button
@@ -132,7 +102,10 @@ export default function TicTacToe({ chatId, gameState }: TicTacToeProps) {
                 ))}
             </div>
             {(status === 'win' || status === 'draw') ? (
-                 <Button onClick={handleQuit} variant="secondary" className="mt-4">Back to Game Center</Button>
+                 <Button onClick={() => {
+                     const gameCenter = document.querySelector<HTMLDivElement>('#game-center-modal');
+                     if(gameCenter) gameCenter.classList.remove('hidden');
+                 }} variant="secondary" className="mt-4">Play Another Game</Button>
             ) : (
                  <Button onClick={handleQuit} variant="destructive" className="mt-4">Quit Game</Button>
             )}

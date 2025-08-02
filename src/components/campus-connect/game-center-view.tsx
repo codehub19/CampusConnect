@@ -8,7 +8,7 @@ import { getFirestore, doc, updateDoc } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import type { GameState } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
-import { toast } from '@/hooks/use-toast';
+import { useToast } from '@/hooks/use-toast';
 
 
 interface GameCenterViewProps {
@@ -21,18 +21,18 @@ interface GameCenterViewProps {
 export default function GameCenterView({ isOpen, onOpenChange, chatId, partnerId }: GameCenterViewProps) {
   const { user, profile } = useAuth();
   const db = getFirestore(firebaseApp);
+  const { toast } = useToast();
 
   const inviteToGame = async (gameType: 'tic-tac-toe' | 'connect-four' | 'dots-and-boxes') => {
     if (!user) return;
     
-    let initialGameState: GameState = {
+    let initialGameState: Partial<GameState> = {
+        gameType,
         type: gameType,
         status: 'pending',
         initiatorId: user.uid,
         winner: null,
         turn: null,
-        players: {},
-        board: [],
     };
     
     if (gameType === 'tic-tac-toe') {

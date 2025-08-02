@@ -18,23 +18,9 @@ export default function ConnectFour({ chatId, gameState }: ConnectFourProps) {
     const { user } = useAuth();
     const db = getFirestore(firebaseApp);
 
-    const { status, initiatorId, players, turn, winner, board } = gameState;
+    const { status, players, turn, winner, board } = gameState;
     const myPlayerNumber = user ? players[user.uid] : null;
     const isMyTurn = turn === user?.uid;
-
-    const handleAccept = async () => {
-        const chatRef = doc(db, 'chats', chatId);
-        await updateDoc(chatRef, {
-            'game.status': 'active',
-            'game.turn': initiatorId
-        });
-    }
-
-    const handleDecline = async () => {
-        const chatRef = doc(db, 'chats', chatId);
-        await updateDoc(chatRef, { game: null });
-        toast({ title: 'Game declined' });
-    }
 
     const handleMove = async (colIndex: number) => {
         if (!isMyTurn || status !== 'active') return;
@@ -96,29 +82,17 @@ export default function ConnectFour({ chatId, gameState }: ConnectFourProps) {
     };
 
     const getStatusText = () => {
-        if (status === 'pending') return initiatorId === user?.uid ? "Waiting for opponent..." : "invites you to play!";
+        if (status === 'pending') return "Waiting for opponent...";
         if (status === 'active') return isMyTurn ? "Your turn" : "Opponent's turn";
         if (status === 'win') return winner === user?.uid ? "You win! 🎉" : "You lose. 😥";
         if (status === 'draw') return "It's a draw!";
         return "";
     };
-    
-    if (status === 'pending' && initiatorId !== user?.uid) {
-        return (
-            <div className="p-4 h-full flex flex-col items-center justify-center text-center">
-                <p className="font-semibold mb-4">Your opponent wants to play Connect Four!</p>
-                <div className="flex gap-2">
-                    <Button onClick={handleAccept}>Accept</Button>
-                    <Button variant="destructive" onClick={handleDecline}>Decline</Button>
-                </div>
-            </div>
-        )
-    }
 
     return (
         <div className="p-4 h-full flex flex-col items-center justify-center text-center">
             <h3 className="font-bold text-lg mb-2">Connect Four</h3>
-            <p className="mb-4 h-6">{getStatusText()} {isMyTurn && <div className={cn("inline-block w-4 h-4 rounded-full", myPlayerNumber === 1 ? 'bg-yellow-400' : 'bg-red-500')}></div>}</p>
+            <p className="mb-4 h-6">{getStatusText()} {status === 'active' && isMyTurn && <div className={cn("inline-block w-4 h-4 rounded-full", myPlayerNumber === 1 ? 'bg-yellow-400' : 'bg-red-500')}></div>}</p>
             <div className="grid grid-cols-7 gap-1 bg-primary p-2 rounded-lg">
                 {Array.from({ length: 7 }).map((_, c) => (
                     <div key={c} className="flex flex-col-reverse gap-1" onClick={() => handleMove(c)}>
@@ -135,7 +109,10 @@ export default function ConnectFour({ chatId, gameState }: ConnectFourProps) {
                 ))}
             </div>
              {(status === 'win' || status === 'draw') ? (
-                 <Button onClick={handleQuit} variant="secondary" className="mt-4">Back to Game Center</Button>
+                 <Button onClick={() => {
+                     const gameCenter = document.querySelector<HTMLDivElement>('#game-center-modal');
+                     if(gameCenter) gameCenter.classList.remove('hidden');
+                 }} variant="secondary" className="mt-4">Play Another Game</Button>
             ) : (
                  <Button onClick={handleQuit} variant="destructive" className="mt-4">Quit Game</Button>
             )}
