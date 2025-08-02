@@ -186,7 +186,7 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
   };
 
   return (
-    <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
+    <div className="flex flex-col h-full bg-background text-foreground">
         <GameCenterView 
             isOpen={isGameCenterOpen}
             onOpenChange={setGameCenterOpen}
@@ -200,7 +200,7 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
                     {renderGame()}
                 </div>
              )}
-            <div className="flex flex-col flex-1 overflow-hidden">
+            <div className="flex flex-col flex-1 min-h-0">
                  <ScrollArea className="flex-grow p-4" ref={scrollAreaRef} onScroll={handleScroll}>
                     <div className="space-y-4">
                         {messages.map((message, index) => {
