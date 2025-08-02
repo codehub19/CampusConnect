@@ -6,7 +6,7 @@ import { useAuth } from '@/hooks/use-auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2 } from 'lucide-react';
+import { Loader2, X } from 'lucide-react';
 import { Label } from '../ui/label';
 
 const GoogleIcon = () => (
@@ -18,22 +18,19 @@ const GoogleIcon = () => (
     </svg>
 );
 
-interface AuthViewProps {
-    onlineCount: number | null;
-}
-
-export default function AuthView({ onlineCount }: AuthViewProps) {
+export default function AuthView() {
     const [view, setView] = useState('options'); // 'options', 'signup', 'login', 'forgot_password'
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const { signInWithGoogle, signUpWithEmail, signInWithEmail, sendPasswordReset } = useAuth();
+    const { signInWithGoogle, signUpWithEmail, signInWithEmail, sendPasswordReset, setAuthModalOpen } = useAuth();
     const { toast } = useToast();
 
     const handleAuthAction = async (action: Function, ...args: any[]) => {
         setIsLoading(true);
         try {
             await action(...args);
+            setAuthModalOpen(false); // Close modal on successful auth
         } catch (error: any) {
             toast({
                 variant: 'destructive',
@@ -55,6 +52,10 @@ export default function AuthView({ onlineCount }: AuthViewProps) {
             return;
         }
         await handleAuthAction(sendPasswordReset, email);
+        toast({
+            title: 'Password Reset Email Sent',
+            description: 'Check your inbox for a link to reset your password.',
+        });
         setView('login'); // Go back to login view after sending email
     };
 
@@ -112,8 +113,8 @@ export default function AuthView({ onlineCount }: AuthViewProps) {
             default:
                 return (
                     <div>
-                        <h2 className="text-3xl font-bold mb-2 text-center text-white">CampusConnect</h2>
-                        <p className="text-center text-muted-foreground mb-6">Connect with fellow students!</p>
+                        <h2 className="text-3xl font-bold mb-2 text-center text-white">Welcome to CampusConnect</h2>
+                        <p className="text-center text-muted-foreground mb-6">Sign in to get started!</p>
                         
                         <div className="space-y-4">
                             <Button onClick={() => handleAuthAction(signInWithGoogle)} className="w-full bg-white text-gray-800 font-bold hover:bg-gray-200" disabled={isLoading}>
@@ -136,7 +137,10 @@ export default function AuthView({ onlineCount }: AuthViewProps) {
 
     return (
         <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-40 p-4">
-            <div className="bg-card/80 border border-border rounded-2xl shadow-2xl p-8 max-w-sm w-full">
+            <div className="bg-card/80 border border-border rounded-2xl shadow-2xl p-8 max-w-sm w-full relative">
+                 <Button variant="ghost" size="icon" className="absolute top-2 right-2 text-muted-foreground" onClick={() => setAuthModalOpen(false)}>
+                    <X className="h-5 w-5" />
+                 </Button>
                 {renderContent()}
             </div>
         </div>

@@ -47,7 +47,7 @@ const PostSkeleton = () => (
 const CommentSection = ({ postId }: { postId: string }) => {
   const [comments, setComments] = useState<MissedConnectionComment[]>([]);
   const [newComment, setNewComment] = useState("");
-  const { user } = useAuth();
+  const { user, requireAuth } = useAuth();
   const db = getFirestore(firebaseApp);
 
   useEffect(() => {
@@ -62,15 +62,17 @@ const CommentSection = ({ postId }: { postId: string }) => {
 
   const handleAddComment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!user || !newComment.trim()) return;
-    
-    const commentsRef = collection(db, 'missed_connections', postId, 'comments');
-    await addDoc(commentsRef, {
-      authorId: user.uid,
-      text: newComment.trim(),
-      timestamp: serverTimestamp(),
+    requireAuth(async () => {
+      if (!user || !newComment.trim()) return;
+      
+      const commentsRef = collection(db, 'missed_connections', postId, 'comments');
+      await addDoc(commentsRef, {
+        authorId: user.uid,
+        text: newComment.trim(),
+        timestamp: serverTimestamp(),
+      });
+      setNewComment("");
     });
-    setNewComment("");
   };
 
   return (
@@ -99,6 +101,7 @@ const CommentSection = ({ postId }: { postId: string }) => {
               onChange={(e) => setNewComment(e.target.value)}
               rows={1}
               className="resize-none"
+              onClick={() => requireAuth(() => {})}
             />
             <Button type="submit" size="icon" disabled={!newComment.trim()}>
               <Send className="h-4 w-4"/>
@@ -115,7 +118,7 @@ export default function MissedConnectionsView({ onNavigateHome }: MissedConnecti
   const [isLoading, setIsLoading] = useState(true);
   const [isCreatePostOpen, setCreatePostOpen] = useState(false);
   const db = getFirestore(firebaseApp);
-  const { user } = useAuth();
+  const { user, requireAuth } = useAuth();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -147,39 +150,41 @@ export default function MissedConnectionsView({ onNavigateHome }: MissedConnecti
   }, [db]);
 
   const handleReportPost = async (post: MissedConnectionPost) => {
-    if (!user) return;
-    const reportRef = doc(db, 'missed_connections', post.id, 'reports', user.uid);
-    const postRef = doc(db, 'missed_connections', post.id);
+    requireAuth(async () => {
+      if (!user) return;
+      const reportRef = doc(db, 'missed_connections', post.id, 'reports', user.uid);
+      const postRef = doc(db, 'missed_connections', post.id);
 
-    try {
-      await runTransaction(db, async (transaction) => {
-        const reportDoc = await transaction.get(reportRef);
-        if (reportDoc.exists()) {
-          throw new Error("You have already reported this post.");
-        }
-        
-        const postDoc = await transaction.get(postRef);
-        if (!postDoc.exists()) {
-          throw new Error("This post no longer exists.");
-        }
+      try {
+        await runTransaction(db, async (transaction) => {
+          const reportDoc = await transaction.get(reportRef);
+          if (reportDoc.exists()) {
+            throw new Error("You have already reported this post.");
+          }
+          
+          const postDoc = await transaction.get(postRef);
+          if (!postDoc.exists()) {
+            throw new Error("This post no longer exists.");
+          }
 
-        const currentReportCount = postDoc.data().reportCount || 0;
-        const newReportCount = currentReportCount + 1;
-        
-        transaction.set(reportRef, { timestamp: serverTimestamp() });
-        transaction.update(postRef, { reportCount: newReportCount });
-        
-        return newReportCount;
-      }).then(async (newReportCount) => {
-         toast({ title: "Post Reported", description: "Thank you for your feedback." });
-         if (newReportCount !== undefined && newReportCount >= 10) {
-            await handleReportedPost({ postId: post.id, authorId: post.authorId });
-            toast({ variant: 'destructive', title: "Post Removed", description: "This post has been removed due to multiple reports." });
-         }
-      });
-    } catch (error: any) {
-        toast({ variant: 'destructive', title: "Report Failed", description: error.message });
-    }
+          const currentReportCount = postDoc.data().reportCount || 0;
+          const newReportCount = currentReportCount + 1;
+          
+          transaction.set(reportRef, { timestamp: serverTimestamp() });
+          transaction.update(postRef, { reportCount: newReportCount });
+          
+          return newReportCount;
+        }).then(async (newReportCount) => {
+          toast({ title: "Post Reported", description: "Thank you for your feedback." });
+          if (newReportCount !== undefined && newReportCount >= 10) {
+              await handleReportedPost({ postId: post.id, authorId: post.authorId });
+              toast({ variant: 'destructive', title: "Post Removed", description: "This post has been removed due to multiple reports." });
+          }
+        });
+      } catch (error: any) {
+          toast({ variant: 'destructive', title: "Report Failed", description: error.message });
+      }
+    });
   };
 
   return (
@@ -198,7 +203,7 @@ export default function MissedConnectionsView({ onNavigateHome }: MissedConnecti
           </div>
           <h1 className="text-xl font-bold w-1/3 text-center truncate">Missed Connections</h1>
           <div className="w-1/3 flex justify-end">
-            <Button onClick={() => setCreatePostOpen(true)} size="sm">
+            <Button onClick={() => requireAuth(() => setCreatePostOpen(true))} size="sm">
               <PlusCircle className="mr-2 h-4 w-4" />
               Create
             </Button>

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { CalendarDays, ArrowRight, HeartCrack, Lightbulb, Users, Bot } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import SuggestionView from "./suggestion-view";
+import { useAuth } from "@/hooks/use-auth";
 
 interface HomeViewProps {
   onNavigateToEvents: () => void;
@@ -16,11 +17,19 @@ interface HomeViewProps {
   userName: string;
   onOpenProfile: () => void;
   userAvatar?: string;
-  onlineCount: number | null;
 }
 
-export default function HomeView({ onNavigateToEvents, onNavigateToMissedConnections, onNavigateToChat, onNavigateToAIChat, userName, onOpenProfile, userAvatar, onlineCount }: HomeViewProps) {
+export default function HomeView({ onNavigateToEvents, onNavigateToMissedConnections, onNavigateToChat, onNavigateToAIChat, userName, onOpenProfile, userAvatar }: HomeViewProps) {
   const [isSuggestionOpen, setSuggestionOpen] = useState(false);
+  const { requireAuth } = useAuth();
+
+  const handleOpenProfile = () => {
+    requireAuth(onOpenProfile);
+  };
+
+  const handleSuggestionClick = () => {
+    requireAuth(() => setSuggestionOpen(true));
+  }
 
   return (
     <>
@@ -28,7 +37,7 @@ export default function HomeView({ onNavigateToEvents, onNavigateToMissedConnect
     <div className="flex flex-col min-h-screen bg-background">
        <header className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-background/80 backdrop-blur-sm z-10">
         <h1 className="text-xl font-bold text-foreground">CampusConnect</h1>
-        <Button onClick={onOpenProfile} variant="ghost" size="icon" className="rounded-full h-10 w-10">
+        <Button onClick={handleOpenProfile} variant="ghost" size="icon" className="rounded-full h-10 w-10">
             <Avatar className="h-10 w-10">
                 <AvatarImage src={userAvatar} alt={userName} data-ai-hint="profile avatar" />
                 <AvatarFallback>{userName.charAt(0)}</AvatarFallback>
@@ -44,7 +53,7 @@ export default function HomeView({ onNavigateToEvents, onNavigateToMissedConnect
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-6xl">
             <Card 
                 className="bg-card/80 border-border shadow-lg hover:shadow-primary/20 hover:border-primary/50 transition-all duration-300 transform hover:-translate-y-1 flex flex-col cursor-pointer"
-                onClick={onNavigateToChat}
+                onClick={() => requireAuth(onNavigateToChat)}
             >
                 <CardHeader>
                     <div className="flex items-center gap-4">
@@ -119,7 +128,7 @@ export default function HomeView({ onNavigateToEvents, onNavigateToMissedConnect
 
              <Card 
                 className="bg-card/80 border-border shadow-lg hover:shadow-yellow-500/10 hover:border-yellow-500/50 transition-all duration-300 transform hover:-translate-y-1 flex flex-col cursor-pointer md:col-span-2 lg:col-span-3"
-                onClick={onNavigateToAIChat}
+                onClick={() => requireAuth(onNavigateToAIChat)}
             >
                 <CardHeader>
                     <div className="flex items-center gap-4">
@@ -145,7 +154,7 @@ export default function HomeView({ onNavigateToEvents, onNavigateToMissedConnect
       </main>
 
        <div className="fixed bottom-4 left-4 z-50">
-        <Button onClick={() => setSuggestionOpen(true)} variant="outline" size="icon" className="rounded-full h-14 w-14 shadow-lg bg-card/80 border-border hover:bg-accent">
+        <Button onClick={handleSuggestionClick} variant="outline" size="icon" className="rounded-full h-14 w-14 shadow-lg bg-card/80 border-border hover:bg-accent">
             <Lightbulb className="h-6 w-6 text-yellow-400" />
         </Button>
       </div>
