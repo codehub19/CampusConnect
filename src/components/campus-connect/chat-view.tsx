@@ -167,8 +167,8 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
                     {renderGame()}
                 </div>
              )}
-            <div className="h-full flex flex-col relative flex-1">
-                <ScrollArea className="flex-grow p-4" ref={scrollAreaRef} onScroll={handleScroll}>
+            <div className="flex flex-col relative flex-1 overflow-hidden">
+                <ScrollArea className="flex-1 p-4" ref={scrollAreaRef} onScroll={handleScroll}>
                 <div className="space-y-4">
                     {messages.map((message, index) => {
                     const isSender = message.senderId === user?.uid;
