@@ -152,6 +152,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         name: email.split('@')[0],
         profileComplete: false,
      });
+     // Ensure email is sent before we do anything else
      await sendEmailVerification(result.user);
      toast({
         title: 'Verification Email Sent',
