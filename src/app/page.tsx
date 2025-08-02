@@ -20,7 +20,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
 type AppState = 'loading' | 'policy' | 'auth' | 'verify_email' | 'profile_setup' | 'home' | 'events' | 'missed_connections' | 'chat' | 'ai_chat';
 
-function VerifyEmailView() {
+function VerifyEmailView({ onTryAnotherEmail }: { onTryAnotherEmail: () => void }) {
     return (
         <div className="flex h-screen w-screen items-center justify-center bg-background p-4">
             <Alert className="max-w-md">
@@ -28,13 +28,18 @@ function VerifyEmailView() {
                 <AlertDescription>
                     We've sent a verification link to your email address. Please check your inbox and click the link to continue. You can close this page after verifying.
                 </AlertDescription>
+                <div className="mt-4">
+                    <Button variant="link" onClick={onTryAnotherEmail} className="p-0 text-muted-foreground">
+                        Use a different email address
+                    </Button>
+                </div>
             </Alert>
         </div>
     );
 }
 
 function AppContent() {
-  const { user, loading, profile, updateProfile, authModalOpen, setAuthModalOpen } = useAuth();
+  const { user, loading, profile, updateProfile, authModalOpen, setAuthModalOpen, logout } = useAuth();
   const [isProfileOpen, setProfileOpen] = useState(false);
   const [appState, setAppState] = useState<AppState>('home'); // Default to home
   const [initialLoading, setInitialLoading] = useState(true);
@@ -97,6 +102,12 @@ function AppContent() {
     setAppState('home');
   };
 
+  const handleTryAnotherEmail = async () => {
+    await logout();
+    setAuthModalOpen(true);
+    setAppState('home'); // or 'auth' to show the modal immediately
+  };
+
   const navigateTo = (state: AppState) => {
     setAppState(state);
   }
@@ -119,7 +130,7 @@ function AppContent() {
           case 'policy':
             return <PolicyView onAgree={handleAgree} />;
           case 'verify_email':
-            return <VerifyEmailView />;
+            return <VerifyEmailView onTryAnotherEmail={handleTryAnotherEmail} />;
           case 'profile_setup':
             return <ProfileSetupView />;
           case 'home':

@@ -52,7 +52,7 @@ const generateEventImageFlow = ai.defineFlow(
         theme = '3b82f6/ffffff'; // Blue
     }
     
-    const imageUrl = `https://placehold.co/600x400/${theme}?text=${encodeURIComponent(title)}`;
+    const imageUrl = `https://placehold.co/600x400.png`;
     
     return { imageUrl };
   }
