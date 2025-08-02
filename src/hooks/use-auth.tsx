@@ -64,7 +64,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const statusRef = ref(rtdb, `/status/${firebaseUser.uid}`);
             await updateDoc(userDocRef, { online: true }).catch(() => {});
             await set(statusRef, { state: 'online', last_changed: rtdbServerTimestamp() });
-            onDisconnect(statusRef).set({ state: 'offline', last_changed: rtdbServerTimestamp() });
+             onDisconnect(statusRef).set({ state: 'offline', last_changed: rtdbServerTimestamp() });
+             onDisconnect(doc(db, 'users', firebaseUser.uid)).update({ online: false, lastSeen: serverTimestamp() });
         }
 
         const unsubProfile = onSnapshot(userDocRef, (docSnap) => {
@@ -109,6 +110,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         gender: 'prefer-not-to-say',
         preference: 'anyone',
         interests: [],
+        major: '',
+        year: '',
+        bio: '',
         blockedUsers: [],
         friends: [],
         profileComplete: false,

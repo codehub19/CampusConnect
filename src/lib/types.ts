@@ -10,6 +10,9 @@ export interface User {
   gender: 'male' | 'female' | 'other' | 'prefer-not-to-say';
   preference: 'anyone' | 'males' | 'females';
   interests: string[];
+  major?: string;
+  year?: string;
+  bio?: string;
   blockedUsers?: string[];
   friends?: string[];
   pendingChatId?: string | null;
