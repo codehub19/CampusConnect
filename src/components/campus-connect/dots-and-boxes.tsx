@@ -106,7 +106,7 @@ export default function DotsAndBoxes({ chatId, gameState }: DotsAndBoxesProps) {
         <div className="p-4 h-full flex flex-col items-center justify-center text-center">
             <h3 className="font-bold text-lg mb-2">Dots & Boxes</h3>
              <div className="text-center text-sm">
-                <p><span className={cn(players[user!.uid] === 'p1' ? "text-yellow-400" : "text-red-500")}>You: {scores[user!.uid]}</span> | <span>Opponent: {scores[Object.keys(scores).find(id => id !== user!.uid)!]}</span></p>
+                <div><span className={cn(players[user!.uid] === 'p1' ? "text-yellow-400" : "text-red-500")}>You: {scores[user!.uid]}</span> | <span>Opponent: {scores[Object.keys(scores).find(id => id !== user!.uid)!]}</span></div>
                 <p className="mt-1 h-5">{getStatusText()}</p>
              </div>
              <div className="p-4">

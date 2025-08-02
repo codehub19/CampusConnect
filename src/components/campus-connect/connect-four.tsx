@@ -92,7 +92,7 @@ export default function ConnectFour({ chatId, gameState }: ConnectFourProps) {
     return (
         <div className="p-4 h-full flex flex-col items-center justify-center text-center">
             <h3 className="font-bold text-lg mb-2">Connect Four</h3>
-            <p className="mb-4 h-6">{getStatusText()} {status === 'active' && isMyTurn && <div className={cn("inline-block w-4 h-4 rounded-full", myPlayerNumber === 1 ? 'bg-yellow-400' : 'bg-red-500')}></div>}</p>
+            <div className="mb-4 h-6">{getStatusText()} {status === 'active' && isMyTurn && <div className={cn("inline-block w-4 h-4 rounded-full", myPlayerNumber === 1 ? 'bg-yellow-400' : 'bg-red-500')}></div>}</div>
             <div className="grid grid-cols-7 gap-1 bg-primary p-2 rounded-lg">
                 {Array.from({ length: 7 }).map((_, c) => (
                     <div key={c} className="flex flex-col-reverse gap-1" onClick={() => handleMove(c)}>

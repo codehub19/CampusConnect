@@ -109,7 +109,11 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
           localVideoRef.current.srcObject = stream;
         }
         setHasCameraPermission(true);
-        localStreamRef.current.getTracks().forEach(track => pc.current?.addTrack(track, localStreamRef.current!));
+        localStreamRef.current.getTracks().forEach(track => {
+           if (!pc.current?.getSenders().find(s => s.track === track)) {
+             pc.current?.addTrack(track, localStreamRef.current!)
+           }
+        });
     } catch (error) {
         setHasCameraPermission(false);
         toast({ variant: 'destructive', title: 'Permissions Denied', description: 'Camera and microphone access required.' });
@@ -171,7 +175,11 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
           localVideoRef.current.srcObject = stream;
         }
         setHasCameraPermission(true);
-        localStreamRef.current.getTracks().forEach(track => pc.current?.addTrack(track, localStreamRef.current!));
+        localStreamRef.current.getTracks().forEach(track => {
+           if (!pc.current?.getSenders().find(s => s.track === track)) {
+             pc.current?.addTrack(track, localStreamRef.current!)
+           }
+        });
     } catch (error) {
         setHasCameraPermission(false);
         toast({ variant: 'destructive', title: 'Permissions Denied', description: 'Camera and microphone access required.' });
@@ -213,42 +221,46 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
   };
   
   useEffect(() => {
-    const callsCollection = collection(db, 'chats', chatId, 'calls');
-    const unsubscribe = onSnapshot(callsCollection, (snapshot) => {
-      snapshot.docChanges().forEach(async (change) => {
-          if (change.type === 'added') {
-              const callData = change.doc.data() as Call;
-              if (!isCallActive && callData.callerId !== user?.uid && !callData.answered) {
-                  toast({
-                    title: 'Incoming Call',
-                    description: `${profile?.name || 'Someone'} is calling...`,
-                    duration: 30000,
-                    action: (
-                        <div className="flex gap-2">
-                           <Button onClick={() => answerCall(change.doc.id, callData.offer)}>Accept</Button>
-                           <Button variant="destructive" onClick={async () => {
-                                const callDocRef = doc(db, 'chats', chatId, 'calls', change.doc.id);
-                                await deleteDoc(callDocRef);
-                           }}>Decline</Button>
-                        </div>
-                    )
-                  })
+    const setupCallListeners = () => {
+        const callsCollection = collection(db, 'chats', chatId, 'calls');
+        const unsubscribe = onSnapshot(callsCollection, (snapshot) => {
+          snapshot.docChanges().forEach(async (change) => {
+              if (change.type === 'added') {
+                  const callData = change.doc.data() as Call;
+                  if (!isCallActive && callData.callerId !== user?.uid && !callData.answered) {
+                      toast({
+                        title: 'Incoming Call',
+                        description: `${profile?.name || 'Someone'} is calling...`,
+                        duration: 30000,
+                        action: (
+                            <div className="flex gap-2">
+                               <Button onClick={() => answerCall(change.doc.id, callData.offer)}>Accept</Button>
+                               <Button variant="destructive" onClick={async () => {
+                                   const callDocRef = doc(db, 'chats', chatId, 'calls', change.doc.id);
+                                   await deleteDoc(callDocRef);
+                               }}>Decline</Button>
+                            </div>
+                        )
+                      })
+                  }
+              } else if (change.type === 'removed') {
+                  if (isCallActive && !isPolitelyEndingCall.current) {
+                      toast({title: "Call Ended", description: "Your partner has ended the call."});
+                      hangUp(false);
+                  }
               }
-          } else if (change.type === 'removed') {
-              if (isCallActive && !isPolitelyEndingCall.current) {
-                  toast({title: "Call Ended", description: "Your partner has ended the call."});
-                  hangUp(false);
-              }
-          }
-      });
-    });
+          });
+        });
+        return unsubscribe;
+    };
+    
+    const unsubscribe = setupCallListeners();
 
     return () => {
       unsubscribe();
       hangUp(true);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chatId, db, user]);
+  }, [chatId, db, user, isCallActive, profile?.name, toast]);
 
 
   const toggleAudio = () => {
