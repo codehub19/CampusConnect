@@ -31,11 +31,13 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [isGameCenterOpen, setGameCenterOpen] = useState(false);
   const [gameState, setGameState] = useState<GameState | null>(chat.game || null);
+  const [isSending, setIsSending] = useState(false);
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const db = getFirestore(firebaseApp);
+  const storage = getStorage(firebaseApp);
 
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const isAtBottomRef = useRef(true);
@@ -130,8 +132,10 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
     const text = textarea?.value.trim();
 
     if (text) {
+        setIsSending(true);
         await sendNewMessage({ type: 'text', value: text });
         if(textarea) textarea.value = '';
+        setTimeout(() => setIsSending(false), 500);
     }
   };
   
@@ -141,9 +145,11 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
 
     const imageRef = storageRef(storage, `chat-images/${chat.id}/${Date.now()}-${file.name}`);
     try {
+        toast({ title: 'Uploading image...' });
         const snapshot = await uploadBytes(imageRef, file);
         const url = await getDownloadURL(snapshot.ref);
         await sendNewMessage({ type: 'image', value: { url, name: file.name }});
+        toast({ title: 'Image sent!' });
     } catch (error) {
         console.error("Image upload failed:", error);
         toast({ variant: 'destructive', title: 'Upload Failed', description: 'Could not upload your image.' });
@@ -214,7 +220,7 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
                                 ? 'bg-primary text-primary-foreground rounded-br-none'
                                 : 'bg-secondary text-secondary-foreground rounded-bl-none'
                             )}>
-                                {message.content.type === 'text' && <p>{message.content.value as string}</p>}
+                                {message.content.type === 'text' && <p className="whitespace-pre-wrap">{message.content.value as string}</p>}
                                 {message.content.type === 'image' && <Image src={(message.content.value as any).url} alt={(message.content.value as any).name} width={200} height={200} className="rounded-md"/>}
                             </div>
                         </div>
@@ -232,12 +238,14 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
                     </Button>
                 )}
                 <div className="p-4 border-t">
-                    <form onSubmit={handleSendMessage} className="flex w-full items-center gap-2">
+                    <form onSubmit={handleSendMessage} className="flex w-full items-start gap-2">
                         <Button type="button" variant="ghost" size="icon" className="flex-shrink-0" onClick={handleGenerateIcebreaker}>
                             <IceCream className="h-5 w-5 text-pink-400" />
+                            <span className="sr-only">Generate Icebreaker</span>
                         </Button>
                         <Button type="button" variant="ghost" size="icon" className="flex-shrink-0" onClick={() => fileInputRef.current?.click()}>
                             <ImageIcon className="h-5 w-5" />
+                             <span className="sr-only">Upload Image</span>
                         </Button>
                         <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
                         <Textarea
@@ -251,7 +259,7 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
                                 }
                             }}
                         />
-                        <Button type="submit" size="icon" className="rounded-full flex-shrink-0">
+                        <Button type="submit" size="icon" className={cn("rounded-full flex-shrink-0", isSending && "animate-out scale-125 fade-out-0")}>
                             <Send className="h-5 w-5" />
                             <span className="sr-only">Send</span>
                         </Button>
