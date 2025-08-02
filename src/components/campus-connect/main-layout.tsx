@@ -187,10 +187,12 @@ function MainHeader() {
                         </div>
                     )}
                 </div>
-                {activeView.type === 'chat' 
-                        ? <ChatView key={activeView.data.chat.id} chat={activeView.data.chat} partner={activeView.data.user} />
-                        : <WelcomeView />
+                <div className="flex-1 min-h-0">
+                    {activeView.type === 'chat' 
+                            ? <ChatView key={activeView.data.chat.id} chat={activeView.data.chat} partner={activeView.data.user} />
+                            : <WelcomeView />
                     }
+                </div>
              </div>
        </SidebarInset>
     );

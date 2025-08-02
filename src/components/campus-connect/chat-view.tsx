@@ -38,7 +38,7 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { toast } = useToast();
+  const { toast, dismiss } = useToast();
   const db = getFirestore(firebaseApp);
   const storage = getStorage(firebaseApp);
 
@@ -159,6 +159,7 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
 
   const handleGameInviteResponse = async (accept: boolean) => {
     if (!incomingGameInvite || !user) return;
+    const {id: toastId} = toast({ title: 'Responding to invite...' });
     
     const chatRef = doc(db, 'chats', chat.id);
     if(accept) {
@@ -171,6 +172,7 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
         await updateDoc(chatRef, { game: null });
     }
     setIncomingGameInvite(null);
+    dismiss(toastId);
   }
   
   const renderGame = () => {
@@ -214,7 +216,7 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
                     {renderGame()}
                 </div>
              )}
-            <div className="flex flex-col flex-1 min-h-0">
+            <div className="flex flex-col flex-1 min-h-0 relative">
                  <ScrollArea className="flex-grow p-4" ref={scrollAreaRef} onScroll={handleScroll}>
                     <div className="space-y-4">
                         {messages.map((message) => {
