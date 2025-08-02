@@ -27,7 +27,7 @@ interface VideoCallViewProps {
 
 export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
   const { user, profile } = useAuth();
-  const { toast } = useToast();
+  const { toast, dismiss } = useToast();
   const db = getFirestore(firebaseApp);
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
@@ -63,8 +63,7 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
   };
 
   const hangUp = async (notify = true) => {
-    if (isPolitelyEndingCall.current) return;
-    
+    if (isPolitelyEndingCall.current && !notify) return;
     if (notify) {
         isPolitelyEndingCall.current = true;
     }
@@ -75,7 +74,6 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
     if (answerCandidatesUnsubscribe.current) answerCandidatesUnsubscribe.current();
     if (offerCandidatesUnsubscribe.current) offerCandidatesUnsubscribe.current();
     
-    // Only the initiator of the hangup deletes the call documents
     if (notify && chatId) {
         try {
             const callsQuery = query(collection(db, 'chats', chatId, 'calls'));
@@ -97,8 +95,7 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
 
   const startCall = async () => {
     if (isCallActive || !chatId || !user) return;
-    setIsCallActive(true);
-
+    
     pc.current = new RTCPeerConnection(servers);
     remoteStreamRef.current = new MediaStream();
 
@@ -117,9 +114,10 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
     } catch (error) {
         setHasCameraPermission(false);
         toast({ variant: 'destructive', title: 'Permissions Denied', description: 'Camera and microphone access required.' });
-        setIsCallActive(false);
         return;
     }
+    
+    setIsCallActive(true);
 
     const callDocRef = doc(collection(db, 'chats', chatId, 'calls'));
     const offerCandidates = collection(callDocRef, 'offerCandidates');
@@ -155,7 +153,9 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
     answerCandidatesUnsubscribe.current = onSnapshot(answerCandidates, snapshot => {
       snapshot.docChanges().forEach(change => {
         if (change.type === 'added') {
-          pc.current?.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+            if (pc.current?.currentRemoteDescription) {
+                pc.current?.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+            }
         }
       });
     });
@@ -163,8 +163,7 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
 
   const answerCall = async (callId: string, offer: any) => {
     if (isCallActive || !chatId) return;
-    setIsCallActive(true);
-
+    
     pc.current = new RTCPeerConnection(servers);
     remoteStreamRef.current = new MediaStream();
 
@@ -183,10 +182,11 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
     } catch (error) {
         setHasCameraPermission(false);
         toast({ variant: 'destructive', title: 'Permissions Denied', description: 'Camera and microphone access required.' });
-        setIsCallActive(false);
         return;
     }
     
+    setIsCallActive(true);
+
     const callDocRef = doc(db, 'chats', chatId, 'calls', callId);
     const answerCandidates = collection(callDocRef, 'answerCandidates');
     const offerCandidates = collection(callDocRef, 'offerCandidates');
@@ -214,53 +214,54 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
     offerCandidatesUnsubscribe.current = onSnapshot(offerCandidates, snapshot => {
       snapshot.docChanges().forEach(change => {
         if (change.type === 'added') {
-          pc.current?.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+            if (pc.current?.currentRemoteDescription) {
+                pc.current?.addIceCandidate(new RTCIceCandidate(change.doc.data()));
+            }
         }
       });
     });
   };
   
   useEffect(() => {
-    const setupCallListeners = () => {
-        const callsCollection = collection(db, 'chats', chatId, 'calls');
-        const unsubscribe = onSnapshot(callsCollection, (snapshot) => {
-          snapshot.docChanges().forEach(async (change) => {
-              if (change.type === 'added') {
-                  const callData = change.doc.data() as Call;
-                  if (!isCallActive && callData.callerId !== user?.uid && !callData.answered) {
-                      toast({
-                        title: 'Incoming Call',
-                        description: `${profile?.name || 'Someone'} is calling...`,
-                        duration: 30000,
-                        action: (
-                            <div className="flex gap-2">
-                               <Button onClick={() => answerCall(change.doc.id, callData.offer)}>Accept</Button>
-                               <Button variant="destructive" onClick={async () => {
-                                   const callDocRef = doc(db, 'chats', chatId, 'calls', change.doc.id);
-                                   await deleteDoc(callDocRef);
-                               }}>Decline</Button>
-                            </div>
-                        )
-                      })
-                  }
-              } else if (change.type === 'removed') {
-                  if (isCallActive && !isPolitelyEndingCall.current) {
-                      toast({title: "Call Ended", description: "Your partner has ended the call."});
-                      hangUp(false);
-                  }
+    const callsCollection = collection(db, 'chats', chatId, 'calls');
+    const unsubscribe = onSnapshot(callsCollection, (snapshot) => {
+      snapshot.docChanges().forEach(async (change) => {
+          if (change.type === 'added') {
+              const callData = change.doc.data() as Call;
+              if (!isCallActive && callData.callerId !== user?.uid && !callData.answered) {
+                  const {id: toastId} = toast({
+                    title: 'Incoming Call',
+                    description: `${profile?.name || 'Someone'} is calling...`,
+                    duration: 30000,
+                    action: (
+                        <div className="flex gap-2">
+                           <Button onClick={() => {
+                               answerCall(change.doc.id, callData.offer)
+                               dismiss(toastId)
+                           }}>Accept</Button>
+                           <Button variant="destructive" onClick={async () => {
+                               const callDocRef = doc(db, 'chats', chatId, 'calls', change.doc.id);
+                               await deleteDoc(callDocRef);
+                               dismiss(toastId);
+                           }}>Decline</Button>
+                        </div>
+                    )
+                  })
               }
-          });
-        });
-        return unsubscribe;
-    };
+          } else if (change.type === 'removed') {
+              if (isCallActive) {
+                  toast({title: "Call Ended", description: "Your partner has ended the call."});
+                  hangUp(false);
+              }
+          }
+      });
+    });
     
-    const unsubscribe = setupCallListeners();
-
     return () => {
       unsubscribe();
-      hangUp(true);
+      if(isCallActive) hangUp(true);
     };
-  }, [chatId, db, user, isCallActive, profile?.name, toast]);
+  }, [chatId, db, user, isCallActive, profile?.name, toast, dismiss, hangUp]);
 
 
   const toggleAudio = () => {

@@ -35,7 +35,7 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const { toast } = useToast();
+  const { toast, dismiss } = useToast();
   const db = getFirestore(firebaseApp);
   const storage = getStorage(firebaseApp);
 
@@ -66,7 +66,7 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
         setGameState(gameData || null);
 
         if (gameData?.status === 'pending' && gameData?.initiatorId !== user?.uid) {
-            toast({
+            const {id: toastId} = toast({
                 title: 'Game Invitation!',
                 description: `${partner.name} wants to play ${gameData.gameType || gameData.type}!`,
                 duration: 15000,
@@ -79,10 +79,12 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
                                 gameUpdate['game.players'] = { [gameData.initiatorId]: 'X', [user!.uid]: 'O' };
                             }
                             await updateDoc(chatRef, gameUpdate);
+                            dismiss(toastId);
                         }}>Accept</Button>
                         <Button variant="destructive" onClick={async () => {
                              const chatRef = doc(db, 'chats', chat.id);
                              await updateDoc(chatRef, { game: null });
+                             dismiss(toastId);
                         }}>Decline</Button>
                     </div>
                 )
@@ -94,7 +96,7 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
         unsubscribeMessages();
         unsubscribeChat();
     };
-  }, [chat.id, db, user?.uid, partner.name, toast]);
+  }, [chat.id, db, user?.uid, partner.name, toast, dismiss]);
 
   useEffect(() => {
     if (isAtBottomRef.current) {
