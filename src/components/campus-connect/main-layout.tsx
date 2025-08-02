@@ -170,26 +170,28 @@ function MainHeader() {
 
     return (
        <SidebarInset>
-             <div className={cn("flex h-14 items-center justify-between gap-4 border-b bg-background p-2 px-4", isMobile && 'pl-12')}>
-                <div className="absolute left-2 top-1/2 -translate-y-1/2"><SidebarTrigger /></div> 
-                {activeView.type === 'chat' ? (
-                    <ChatHeader
-                        partner={activeView.data.user}
-                        onGameClick={() => onGameToggle(true)}
-                        onVideoCallClick={() => onVideoCallToggle(true)}
-                        onBlockUser={onBlockUser}
-                        onLeaveChat={onLeaveChat}
-                    />
-                ) : (
-                    <div className="flex items-center gap-2">
-                         <h2 className="font-semibold text-lg">Welcome</h2>
-                    </div>
-                )}
+             <div className="h-full flex flex-col">
+                <div className={cn("flex h-14 flex-shrink-0 items-center justify-between gap-4 border-b bg-background p-2 px-4", isMobile && 'pl-12')}>
+                    <div className="absolute left-2 top-1/2 -translate-y-1/2"><SidebarTrigger /></div> 
+                    {activeView.type === 'chat' ? (
+                        <ChatHeader
+                            partner={activeView.data.user}
+                            onGameClick={() => onGameToggle(true)}
+                            onVideoCallClick={() => onVideoCallToggle(true)}
+                            onBlockUser={onBlockUser}
+                            onLeaveChat={onLeaveChat}
+                        />
+                    ) : (
+                        <div className="flex items-center gap-2">
+                            <h2 className="font-semibold text-lg">Welcome</h2>
+                        </div>
+                    )}
+                </div>
+                {activeView.type === 'chat' 
+                        ? <ChatView key={activeView.data.chat.id} chat={activeView.data.chat} partner={activeView.data.user} />
+                        : <WelcomeView />
+                    }
              </div>
-              {activeView.type === 'chat' 
-                    ? <ChatView key={activeView.data.chat.id} chat={activeView.data.chat} partner={activeView.data.user} />
-                    : <WelcomeView />
-                }
        </SidebarInset>
     );
 }
