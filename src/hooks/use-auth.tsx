@@ -10,7 +10,8 @@ import {
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
-  signInAnonymously,
+  sendEmailVerification,
+  sendPasswordResetEmail,
   type User as FirebaseUser,
 } from 'firebase/auth';
 import {
@@ -34,7 +35,7 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   signUpWithEmail: (email: string, password: string) => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
-  signInAsGuest: (displayName: string) => Promise<void>;
+  sendPasswordReset: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (data: Partial<User>) => Promise<void>;
 }
@@ -52,17 +53,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
       if (firebaseUser) {
+        // If the user's email is not verified, we might not want to treat them as fully logged in.
+        // For this app, we will let them be in a "limbo" state until verification.
         setUser(firebaseUser);
         const userDocRef = doc(db, 'users', firebaseUser.uid);
         
         // Firestore and RTDB online status
-        if (rtdb) {
+        if (rtdb && firebaseUser.emailVerified) {
             const statusRef = ref(rtdb, `/status/${firebaseUser.uid}`);
             await updateDoc(userDocRef, { online: true }).catch(() => {}); // Fails if doc doesn't exist, which is fine
             await set(statusRef, { state: 'online', last_changed: rtdbServerTimestamp() });
             onDisconnect(statusRef).set({ state: 'offline', last_changed: rtdbServerTimestamp() });
         }
-
 
         const unsubProfile = onSnapshot(userDocRef, (docSnap) => {
           if (docSnap.exists()) {
@@ -82,7 +84,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return () => unsubscribe();
   }, [auth, db]);
 
-  const createProfile = async (uid: string, data: Partial<User>, isGuest = false) => {
+  const createProfile = async (uid: string, data: Partial<User>) => {
     const userDocRef = doc(db, 'users', uid);
     const userDoc = await getDoc(userDocRef);
     if (!userDoc.exists()) {
@@ -96,8 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         interests: [],
         blockedUsers: [],
         friends: [],
-        isGuest,
-        profileComplete: isGuest, // Guests don't need profile setup
+        profileComplete: false,
         pendingChatId: null,
         ...data,
       };
@@ -115,7 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           await createProfile(result.user.uid, { 
               name: result.user.displayName, 
               avatar: result.user.photoURL,
-              profileComplete: false,
+              profileComplete: false, // Profile setup is still required.
           });
       }
     } catch (error: any) {
@@ -137,16 +138,30 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         name: email.split('@')[0],
         profileComplete: false,
      });
+     await sendEmailVerification(result.user);
+     toast({
+        title: 'Verification Email Sent',
+        description: 'Please check your inbox to verify your email address.',
+        duration: 10000,
+     });
+     await signOut(auth); // Sign out user until they verify their email
   };
     
   const signInWithEmail = async (email: string, password: string) => {
-    await signInWithEmailAndPassword(auth, email, password);
+    const result = await signInWithEmailAndPassword(auth, email, password);
+    if (!result.user.emailVerified) {
+        await signOut(auth);
+        throw new Error('Please verify your email before logging in. Check your inbox for a verification link.');
+    }
   };
 
-  const signInAsGuest = async (displayName: string) => {
-    if (!displayName) throw new Error("Display name cannot be empty.");
-    const result = await signInAnonymously(auth);
-    await createProfile(result.user.uid, { name: displayName }, true);
+  const sendPasswordReset = async (email: string) => {
+    await sendPasswordResetEmail(auth, email);
+    toast({
+        title: 'Password Reset Email Sent',
+        description: 'Check your inbox for a link to reset your password.',
+        duration: 10000,
+    });
   };
 
   const updateProfile = async (data: Partial<User>) => {
@@ -174,7 +189,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signInWithGoogle,
     signUpWithEmail,
     signInWithEmail,
-    signInAsGuest,
+    sendPasswordReset,
     logout,
     updateProfile,
   };
@@ -189,5 +204,3 @@ export const useAuth = () => {
   }
   return context;
 };
-
-    

@@ -19,7 +19,7 @@ interface GameCenterViewProps {
 }
 
 export default function GameCenterView({ isOpen, onOpenChange, chatId, partnerId }: GameCenterViewProps) {
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const db = getFirestore(firebaseApp);
   const { toast } = useToast();
 
@@ -57,8 +57,6 @@ export default function GameCenterView({ isOpen, onOpenChange, chatId, partnerId
     onOpenChange(false);
     toast({ title: "Game Invite Sent!", description: "Waiting for your partner to accept."})
   }
-  
-  const isGuest = profile?.isGuest;
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
@@ -83,8 +81,6 @@ export default function GameCenterView({ isOpen, onOpenChange, chatId, partnerId
                 onClick={() => inviteToGame('connect-four')} 
                 variant="secondary" 
                 className="w-full justify-start h-auto text-left p-4"
-                disabled={isGuest}
-                title={isGuest ? 'Sign up to play this game' : ''}
             >
                 <div>
                     <h3 className="font-bold text-lg">Connect Four</h3>
@@ -95,8 +91,6 @@ export default function GameCenterView({ isOpen, onOpenChange, chatId, partnerId
                 onClick={() => inviteToGame('dots-and-boxes')} 
                 variant="secondary" 
                 className="w-full justify-start h-auto text-left p-4"
-                disabled={isGuest}
-                title={isGuest ? 'Sign up to play this game' : ''}
             >
                 <div>
                     <h3 className="font-bold text-lg">Dots and Boxes</h3>

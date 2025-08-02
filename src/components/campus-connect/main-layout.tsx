@@ -1,3 +1,4 @@
+
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -46,7 +47,7 @@ const useMainLayout = () => {
 };
 
 function LayoutUI() {
-    const { profile } = useAuth();
+    const { profile, logout } = useAuth();
     const { onFindNewChat, isSearching, onStopSearching, onStartChatWithFriend, onNavigateHome } = useMainLayout();
     const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
     const [friends, setFriends] = useState<UserProfile[]>([]);
@@ -55,7 +56,7 @@ function LayoutUI() {
     
     // Listen for friend requests
     useEffect(() => {
-      if (!profile || profile.isGuest) return;
+      if (!profile) return;
       const q = query(collection(db, 'friend_requests'), where("toId", "==", profile.id), where("status", "==", "pending"));
       const unsubscribe = onSnapshot(q, (snapshot) => {
         const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FriendRequest));
@@ -111,7 +112,7 @@ function LayoutUI() {
                      <div className="flex items-center justify-between">
                          <Button variant="ghost" size="icon" onClick={onNavigateHome}><ArrowLeft /></Button>
                          <h2 className="font-semibold text-lg">{profile?.name}</h2>
-                         <Button variant="ghost" size="icon" onClick={() => useAuth().logout()}><LogOut /></Button>
+                         <Button variant="ghost" size="icon" onClick={logout}><LogOut /></Button>
                     </div>
                 </SidebarHeader>
                 <SidebarContent>
@@ -322,8 +323,8 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                         createdAt: serverTimestamp(),
                         memberIds: [user.uid, partnerId].sort(),
                         members: {
-                            [user.uid]: { name: profile.name, avatar: profile.avatar, online: true, active: true, isGuest: profile.isGuest },
-                            [partnerId]: { name: partnerProfile.name, avatar: partnerProfile.avatar, online: true, active: true, isGuest: partnerProfile.isGuest },
+                            [user.uid]: { name: profile.name, avatar: profile.avatar, online: true, active: true },
+                            [partnerId]: { name: partnerProfile.name, avatar: partnerProfile.avatar, online: true, active: true },
                         },
                         isFriendChat: false,
                     });
@@ -420,5 +421,3 @@ export default function MainLayoutWrapper({ onNavigateHome }: { onNavigateHome: 
         <MainLayoutContent onNavigateHome={onNavigateHome} />
     )
 }
-
-    

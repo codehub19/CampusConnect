@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
+import { Label } from '../ui/label';
 
 const GoogleIcon = () => (
     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 48 48">
@@ -22,12 +23,11 @@ interface AuthViewProps {
 }
 
 export default function AuthView({ onlineCount }: AuthViewProps) {
-    const [view, setView] = useState('options'); // 'options', 'guest', 'signup', 'login'
+    const [view, setView] = useState('options'); // 'options', 'signup', 'login', 'forgot_password'
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
-    const [guestName, setGuestName] = useState('');
     const [isLoading, setIsLoading] = useState(false);
-    const { signInWithGoogle, signUpWithEmail, signInWithEmail, signInAsGuest } = useAuth();
+    const { signInWithGoogle, signUpWithEmail, signInWithEmail, sendPasswordReset } = useAuth();
     const { toast } = useToast();
 
     const handleAuthAction = async (action: Function, ...args: any[]) => {
@@ -45,24 +45,36 @@ export default function AuthView({ onlineCount }: AuthViewProps) {
         }
     };
 
+    const handlePasswordReset = async () => {
+        if (!email) {
+            toast({
+                variant: 'destructive',
+                title: 'Email Required',
+                description: 'Please enter your email address to reset your password.',
+            });
+            return;
+        }
+        await handleAuthAction(sendPasswordReset, email);
+        setView('login'); // Go back to login view after sending email
+    };
+
     const renderContent = () => {
         switch (view) {
-            case 'guest':
+            case 'forgot_password':
                 return (
                     <div>
-                        <h2 className="text-2xl font-bold mb-4 text-white">Guest Chat</h2>
-                        <Input
-                            type="text"
-                            id="guest-name"
-                            placeholder="Enter a display name"
-                            className="w-full p-3 border rounded-lg mb-4 bg-secondary text-white border-border focus:outline-none focus:ring-2 focus:ring-primary placeholder-muted-foreground"
-                            value={guestName}
-                            onChange={(e) => setGuestName(e.target.value)}
-                        />
-                        <Button onClick={() => handleAuthAction(signInAsGuest, guestName)} className="w-full" disabled={isLoading || !guestName}>
-                            {isLoading ? <Loader2 className="animate-spin" /> : 'Start Chatting'}
-                        </Button>
-                        <Button variant="link" onClick={() => setView('options')} className="w-full mt-4 text-muted-foreground">Back</Button>
+                        <h2 className="text-2xl font-bold mb-4 text-white">Reset Password</h2>
+                        <p className="text-muted-foreground mb-4 text-sm">Enter your email and we'll send you a link to get back into your account.</p>
+                        <div className="space-y-4">
+                            <div className="space-y-2">
+                                <Label htmlFor="reset-email">Email</Label>
+                                <Input id="reset-email" type="email" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} className="bg-secondary border-border" />
+                            </div>
+                            <Button onClick={handlePasswordReset} className="w-full" disabled={isLoading}>
+                               {isLoading ? <Loader2 className="animate-spin" /> : 'Send Reset Link'}
+                           </Button>
+                        </div>
+                        <Button variant="link" onClick={() => setView('login')} className="w-full mt-4 text-muted-foreground">Back to Log In</Button>
                     </div>
                 );
             case 'signup':
@@ -89,6 +101,9 @@ export default function AuthView({ onlineCount }: AuthViewProps) {
                             <Button onClick={() => handleAuthAction(signInWithEmail, email, password)} className="w-full" disabled={isLoading}>
                                {isLoading ? <Loader2 className="animate-spin" /> : 'Log In'}
                            </Button>
+                           <div className="text-right">
+                            <Button variant="link" onClick={() => setView('forgot_password')} className="text-sm p-0 h-auto text-muted-foreground hover:text-primary">Forgot Password?</Button>
+                           </div>
                         </div>
                         <Button variant="link" onClick={() => setView('options')} className="w-full mt-4 text-muted-foreground">Back</Button>
                     </div>
@@ -109,9 +124,6 @@ export default function AuthView({ onlineCount }: AuthViewProps) {
                                 <span className="flex-shrink mx-4 text-muted-foreground text-sm">OR</span>
                                 <div className="flex-grow border-t border-border"></div>
                             </div>
-                            <Button onClick={() => setView('guest')} variant="secondary" className="w-full font-bold" disabled={isLoading}>
-                                Chat as a Guest
-                            </Button>
                             <Button onClick={() => setView('signup')} className="w-full font-bold" disabled={isLoading}>
                                 Sign Up with Email
                             </Button>

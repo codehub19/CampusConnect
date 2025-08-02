@@ -98,7 +98,7 @@ export default function CreatePostView({ isOpen, onOpenChange }: CreatePostViewP
         location,
         timeOfDay,
         authorId: user.uid,
-        authorName: profile.isGuest ? 'A Guest' : profile.name,
+        authorName: profile.name,
         timestamp: serverTimestamp(),
         status: moderationResult.decision, // 'approved' or 'rejected'
         reportCount: 0,

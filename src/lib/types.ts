@@ -6,7 +6,6 @@ export interface User {
   name: string;
   avatar: string;
   online: boolean;
-  isGuest?: boolean;
   profileComplete?: boolean;
   gender: 'male' | 'female' | 'other' | 'prefer-not-to-say';
   preference: 'anyone' | 'males' | 'females';
@@ -27,7 +26,6 @@ export interface Chat {
       avatar: string;
       online: boolean;
       active: boolean;
-      isGuest?: boolean;
     }
   };
   isFriendChat?: boolean;
@@ -133,5 +131,3 @@ export interface FriendRequest {
   status: 'pending' | 'accepted' | 'declined';
   timestamp: any;
 }
-
-    

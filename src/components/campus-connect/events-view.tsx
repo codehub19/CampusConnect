@@ -103,7 +103,7 @@ export default function EventsView({ onNavigateHome }: EventsViewProps) {
         </div>
         <h1 className="text-xl font-bold w-1/3 text-center">Events</h1>
         <div className="w-1/3 flex justify-end">
-            <Button onClick={handleCreateEventClick} disabled={profile?.isGuest} size="sm">
+            <Button onClick={handleCreateEventClick} size="sm">
                 <PlusCircle className="mr-2 h-4 w-4" />
                 Create
             </Button>

@@ -16,8 +16,22 @@ import { goOffline, goOnline } from 'firebase/database';
 import { rtdb } from '@/lib/firebase';
 import AiAssistantView from '@/components/campus-connect/ai-assistant-view';
 import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-type AppState = 'loading' | 'policy' | 'auth' | 'profile_setup' | 'home' | 'events' | 'missed_connections' | 'chat' | 'ai_chat';
+type AppState = 'loading' | 'policy' | 'auth' | 'verify_email' | 'profile_setup' | 'home' | 'events' | 'missed_connections' | 'chat' | 'ai_chat';
+
+function VerifyEmailView() {
+    return (
+        <div className="flex h-screen w-screen items-center justify-center bg-background p-4">
+            <Alert className="max-w-md">
+                <AlertTitle className="text-xl font-bold">Verify Your Email</AlertTitle>
+                <AlertDescription>
+                    We've sent a verification link to your email address. Please check your inbox and click the link to continue. You can close this page after verifying.
+                </AlertDescription>
+            </Alert>
+        </div>
+    );
+}
 
 function AppContent() {
   const { user, loading, profile, updateProfile } = useAuth();
@@ -51,6 +65,11 @@ function AppContent() {
       setAppState('auth');
       return;
     }
+
+    if (!user.emailVerified) {
+        setAppState('verify_email');
+        return;
+    }
     
     if (!profile) {
       // Still waiting for profile to load, stay in a loading-like state
@@ -58,14 +77,14 @@ function AppContent() {
       return;
     }
 
-    if (!profile.profileComplete && !profile.isGuest) {
+    if (!profile.profileComplete) {
       setAppState('profile_setup');
       return;
     }
     
     // If we've gotten past profile setup, default to home.
     // Avoids reverting to 'home' if user navigates away and state changes.
-    if (['profile_setup', 'auth', 'policy', 'loading'].includes(appState)) {
+    if (['profile_setup', 'auth', 'policy', 'loading', 'verify_email'].includes(appState)) {
       setAppState('home');
     }
 
@@ -102,6 +121,8 @@ function AppContent() {
             return <PolicyView onAgree={handleAgree} />;
           case 'auth':
             return <AuthView onlineCount={onlineCount} />;
+          case 'verify_email':
+            return <VerifyEmailView />;
           case 'profile_setup':
             return <ProfileSetupView />;
           case 'home':
