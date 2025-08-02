@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
@@ -165,7 +164,7 @@ function LayoutUI() {
 }
 
 function MainHeader() {
-    const { onBlockUser, onLeaveChat, onVideoCallToggle, onGameToggle, activeView, onNavigateHome } = useMainLayout();
+    const { onBlockUser, onLeaveChat, onVideoCallToggle, onGameToggle, activeView } = useMainLayout();
     const { isMobile } = useSidebar();
 
     return (
@@ -230,22 +229,17 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
     }, [user, db]);
 
     const listenForMatches = useCallback(() => {
-        if (!user || unsubscribeUserDoc.current) return;
-    
-        const waitingDocRef = doc(db, 'waiting_users', user.uid);
-        unsubscribeUserDoc.current = onSnapshot(waitingDocRef, async (docSnap) => {
-            if (docSnap.exists() && docSnap.data()?.matchedChatId) {
-                const matchedChatId = docSnap.data().matchedChatId;
-                
+        if (!user || !profile || isSearching) return;
+        unsubscribeUserDoc.current = onSnapshot(doc(db, "users", user.uid), (doc) => {
+            const userData = doc.data() as User;
+            if (userData && userData.pendingChatId) {
+                const chatId = userData.pendingChatId;
                 cleanupListeners();
-                setIsSearching(false);
-                dismiss();
-                
-                await deleteDoc(waitingDocRef);
-                await switchToChat(matchedChatId);
+                updateDoc(doc.ref, { pendingChatId: null });
+                switchToChat(chatId);
             }
         });
-    }, [user, db, dismiss, cleanupListeners, switchToChat]);
+    }, [user, profile, isSearching, db, cleanupListeners, switchToChat]);
     
     useEffect(() => {
         if (user) {
@@ -306,71 +300,54 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         toast({ title: 'Searching for a chat...' });
     
         const waitingUsersRef = collection(db, 'waiting_users');
-        const q = query(waitingUsersRef, where('uid', '!=', user.uid));
+        const q = query(waitingUsersRef, where('uid', '!=', user.uid), limit(1));
         const querySnapshot = await getDocs(q);
     
         let matchFound = false;
         
-        for (const partnerDocSnap of querySnapshot.docs) {
-            if (matchFound) continue;
+        if (!querySnapshot.empty) {
+            const partnerDoc = querySnapshot.docs[0];
+            const partnerId = partnerDoc.id;
 
-            const partnerData = partnerDocSnap.data() as UserProfile;
-            const partnerWaitingDocRef = partnerDocSnap.ref;
+            const partnerProfileDoc = await getDoc(doc(db, "users", partnerId));
+            if (partnerProfileDoc.exists()) {
+                const partnerProfile = partnerProfileDoc.data() as UserProfile;
+                const userIsBlocked = (partnerProfile.blockedUsers || []).includes(user.uid);
+                const partnerIsBlocked = (profile.blockedUsers || []).includes(partnerId);
 
-            try {
-                await runTransaction(db, async (transaction) => {
-                    const freshPartnerDoc = await transaction.get(partnerWaitingDocRef);
-                    if (!freshPartnerDoc.exists() || freshPartnerDoc.data()?.matchedChatId) {
-                        return;
-                    }
+                if (!userIsBlocked && !partnerIsBlocked) {
+                    await deleteDoc(partnerDoc.ref);
     
-                    const partnerProfileDoc = await getDoc(doc(db, "users", partnerData.id));
-                    if (!partnerProfileDoc.exists()) return;
-                    const partnerProfile = partnerProfileDoc.data() as UserProfile;
-                    
-                    const userIsBlocked = (partnerProfile.blockedUsers || []).includes(user.uid);
-                    const partnerIsBlocked = (profile.blockedUsers || []).includes(partnerData.id);
-
-                    if(userIsBlocked || partnerIsBlocked) return;
-    
-                    const newChatRef = doc(collection(db, "chats"));
-                    transaction.set(newChatRef, {
+                    const newChatRef = await addDoc(collection(db, "chats"), {
                         createdAt: serverTimestamp(),
-                        memberIds: [user.uid, partnerData.id].sort(),
+                        memberIds: [user.uid, partnerId].sort(),
                         members: {
                             [user.uid]: { name: profile.name, avatar: profile.avatar, online: true, active: true, isGuest: profile.isGuest },
-                            [partnerData.id]: { name: partnerProfile.name, avatar: partnerProfile.avatar, online: true, active: true, isGuest: partnerProfile.isGuest },
+                            [partnerId]: { name: partnerProfile.name, avatar: partnerProfile.avatar, online: true, active: true, isGuest: partnerProfile.isGuest },
                         },
                         isFriendChat: false,
                     });
-    
-                    transaction.update(partnerWaitingDocRef, { matchedChatId: newChatRef.id });
-                    
+
+                    await updateDoc(doc(db, "users", partnerId), { pendingChatId: newChatRef.id });
+                    switchToChat(newChatRef.id);
                     matchFound = true;
-                    await switchToChat(newChatRef.id);
-                });
-    
-                if (matchFound) break;
-    
-            } catch (e) {
-                console.error("Matchmaking transaction failed: ", e);
+                }
             }
         }
-    
-        dismiss();
-        if (matchFound) {
-            setIsSearching(false);
-            return;
+        
+        if (!matchFound) {
+            await setDoc(doc(db, 'waiting_users', user.uid), { 
+                uid: user.uid,
+                ...profile,
+                timestamp: serverTimestamp()
+            });
+            listenForMatches();
+            toast({ title: 'No users found, waiting for someone to join...' });
+        } else {
+             dismiss();
         }
-    
-        toast({ title: 'No users found, waiting for someone to join...' });
-        await setDoc(doc(db, 'waiting_users', user.uid), { 
-            id: user.uid,
-            ...profile,
-            timestamp: serverTimestamp(),
-            matchedChatId: null,
-        });
-        listenForMatches();
+        
+        setIsSearching(false);
     };
 
     const stopSearching = async () => {
