@@ -30,13 +30,12 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
   const { user, profile } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isGameCenterOpen, setGameCenterOpen] = useState(false);
-  const [gameState, setGameState] = useState<GameState | null>(null);
+  const [gameState, setGameState] = useState<GameState | null>(chat.game || null);
   
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const db = getFirestore(firebaseApp);
-  const storage = getStorage(firebaseApp);
 
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const isAtBottomRef = useRef(true);
@@ -171,15 +170,15 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
     if (!gameState || !user) return null;
     const gameType = gameState.gameType || gameState.type;
     switch (gameType) {
-      case 'tic-tac-toe': return <TicTacToe chatId={chat.id} gameState={gameState} />;
-      case 'connect-four': return <ConnectFour chatId={chat.id} gameState={gameState} />;
-      case 'dots-and-boxes': return <DotsAndBoxes chatId={chat.id} gameState={gameState} />;
+      case 'tic-tac-toe': return <TicTacToe chatId={chat.id} gameState={gameState} setGameState={setGameState} />;
+      case 'connect-four': return <ConnectFour chatId={chat.id} gameState={gameState} setGameState={setGameState} />;
+      case 'dots-and-boxes': return <DotsAndBoxes chatId={chat.id} gameState={gameState} setGameState={setGameState} />;
       default: return null;
     }
   };
 
   return (
-    <div className="flex flex-col h-full bg-background text-foreground">
+    <div className="flex flex-col h-full bg-background text-foreground overflow-hidden">
         <GameCenterView 
             isOpen={isGameCenterOpen}
             onOpenChange={setGameCenterOpen}
@@ -263,4 +262,3 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
     </div>
   );
 }
-

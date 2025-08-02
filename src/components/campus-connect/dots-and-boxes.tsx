@@ -13,9 +13,10 @@ import { cn } from '@/lib/utils';
 interface DotsAndBoxesProps {
     chatId: string;
     gameState: GameState;
+    setGameState: React.Dispatch<React.SetStateAction<GameState | null>>;
 }
 
-export default function DotsAndBoxes({ chatId, gameState }: DotsAndBoxesProps) {
+export default function DotsAndBoxes({ chatId, gameState, setGameState }: DotsAndBoxesProps) {
     const { user } = useAuth();
     const db = getFirestore(firebaseApp);
     const { status, players, turn, scores, gridSize, h_lines, v_lines, boxes } = gameState;
@@ -25,63 +26,54 @@ export default function DotsAndBoxes({ chatId, gameState }: DotsAndBoxesProps) {
 
     const handleMove = async (type: 'h' | 'v', index: number) => {
         if (!isMyTurn || status !== 'active') return;
+        if ((type === 'h' && h_lines[index]) || (type === 'v' && v_lines[index])) return;
+
         const chatRef = doc(db, 'chats', chatId);
         
+        // Optimistic update
+        const tempState = JSON.parse(JSON.stringify(gameState));
+        if (type === 'h') tempState.h_lines[index] = user!.uid;
+        else tempState.v_lines[index] = user!.uid;
+
+        let boxesCompleted = 0;
+        for (let r = 0; r < gridSize; r++) {
+            for (let c = 0; c < gridSize; c++) {
+                const boxIndex = r * gridSize + c;
+                if (!tempState.boxes[boxIndex] && 
+                    tempState.h_lines[r * gridSize + c] &&
+                    tempState.h_lines[(r + 1) * gridSize + c] &&
+                    tempState.v_lines[r * (gridSize + 1) + c] &&
+                    tempState.v_lines[r * (gridSize + 1) + (c + 1)]
+                ) {
+                    tempState.boxes[boxIndex] = user!.uid;
+                    tempState.scores[user!.uid]++;
+                    boxesCompleted++;
+                }
+            }
+        }
+        
+        const partnerId = Object.keys(players).find(id => id !== user!.uid)!;
+        tempState.turn = (boxesCompleted > 0) ? user!.uid : partnerId;
+        
+        if(Object.values(tempState.scores).reduce((a:number,b:number) => a+b, 0) === gridSize * gridSize){
+            tempState.status = tempState.scores[user!.uid] === tempState.scores[partnerId] ? 'draw' : 'win';
+            tempState.turn = null;
+        }
+        setGameState(tempState);
+
         try {
             await runTransaction(db, async (transaction) => {
                 const chatDoc = await transaction.get(chatRef);
                 if (!chatDoc.exists()) throw "Chat does not exist!";
                 const game = chatDoc.data().game as GameState;
-                if(game.turn !== user?.uid) return;
-
-                const new_h_lines = [...game.h_lines];
-                const new_v_lines = [...game.v_lines];
-                const new_boxes = [...game.boxes];
-                const new_scores = {...game.scores};
-
-                if ((type === 'h' && new_h_lines[index]) || (type === 'v' && new_v_lines[index])) return;
+                if(game.turn !== user?.uid) return; // Abort if state changed
                 
-                if (type === 'h') new_h_lines[index] = user.uid;
-                else new_v_lines[index] = user.uid;
-                
-                let boxesCompleted = 0;
-                 for (let r = 0; r < game.gridSize; r++) {
-                    for (let c = 0; c < game.gridSize; c++) {
-                        const boxIndex = r * game.gridSize + c;
-                        if (!new_boxes[boxIndex] && 
-                            new_h_lines[r * game.gridSize + c] &&
-                            new_h_lines[(r + 1) * game.gridSize + c] &&
-                            new_v_lines[r * (game.gridSize + 1) + c] &&
-                            new_v_lines[r * (game.gridSize + 1) + (c + 1)]
-                        ) {
-                            new_boxes[boxIndex] = user.uid;
-                            new_scores[user.uid]++;
-                            boxesCompleted++;
-                        }
-                    }
-                }
-                
-                const partnerId = Object.keys(players).find(id => id !== user.uid);
-                let newTurn = (boxesCompleted > 0) ? user.uid : partnerId!;
-                
-                let newStatus: GameState['status'] = 'active';
-                if(Object.values(new_scores).reduce((a,b) => a+b, 0) === game.gridSize * game.gridSize){
-                    newStatus = new_scores[user.uid] === new_scores[partnerId!] ? 'draw' : 'win';
-                    newTurn = null;
-                }
-
-                transaction.update(chatRef, {
-                    'game.h_lines': new_h_lines,
-                    'game.v_lines': new_v_lines,
-                    'game.boxes': new_boxes,
-                    'game.scores': new_scores,
-                    'game.turn': newTurn,
-                    'game.status': newStatus,
-                });
+                transaction.update(chatRef, { game: tempState });
             });
         } catch (e) {
              console.error("Dots and Boxes move failed: ", e);
              toast({ variant: 'destructive', title: 'Error making move' });
+             setGameState(gameState); // Revert on error
         }
     };
     
@@ -107,7 +99,7 @@ export default function DotsAndBoxes({ chatId, gameState }: DotsAndBoxesProps) {
             <h3 className="font-bold text-lg mb-2">Dots & Boxes</h3>
              <div className="text-center text-sm">
                 <div><span className={cn(players[user!.uid] === 'p1' ? "text-yellow-400" : "text-red-500")}>You: {scores[user!.uid]}</span> | <span>Opponent: {scores[Object.keys(scores).find(id => id !== user!.uid)!]}</span></div>
-                <p className="mt-1 h-5">{getStatusText()}</p>
+                <div className="mt-1 h-5">{getStatusText()}</div>
              </div>
              <div className="p-4">
                 {Array.from({ length: gridSize + 1 }).map((_, r) => (
@@ -145,8 +137,8 @@ export default function DotsAndBoxes({ chatId, gameState }: DotsAndBoxesProps) {
              </div>
              {(status === 'win' || status === 'draw') ? (
                  <Button onClick={() => {
-                     const gameCenter = document.querySelector<HTMLDivElement>('#game-center-modal');
-                     if(gameCenter) gameCenter.classList.remove('hidden');
+                    const gameCenter = document.querySelector<HTMLButtonElement>('[data-game-center-trigger]');
+                    if(gameCenter) gameCenter.click();
                  }} variant="secondary" className="mt-4">Play Another Game</Button>
             ) : (
                  <Button onClick={handleQuit} variant="destructive" className="mt-4">Quit Game</Button>

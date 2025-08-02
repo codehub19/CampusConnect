@@ -8,13 +8,15 @@ import { firebaseApp } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import React from 'react';
 
 interface ConnectFourProps {
     chatId: string;
     gameState: GameState;
+    setGameState: React.Dispatch<React.SetStateAction<GameState | null>>;
 }
 
-export default function ConnectFour({ chatId, gameState }: ConnectFourProps) {
+export default function ConnectFour({ chatId, gameState, setGameState }: ConnectFourProps) {
     const { user } = useAuth();
     const db = getFirestore(firebaseApp);
 
@@ -26,6 +28,30 @@ export default function ConnectFour({ chatId, gameState }: ConnectFourProps) {
         if (!isMyTurn || status !== 'active') return;
         const chatRef = doc(db, 'chats', chatId);
 
+        // Optimistic update
+        let landingRow = -1;
+        const tempBoard = [...board];
+        for (let r = 5; r >= 0; r--) {
+            if (tempBoard[colIndex + r * 7] === null) {
+                landingRow = r;
+                break;
+            }
+        }
+        if(landingRow === -1) return; // Column is full
+
+        tempBoard[colIndex + landingRow * 7] = myPlayerNumber;
+        const hasWon = checkWinner(tempBoard, myPlayerNumber as number);
+        const isDraw = !hasWon && tempBoard.every(cell => cell !== null);
+        const partnerId = Object.keys(players).find(id => id !== user?.uid);
+
+        setGameState(prev => prev ? ({
+            ...prev,
+            board: tempBoard,
+            turn: hasWon || isDraw ? null : partnerId,
+            status: hasWon ? 'win' : isDraw ? 'draw' : 'active',
+            winner: hasWon ? user?.uid : null,
+        }) : null);
+
         try {
             await runTransaction(db, async (transaction) => {
                 const chatDoc = await transaction.get(chatRef);
@@ -34,26 +60,9 @@ export default function ConnectFour({ chatId, gameState }: ConnectFourProps) {
                 const game = chatDoc.data().game as GameState;
                 if (game.turn !== user?.uid || game.status !== 'active') return;
 
-                let landingRow = -1;
-                for (let r = 5; r >= 0; r--) {
-                    if (game.board[colIndex + r * 7] === null) {
-                        landingRow = r;
-                        break;
-                    }
-                }
-
-                if (landingRow === -1) return; // Column is full
-
-                const newBoard = [...game.board];
-                newBoard[colIndex + landingRow * 7] = myPlayerNumber;
-                
-                const hasWon = checkWinner(newBoard, myPlayerNumber as number);
-                const isDraw = !hasWon && newBoard.every(cell => cell !== null);
-                
-                const partnerId = Object.keys(players).find(id => id !== user?.uid);
-
+                // The transaction will use the already-calculated new state
                 const newGameData: Partial<GameState> = {
-                    board: newBoard,
+                    board: tempBoard,
                     turn: hasWon || isDraw ? null : partnerId,
                     status: hasWon ? 'win' : isDraw ? 'draw' : 'active',
                     winner: hasWon ? user?.uid : null,
@@ -64,6 +73,8 @@ export default function ConnectFour({ chatId, gameState }: ConnectFourProps) {
         } catch (e) {
             console.error("Connect Four move failed: ", e);
             toast({ variant: 'destructive', title: 'Error making move' });
+            // Optional: Revert optimistic update on error
+            setGameState(gameState);
         }
     };
     
@@ -95,7 +106,7 @@ export default function ConnectFour({ chatId, gameState }: ConnectFourProps) {
             <div className="mb-4 h-6">{getStatusText()} {status === 'active' && isMyTurn && <div className={cn("inline-block w-4 h-4 rounded-full", myPlayerNumber === 1 ? 'bg-yellow-400' : 'bg-red-500')}></div>}</div>
             <div className="grid grid-cols-7 gap-1 bg-primary p-2 rounded-lg">
                 {Array.from({ length: 7 }).map((_, c) => (
-                    <div key={c} className="flex flex-col-reverse gap-1" onClick={() => handleMove(c)}>
+                    <div key={c} className="flex flex-col-reverse gap-1 cursor-pointer" onClick={() => handleMove(c)}>
                         {Array.from({ length: 6 }).map((_, r) => {
                              const player = board[c + r * 7];
                              return (
@@ -110,8 +121,8 @@ export default function ConnectFour({ chatId, gameState }: ConnectFourProps) {
             </div>
              {(status === 'win' || status === 'draw') ? (
                  <Button onClick={() => {
-                     const gameCenter = document.querySelector<HTMLDivElement>('#game-center-modal');
-                     if(gameCenter) gameCenter.classList.remove('hidden');
+                     const gameCenter = document.querySelector<HTMLButtonElement>('[data-game-center-trigger]');
+                     if(gameCenter) gameCenter.click();
                  }} variant="secondary" className="mt-4">Play Another Game</Button>
             ) : (
                  <Button onClick={handleQuit} variant="destructive" className="mt-4">Quit Game</Button>

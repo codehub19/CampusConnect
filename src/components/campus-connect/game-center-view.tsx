@@ -2,7 +2,7 @@
 "use client";
 
 import React from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { getFirestore, doc, updateDoc } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
@@ -62,6 +62,7 @@ export default function GameCenterView({ isOpen, onOpenChange, chatId, partnerId
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogTrigger data-game-center-trigger className="hidden"></DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Game Center</DialogTitle>

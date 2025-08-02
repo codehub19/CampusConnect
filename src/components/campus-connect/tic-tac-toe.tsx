@@ -1,6 +1,7 @@
 
 "use client";
 
+import React from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import type { GameState } from '@/lib/types';
 import { doc, getFirestore, runTransaction, updateDoc } from 'firebase/firestore';
@@ -11,9 +12,10 @@ import { toast } from '@/hooks/use-toast';
 interface TicTacToeProps {
     chatId: string;
     gameState: GameState;
+    setGameState: React.Dispatch<React.SetStateAction<GameState | null>>;
 }
 
-export default function TicTacToe({ chatId, gameState }: TicTacToeProps) {
+export default function TicTacToe({ chatId, gameState, setGameState }: TicTacToeProps) {
     const { user } = useAuth();
     const db = getFirestore(firebaseApp);
 
@@ -23,29 +25,37 @@ export default function TicTacToe({ chatId, gameState }: TicTacToeProps) {
 
     const handleMove = async (index: number) => {
         if (!isMyTurn || board[index] !== null || status !== 'active') return;
+        
         const chatRef = doc(db, 'chats', chatId);
+        const partnerId = Object.keys(players).find(id => id !== user?.uid);
 
+        // Optimistic update
+        const newBoard = [...board];
+        newBoard[index] = mySymbol;
+
+        const hasWon = checkWinner(newBoard, mySymbol);
+        const isDraw = !hasWon && newBoard.every(cell => cell !== null);
+        
+        const newGameData: Partial<GameState> = {
+            board: newBoard,
+            turn: hasWon || isDraw ? null : partnerId,
+            status: hasWon ? 'win' : isDraw ? 'draw' : 'active',
+            winner: hasWon ? user?.uid : null,
+        };
+
+        setGameState(prev => prev ? ({ ...prev, ...newGameData }) : null);
+
+        // Firestore transaction
         try {
             await runTransaction(db, async (transaction) => {
                 const chatDoc = await transaction.get(chatRef);
                 if (!chatDoc.exists()) throw "Chat does not exist!";
                 
                 const currentGame = chatDoc.data().game as GameState;
-                if(currentGame.board[index] !== null || currentGame.turn !== user?.uid) return;
-
-                const newBoard = [...currentGame.board];
-                newBoard[index] = mySymbol;
-
-                const hasWon = checkWinner(newBoard, mySymbol);
-                const isDraw = !hasWon && newBoard.every(cell => cell !== null);
-                
-                const partnerId = Object.keys(players).find(id => id !== user?.uid);
-
-                const newGameData: Partial<GameState> = {
-                    board: newBoard,
-                    turn: hasWon || isDraw ? null : partnerId,
-                    status: hasWon ? 'win' : isDraw ? 'draw' : 'active',
-                    winner: hasWon ? user?.uid : null,
+                if(currentGame.board[index] !== null || currentGame.turn !== user?.uid) {
+                    // If server state is different, revert local state and abort
+                    setGameState(currentGame);
+                    return;
                 };
                 
                 transaction.update(chatRef, { game: {...currentGame, ...newGameData} });
@@ -53,6 +63,8 @@ export default function TicTacToe({ chatId, gameState }: TicTacToeProps) {
         } catch (e) {
             console.error("Tic Tac Toe move failed: ", e);
             toast({ variant: 'destructive', title: 'Error making move' });
+            // Revert on error
+            setGameState(gameState);
         }
     };
 
@@ -103,8 +115,8 @@ export default function TicTacToe({ chatId, gameState }: TicTacToeProps) {
             </div>
             {(status === 'win' || status === 'draw') ? (
                  <Button onClick={() => {
-                     const gameCenter = document.querySelector<HTMLDivElement>('#game-center-modal');
-                     if(gameCenter) gameCenter.classList.remove('hidden');
+                     const gameCenter = document.querySelector<HTMLButtonElement>('[data-game-center-trigger]');
+                     if(gameCenter) gameCenter.click();
                  }} variant="secondary" className="mt-4">Play Another Game</Button>
             ) : (
                  <Button onClick={handleQuit} variant="destructive" className="mt-4">Quit Game</Button>
