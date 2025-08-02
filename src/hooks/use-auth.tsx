@@ -158,7 +158,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         description: 'Please check your inbox to verify your email address.',
         duration: 10000,
      });
-     await signOut(auth);
      setAuthModalOpen(false);
   };
     
