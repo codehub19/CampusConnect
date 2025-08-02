@@ -91,8 +91,8 @@ export default function AiAssistantView() {
           <p className="text-sm text-muted-foreground">Online</p>
         </div>
       </CardHeader>
-      <CardContent className="flex-1 p-0 overflow-hidden">
-        <ScrollArea className="h-full p-4" ref={scrollAreaRef}>
+      <CardContent className="flex-1 p-0 overflow-hidden flex flex-col">
+        <ScrollArea className="flex-grow p-4" ref={scrollAreaRef}>
           <div className="space-y-4">
             {messages.map((message) => (
               <div
