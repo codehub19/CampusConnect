@@ -206,19 +206,18 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
 
     const waitingListenerUnsub = useRef<() => void | null>(null);
     const partnerListenerUnsub = useRef<() => void | null>(null);
+    const chatListenerUnsub = useRef<() => void | null>(null); // New listener for the chat doc
 
     const { toast, dismiss } = useToast();
     const db = getFirestore(firebaseApp);
 
     const cleanupListeners = useCallback(() => {
-        if (waitingListenerUnsub.current) {
-            waitingListenerUnsub.current();
-            waitingListenerUnsub.current = null;
-        }
-        if (partnerListenerUnsub.current) {
-            partnerListenerUnsub.current();
-            partnerListenerUnsub.current = null;
-        }
+        if (waitingListenerUnsub.current) waitingListenerUnsub.current();
+        if (partnerListenerUnsub.current) partnerListenerUnsub.current();
+        if (chatListenerUnsub.current) chatListenerUnsub.current();
+        waitingListenerUnsub.current = null;
+        partnerListenerUnsub.current = null;
+        chatListenerUnsub.current = null;
     }, []);
 
     const handleLeaveChat = useCallback(async (showToast = true) => {
@@ -226,13 +225,14 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         const chatId = activeView.data.chat.id;
         if (!user || !chatId) return;
 
+        cleanupListeners();
         const chatRef = doc(db, 'chats', chatId);
         await updateDoc(chatRef, { [`members.${user.uid}.active`]: false });
         if (showToast) {
             toast({ title: "You have left the chat." });
         }
         setActiveView({ type: 'welcome' });
-    }, [activeView, user, db, toast]);
+    }, [activeView, user, db, toast, cleanupListeners]);
 
 
     const switchToChat = useCallback(async (chatId: string) => {
@@ -328,42 +328,65 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         }
     }, [user, profile, isSearching, db, toast, dismiss, listenForMatches, switchToChat]);
 
+    // ** THE FIX IS HERE **
+    // This effect now handles ALL logic related to an active chat session.
     useEffect(() => {
-        if (activeView.type === 'chat') {
-            const partnerId = activeView.data.user.id;
-            partnerListenerUnsub.current = onSnapshot(doc(db, 'users', partnerId), (doc) => {
-                const partnerData = doc.data() as UserProfile;
-                if (partnerData) {
-                    const isStillOnline = partnerData.online;
-                    // ** FIX: Check if partner is still active in THIS chat **
-                    const chatData = activeView.data.chat;
-                    const partnerIsActiveInChat = chatData.members[partnerId]?.active;
+        // Ensure previous listeners are cleaned up before starting new ones.
+        cleanupListeners();
 
-                    if ((!isStillOnline || !partnerIsActiveInChat) && activeView.type === 'chat' && partnerData.id === activeView.data.user.id) {
+        if (activeView.type === 'chat') {
+            const chatId = activeView.data.chat.id;
+            const partnerId = activeView.data.user.id;
+            
+            // Listener 1: For the chat document itself
+            const chatRef = doc(db, 'chats', chatId);
+            chatListenerUnsub.current = onSnapshot(chatRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const chatData = { id: docSnap.id, ...docSnap.data() } as Chat;
+                    const partnerIsActive = chatData.members[partnerId]?.active;
+
+                    // The reliable "partner left" check.
+                    if (partnerIsActive === false) {
                         toast({
                             title: "Partner Left",
                             description: `${activeView.data.user.name} has left the chat.`
                         });
-                        // ** FIX: Don't automatically find a new chat. Just leave.**
-                        handleLeaveChat(false); // Pass false to prevent a redundant toast
+                        handleLeaveChat(false);
                     } else {
-                        // Update partner data in state if they are still in the chat
+                        // If the partner is still active, update the chat state
                         setActiveView(prev => {
                             if (prev.type === 'chat') {
-                                return { ...prev, data: { ...prev.data, user: partnerData } };
+                                return { ...prev, data: { ...prev.data, chat: chatData } };
                             }
                             return prev;
                         });
                     }
+                } else {
+                    // Chat document was deleted
+                    handleLeaveChat(false);
+                }
+            });
+
+            // Listener 2: For the partner's global user profile (for online status icon, name changes, etc.)
+            partnerListenerUnsub.current = onSnapshot(doc(db, 'users', partnerId), (doc) => {
+                if (doc.exists()) {
+                    const partnerData = doc.data() as UserProfile;
+                    setActiveView(prev => {
+                        if (prev.type === 'chat') {
+                            return { ...prev, data: { ...prev.data, user: partnerData } };
+                        }
+                        return prev;
+                    });
                 }
             });
         }
+
+        // Cleanup function for this effect
         return () => {
-            if (partnerListenerUnsub.current) {
-                partnerListenerUnsub.current();
-            }
-        }
-    }, [activeView, db, toast, handleLeaveChat]);
+            cleanupListeners();
+        };
+    }, [activeView.type, activeView.data?.chat.id, db, toast, handleLeaveChat, cleanupListeners]);
+
 
     const startChatWithFriend = async (friendId: string) => {
         if (!user || !profile) return;
