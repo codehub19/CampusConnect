@@ -24,9 +24,10 @@ import { generateIcebreaker } from '@/ai/flows/generate-icebreaker';
 interface ChatViewProps {
   chat: Chat;
   partner: User;
+  onMessageSent: () => void;
 }
 
-export default function ChatView({ chat, partner }: ChatViewProps) {
+export default function ChatView({ chat, partner, onMessageSent }: ChatViewProps) {
   const { user, profile } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isGameCenterOpen, setGameCenterOpen] = useState(false);
@@ -96,6 +97,7 @@ export default function ChatView({ chat, partner }: ChatViewProps) {
         timestamp: serverTimestamp(),
         status: 'sent',
     });
+    onMessageSent(); // Notify parent about activity
     scrollToBottom('smooth');
   };
 

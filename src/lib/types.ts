@@ -14,8 +14,7 @@ export interface User {
   blockedUsers?: string[];
   friends?: string[];
   pendingChatId?: string | null;
-  matchedChatId?: string | null; // Used for matchmaking
-  uid?: string; // from waiting_users
+  lastSeen?: any;
 }
 
 export interface Chat {
@@ -27,12 +26,14 @@ export interface Chat {
       avatar: string;
       online: boolean;
       active: boolean;
+      isGuest?: boolean;
     }
   };
   isFriendChat?: boolean;
   lastMessage?: {
     text: string;
     timestamp: any;
+    senderId: string;
   };
   createdAt: any;
   game?: GameState | null;
@@ -98,9 +99,10 @@ export interface Event {
 export interface WaitingUser {
   uid: string;
   name: string;
-  gender: User['gender'];
-  preference: User['preference'];
+  avatar: string;
+  isGuest?: boolean;
   timestamp: any;
+  pendingChatId: string | null;
 }
 
 // Games
@@ -130,5 +132,3 @@ export interface FriendRequest {
   status: 'pending' | 'accepted' | 'declined';
   timestamp: any;
 }
-
-    
