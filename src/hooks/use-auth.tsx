@@ -63,11 +63,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (rtdb && firebaseUser.emailVerified) {
             goOnline(rtdb);
             const statusRef = ref(rtdb, `/status/${firebaseUser.uid}`);
-            await updateDoc(userDocRef, { online: true }).catch(() => {});
-            await set(statusRef, { state: 'online', last_changed: rtdbServerTimestamp() });
+            
+            // This promise will resolve when the client is disconnected.
              onDisconnect(statusRef).set({ state: 'offline', last_changed: rtdbServerTimestamp() }).then(() => {
                 updateDoc(userDocRef, { online: false, lastSeen: serverTimestamp() });
              });
+
+             // Set the user's status to online in RTDB.
+            await set(statusRef, { state: 'online', last_changed: rtdbServerTimestamp() });
+
+            // Also update Firestore to reflect the online status immediately.
+            await updateDoc(userDocRef, { online: true }).catch(() => {});
         }
 
         const unsubProfile = onSnapshot(userDocRef, (docSnap) => {

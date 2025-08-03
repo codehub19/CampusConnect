@@ -205,15 +205,16 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
     const [isVideoCallOpen, setIsVideoCallOpen] = useState(false);
     const [isGameCenterOpen, setGameCenterOpen] = useState(false);
     
-    const unsubscribeUserDoc = useRef<() => void | null>(null);
+    const userListenerUnsub = useRef<() => void | null>(null);
     const partnerListenerUnsub = useRef<() => void | null>(null);
+
     const { toast, dismiss } = useToast();
     const db = getFirestore(firebaseApp);
 
     const cleanupListeners = useCallback(() => {
-        if (unsubscribeUserDoc.current) {
-            unsubscribeUserDoc.current();
-            unsubscribeUserDoc.current = null;
+        if (userListenerUnsub.current) {
+            userListenerUnsub.current();
+            userListenerUnsub.current = null;
         }
         if (partnerListenerUnsub.current) {
             partnerListenerUnsub.current();
@@ -242,37 +243,45 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
     }, [user, db, dismiss]);
 
     const listenForMatches = useCallback(() => {
-        if (!user || !profile) return;
+        if (!user) return;
         cleanupListeners();
-        unsubscribeUserDoc.current = onSnapshot(doc(db, "users", user.uid), (doc) => {
-            const userData = doc.data() as UserProfile;
+        // Listen to my own user document for a pendingChatId
+        userListenerUnsub.current = onSnapshot(doc(db, "users", user.uid), (docSnap) => {
+            const userData = docSnap.data() as UserProfile;
             if (userData && userData.pendingChatId) {
                 const chatId = userData.pendingChatId;
-                cleanupListeners();
-                updateDoc(doc.ref, { pendingChatId: null });
+                cleanupListeners(); 
+                updateDoc(docSnap.ref, { pendingChatId: null });
                 switchToChat(chatId);
             }
         });
-    }, [user, profile, db, cleanupListeners, switchToChat]);
+    }, [user, db, cleanupListeners, switchToChat]);
     
     const findNewChat = useCallback(async () => {
         if (!user || !profile || isSearching) return;
     
         setIsSearching(true);
-        toast({ title: 'Searching for a chat...' });
+        const { id: toastId } = toast({ title: 'Searching for a chat...' });
     
         const waitingUsersRef = collection(db, 'waiting_users');
+        
+        // Find a user who hasn't blocked me and I haven't blocked
+        const blockedByMe = profile.blockedUsers || [];
         const q = query(
             waitingUsersRef,
             where('uid', '!=', user.uid),
+            where('blockedUsers', 'not-in', [user.uid]),
             limit(1)
         );
+
         const querySnapshot = await getDocs(q);
-    
-        if (!querySnapshot.empty) {
-            const partnerDoc = querySnapshot.docs[0];
+        const potentialPartners = querySnapshot.docs.filter(doc => !blockedByMe.includes(doc.id));
+
+        if (potentialPartners.length > 0) {
+            const partnerDoc = potentialPartners[0];
             const partnerId = partnerDoc.id;
 
+            // Remove partner from waiting queue
             await deleteDoc(partnerDoc.ref);
 
             const partnerProfileDoc = await getDoc(doc(db, "users", partnerId));
@@ -282,8 +291,8 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                     createdAt: serverTimestamp(),
                     memberIds: [user.uid, partnerId].sort(),
                     members: {
-                        [user.uid]: { name: profile.name, avatar: profile.avatar, online: true, active: true },
-                        [partnerId]: { name: partnerProfile.name, avatar: partnerProfile.avatar, online: true, active: true },
+                        [user.uid]: { name: profile.name, avatar: profile.avatar, online: true, active: false },
+                        [partnerId]: { name: partnerProfile.name, avatar: partnerProfile.avatar, online: true, active: false },
                     },
                     isFriendChat: false,
                 });
@@ -292,22 +301,24 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                 await updateDoc(doc(db, "users", partnerId), { pendingChatId: newChatRef.id });
                 await switchToChat(newChatRef.id);
             }
+             dismiss(toastId);
         } else {
+            // No user found, add myself to the waiting queue
             await setDoc(doc(db, 'waiting_users', user.uid), { 
                 uid: user.uid,
-                ...profile,
+                blockedUsers: profile.blockedUsers || [],
                 timestamp: serverTimestamp()
             });
             listenForMatches();
         }
     }, [user, profile, isSearching, db, toast, dismiss, listenForMatches, switchToChat]);
-
+    
     useEffect(() => {
         if (activeView.type === 'chat') {
             const partnerId = activeView.data.user.id;
             partnerListenerUnsub.current = onSnapshot(doc(db, 'users', partnerId), (doc) => {
                 const partnerData = doc.data() as UserProfile;
-                if (!partnerData.online) {
+                if (!partnerData.online && activeView.type === 'chat' && partnerData.id === activeView.data.user.id) {
                     toast({
                         title: "Partner Left",
                         description: `${activeView.data.user.name} has disconnected. Finding a new chat...`
@@ -323,11 +334,8 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                     });
                 }
             });
-        } else {
-            if (partnerListenerUnsub.current) {
-                partnerListenerUnsub.current();
-            }
         }
+        // Cleanup listener when chat is closed or component unmounts
         return () => {
             if (partnerListenerUnsub.current) {
                 partnerListenerUnsub.current();
@@ -335,14 +343,6 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         }
     }, [activeView, db, toast, findNewChat]);
 
-    
-    useEffect(() => {
-        listenForMatches();
-        return () => {
-            cleanupListeners();
-        };
-    }, [listenForMatches, cleanupListeners]);
-    
     const startChatWithFriend = async (friendId: string) => {
         if (!user || !profile) return;
         const sortedIds = [user.uid, friendId].sort();
@@ -394,7 +394,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         if((await getDoc(waitingDocRef)).exists()){
             await deleteDoc(waitingDocRef);
         }
-        listenForMatches();
+        dismiss();
         toast({ title: 'Search canceled' });
     }
     

@@ -98,11 +98,8 @@ export interface Event {
 
 export interface WaitingUser {
   uid: string;
-  name: string;
-  gender: User['gender'];
-  preference: User['preference'];
+  blockedUsers: string[];
   timestamp: any;
-  matchedChatId?: string;
 }
 
 // Games
