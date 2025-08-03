@@ -275,12 +275,12 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                 timestamp: serverTimestamp()
             });
             listenForMatches();
-            toast({ title: 'No users found, waiting for someone to join...' });
+            // toast({ title: 'No users found, waiting for someone to join...' }); // Removed as requested
         } else {
              dismiss();
         }
         
-        setIsSearching(false);
+        // setIsSearching will be set to false in switchToChat or stopSearching
     }, [user, profile, isSearching, db, toast, dismiss]);
 
     const switchToChat = useCallback(async (chatId: string) => {
