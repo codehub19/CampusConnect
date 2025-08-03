@@ -10,7 +10,7 @@ import { LogOut, Search, UserPlus, X, Check, MessageSquare, ArrowLeft, Users } f
 import ChatView from './chat-view';
 import WelcomeView from './welcome-view';
 import VideoCallView from './video-call-view';
-import type { Chat, User as UserProfile, FriendRequest } from '@/lib/types';
+import type { Chat, User as UserProfile, FriendRequest, WaitingUser } from '@/lib/types';
 import { collection, query, where, onSnapshot, getFirestore, getDocs, doc, runTransaction, addDoc, serverTimestamp, setDoc, updateDoc, deleteDoc, orderBy, getDoc, arrayUnion, writeBatch, limit } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
@@ -242,7 +242,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         }
     }, [user, db, dismiss]);
 
-    const listenForMatches = useCallback(() => {
+     const listenForMatches = useCallback(() => {
         if (!user) return;
         cleanupListeners();
         // Listen to my own user document for a pendingChatId
@@ -265,24 +265,26 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
     
         const waitingUsersRef = collection(db, 'waiting_users');
         
-        // Find a user who hasn't blocked me and I haven't blocked
-        const blockedByMe = profile.blockedUsers || [];
         const q = query(
             waitingUsersRef,
-            where('uid', '!=', user.uid),
-            where('blockedUsers', 'not-in', [user.uid]),
-            limit(1)
+            where('uid', '!=', user.uid)
         );
 
         const querySnapshot = await getDocs(q);
-        const potentialPartners = querySnapshot.docs.filter(doc => !blockedByMe.includes(doc.id));
+
+        const blockedByMe = profile.blockedUsers || [];
+        const potentialPartners = querySnapshot.docs
+            .map(doc => ({ id: doc.id, ref: doc.ref, ...doc.data() } as WaitingUser & {id: string, ref: any}))
+            .filter(partner => 
+                !blockedByMe.includes(partner.id) && 
+                !(partner.blockedUsers || []).includes(user.uid)
+            );
 
         if (potentialPartners.length > 0) {
-            const partnerDoc = potentialPartners[0];
-            const partnerId = partnerDoc.id;
+            const partner = potentialPartners[0];
+            const partnerId = partner.id;
 
-            // Remove partner from waiting queue
-            await deleteDoc(partnerDoc.ref);
+            await deleteDoc(partner.ref);
 
             const partnerProfileDoc = await getDoc(doc(db, "users", partnerId));
             if (partnerProfileDoc.exists()) {
@@ -297,13 +299,11 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                     isFriendChat: false,
                 });
                 
-                // Notify the other user and switch self to chat
                 await updateDoc(doc(db, "users", partnerId), { pendingChatId: newChatRef.id });
                 await switchToChat(newChatRef.id);
             }
              dismiss(toastId);
         } else {
-            // No user found, add myself to the waiting queue
             await setDoc(doc(db, 'waiting_users', user.uid), { 
                 uid: user.uid,
                 blockedUsers: profile.blockedUsers || [],
@@ -318,24 +318,26 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
             const partnerId = activeView.data.user.id;
             partnerListenerUnsub.current = onSnapshot(doc(db, 'users', partnerId), (doc) => {
                 const partnerData = doc.data() as UserProfile;
-                if (!partnerData.online && activeView.type === 'chat' && partnerData.id === activeView.data.user.id) {
-                    toast({
-                        title: "Partner Left",
-                        description: `${activeView.data.user.name} has disconnected. Finding a new chat...`
-                    });
-                    setActiveView({ type: 'welcome' });
-                    findNewChat();
-                } else {
-                    setActiveView(prev => {
-                        if (prev.type === 'chat') {
-                            return { ...prev, data: { ...prev.data, user: partnerData } };
-                        }
-                        return prev;
-                    });
+                if (partnerData) {
+                    const isStillInChat = partnerData.online;
+                     if (!isStillInChat && activeView.type === 'chat' && partnerData.id === activeView.data.user.id) {
+                        toast({
+                            title: "Partner Left",
+                            description: `${activeView.data.user.name} has disconnected. Finding a new chat...`
+                        });
+                        setActiveView({ type: 'welcome' });
+                        findNewChat();
+                    } else {
+                        setActiveView(prev => {
+                            if (prev.type === 'chat') {
+                                return { ...prev, data: { ...prev.data, user: partnerData } };
+                            }
+                            return prev;
+                        });
+                    }
                 }
             });
         }
-        // Cleanup listener when chat is closed or component unmounts
         return () => {
             if (partnerListenerUnsub.current) {
                 partnerListenerUnsub.current();
