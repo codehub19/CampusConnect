@@ -16,8 +16,6 @@ export interface User {
   blockedUsers?: string[];
   friends?: string[];
   pendingChatId?: string | null;
-  matchedChatId?: string | null; // Used for matchmaking
-  uid?: string; // from waiting_users
   lastSeen?: any;
 }
 

@@ -72,7 +72,8 @@ export default function ProfileSetupView() {
 
   return (
     <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-[100] p-4">
-      <form onSubmit={handleSubmit} className="bg-card border border-border rounded-2xl shadow-2xl p-8 max-w-lg w-full">
+      <div className="bg-card border border-border rounded-2xl shadow-2xl max-w-lg w-full">
+      <form onSubmit={handleSubmit} className="p-8">
           <div className="text-center">
             <h2 className="text-2xl font-bold text-white">Welcome! Let's set up your profile.</h2>
             <p className="mb-6 text-muted-foreground">This helps us connect you with the right people.</p>
@@ -149,6 +150,7 @@ export default function ProfileSetupView() {
             { isLoading ? <Loader2 className="animate-spin" /> : "Save and Start Chatting" }
           </Button>
       </form>
+      </div>
     </div>
   );
 }
