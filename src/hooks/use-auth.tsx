@@ -23,7 +23,7 @@ import {
   updateDoc,
   serverTimestamp,
 } from 'firebase/firestore';
-import { getDatabase, ref, onDisconnect, set, serverTimestamp as rtdbServerTimestamp } from 'firebase/database';
+import { getDatabase, ref, onDisconnect, set, serverTimestamp as rtdbServerTimestamp, goOnline, goOffline } from 'firebase/database';
 import { firebaseApp, rtdb } from '@/lib/firebase';
 import type { User } from '@/lib/types';
 import { useToast } from './use-toast';
@@ -61,10 +61,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const userDocRef = doc(db, 'users', firebaseUser.uid);
         
         if (rtdb && firebaseUser.emailVerified) {
+            goOnline(rtdb);
             const statusRef = ref(rtdb, `/status/${firebaseUser.uid}`);
             await updateDoc(userDocRef, { online: true }).catch(() => {});
             await set(statusRef, { state: 'online', last_changed: rtdbServerTimestamp() });
              onDisconnect(statusRef).set({ state: 'offline', last_changed: rtdbServerTimestamp() });
+             onDisconnect(userDocRef).update({ online: false, lastSeen: serverTimestamp() });
         }
 
         const unsubProfile = onSnapshot(userDocRef, (docSnap) => {
@@ -76,18 +78,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         return () => unsubProfile();
       } else {
+        if(profile?.id && rtdb) {
+            const statusRef = ref(rtdb, `/status/${profile.id}`);
+            set(statusRef, { state: 'offline', last_changed: rtdbServerTimestamp() });
+        }
         setUser(null);
         setProfile(null);
         setLoading(false);
         if (rtdb) {
-            // clean up any potential lingering disconnect handlers if user logs out
-            onDisconnect(ref(rtdb)).cancel();
+            goOffline(rtdb);
         }
       }
     });
 
     return () => unsubscribe();
-  }, [auth, db]);
+  }, [auth, db, profile?.id]);
 
   const requireAuth = useCallback((callback: () => void) => {
     if (user && profile?.profileComplete) {
