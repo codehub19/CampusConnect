@@ -309,11 +309,11 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         
         let matchFound = false;
 
-        const potentialPartners = querySnapshot.docs.map(doc => doc.data() as WaitingUser);
+        const potentialPartners = querySnapshot.docs
+            .map(doc => doc.data() as WaitingUser)
+            .filter(partner => !myBlockedUsers.includes(partner.uid));
         
         for (const partner of potentialPartners) {
-             if (myBlockedUsers.includes(partner.uid)) continue;
-
              const partnerProfileDoc = await getDoc(doc(db, "users", partner.uid));
              if (partnerProfileDoc.exists()) {
                  const partnerProfile = partnerProfileDoc.data() as UserProfile;
@@ -349,7 +349,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                 uid: user.uid,
                 name: profile.name,
                 avatar: profile.avatar,
-                isGuest: profile.isGuest,
+                isGuest: profile.isGuest ?? false,
                 timestamp: serverTimestamp(),
                 pendingChatId: null
             });
