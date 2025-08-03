@@ -198,7 +198,7 @@ function MainHeader() {
 }
 
 function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) {
-    const { user, profile } = useAuth();
+    const { user, profile, loading } = useAuth(); // <-- Use the loading state
     const [activeView, setActiveView] = useState<ActiveView>({ type: 'welcome' });
     const [isSearching, setIsSearching] = useState(false);
     const [isVideoCallOpen, setIsVideoCallOpen] = useState(false);
@@ -451,6 +451,16 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         onStartChatWithFriend: startChatWithFriend,
         onNavigateHome,
     };
+    
+    // ** FIX: Add loading state check **
+    if (loading) {
+        return (
+            <div className="h-screen w-screen flex items-center justify-center">
+                {/* You can replace this with a more sophisticated loading spinner component */}
+                <Skeleton className="h-12 w-12 rounded-full" />
+            </div>
+        );
+    }
 
     return (
         <MainLayoutContext.Provider value={providerValue}>
