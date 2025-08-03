@@ -66,7 +66,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             await updateDoc(userDocRef, { online: true }).catch(() => {});
             await set(statusRef, { state: 'online', last_changed: rtdbServerTimestamp() });
              onDisconnect(statusRef).set({ state: 'offline', last_changed: rtdbServerTimestamp() });
-             onDisconnect(userDocRef).update({ online: false, lastSeen: serverTimestamp() });
         }
 
         const unsubProfile = onSnapshot(userDocRef, (docSnap) => {
