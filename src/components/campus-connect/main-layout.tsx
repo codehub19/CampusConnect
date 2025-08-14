@@ -187,7 +187,7 @@ function MainHeader() {
                 </div>
                 <div className="flex-1 min-h-0">
                     {activeView.type === 'chat'
-                        ? <ChatView key={activeView.data.chat.id} chat={activeView.data.chat} partner={activeView.data.user} onLeaveChat={onLeaveChat} onMessageSent={() => {}} />
+                        ? <ChatView key={activeView.data.chat.id} chat={activeView.data.chat} partner={activeView.data.user} onLeaveChat={onLeaveChat} />
                         : <WelcomeView />
                     }
                 </div>
@@ -232,7 +232,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
             toast({ title: "You have left the chat." });
         }
         setActiveView({ type: 'welcome' });
-    }, [activeView.type, activeView.data?.chat.id, user, db, toast, cleanupListeners]);
+    }, [activeView, user, db, toast, cleanupListeners]);
 
     const switchToChat = useCallback(async (chatId: string) => {
         if (!user) return;
@@ -250,6 +250,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         if (chatDoc.exists()) {
             const chatData = { id: chatDoc.id, ...chatDoc.data() } as Chat;
             const partnerId = chatData.memberIds.find(id => id !== user.uid)!;
+            
             const partnerProfileDoc = await getDoc(doc(db, 'users', partnerId));
             
             if (partnerProfileDoc.exists()) {
@@ -273,11 +274,13 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                 const partnerIsActive = chatData.members[partnerId]?.active;
 
                 if (partnerIsActive === false) {
-                    toast({
-                        title: "Partner Left",
-                        description: `${activeView.data.user.name} has left the chat.`
-                    });
-                    handleLeaveChat(false);
+                     setTimeout(() => {
+                        handleLeaveChat(true);
+                        toast({
+                            title: "Partner Left",
+                            description: `${activeView.data.user.name} has left the chat.`
+                        });
+                    }, 1000);
                 } else {
                     // Update the chat state with the new game data etc.
                     setActiveView(prev => {
@@ -309,7 +312,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         return () => {
             cleanupListeners();
         };
-    }, [activeView.type, activeView.data?.chat.id, activeView.data?.user.id, db, handleLeaveChat, cleanupListeners, toast]);
+    }, [activeView, db, handleLeaveChat, cleanupListeners, toast]);
 
     const listenForMatches = useCallback(() => {
         if (!user || waitingListenerUnsub.current) return;
@@ -359,34 +362,41 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                     break; // Found a valid partner
                 }
             }
-
+            
             if (partner) {
-                // Found a partner, create chat
+                // Found a partner, create chat via transaction
                 const partnerId = partner.id;
-                const partnerProfileDoc = await getDoc(doc(db, "users", partnerId));
-                if (!partnerProfileDoc.exists()) throw new Error("Partner profile not found.");
-                const partnerProfile = partnerProfileDoc.data() as UserProfile;
-
-                const newChatRef = doc(collection(db, 'chats'));
-                // Create the chat document
-                await setDoc(newChatRef, {
-                    id: newChatRef.id,
-                    createdAt: serverTimestamp(),
-                    memberIds: [user.uid, partnerId].sort(),
-                    members: {
-                        [user.uid]: { name: profile.name, avatar: profile.avatar, online: true, active: true },
-                        [partnerId]: { name: partnerProfile.name, avatar: partnerProfile.avatar, online: true, active: true }
-                    },
-                    isFriendChat: false,
-                    game: null,
-                });
-                
-                // Notify the partner by updating their waiting document
                 const partnerWaitingRef = doc(db, 'waiting_users', partnerId);
-                await updateDoc(partnerWaitingRef, { pendingChatId: newChatRef.id });
-                
-                // Immediately switch to the new chat
-                await switchToChat(newChatRef.id);
+
+                await runTransaction(db, async (transaction) => {
+                    const partnerWaitingDoc = await transaction.get(partnerWaitingRef);
+                    // Ensure partner is still waiting and not being matched
+                    if (!partnerWaitingDoc.exists() || partnerWaitingDoc.data().pendingChatId) {
+                        throw "Partner is no longer available.";
+                    }
+                    
+                    const partnerProfileDoc = await getDoc(doc(db, "users", partnerId));
+                    if (!partnerProfileDoc.exists()) throw new Error("Partner profile not found.");
+                    const partnerProfileData = partnerProfileDoc.data() as UserProfile;
+
+                    const newChatRef = doc(collection(db, 'chats'));
+                    const newChatData = {
+                        id: newChatRef.id,
+                        createdAt: serverTimestamp(),
+                        memberIds: [user.uid, partnerId].sort(),
+                        members: {
+                            [user.uid]: { name: profile.name, avatar: profile.avatar, online: true, active: true },
+                            [partnerId]: { name: partnerProfileData.name, avatar: partnerProfileData.avatar, online: true, active: true }
+                        },
+                        isFriendChat: false,
+                        game: null,
+                    };
+                    
+                    transaction.set(newChatRef, newChatData);
+                    transaction.update(partnerWaitingRef, { pendingChatId: newChatRef.id });
+
+                    await switchToChat(newChatRef.id);
+                });
             } else {
                  // No partner found, add myself to waiting queue
                  const waitingDocRef = doc(db, 'waiting_users', user.uid);
@@ -407,8 +417,12 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
             toast({
                 variant: 'destructive',
                 title: 'Matchmaking failed',
-                description: err?.message ?? 'Unknown error'
+                description: err?.message ?? 'Could not find a match. Please try again.'
             });
+            // Try again if transaction failed
+            if(err.message === "Partner is no longer available.") {
+                findNewChat();
+            }
         }
     }, [user, profile, isSearching, db, toast, dismiss, listenForMatches, switchToChat]);
 
@@ -418,7 +432,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
 
         const q = query(collection(db, "chats"),
             where("isFriendChat", "==", true),
-            where("memberIds", "array-contains-all", sortedIds)
+            where("memberIds", "==", sortedIds)
         );
 
         const querySnapshot = await getDocs(q);
@@ -512,3 +526,5 @@ export default function MainLayoutWrapper({ onNavigateHome }: { onNavigateHome: 
         <MainLayoutContent onNavigateHome={onNavigateHome} />
     )
 }
+
+    

@@ -67,28 +67,28 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
     }, 100);
   };
   
-  const resetInactivityTimer = useCallback(() => {
-    setShowInactivityWarning(false);
-    if (inactivityCountdownRef.current) clearInterval(inactivityCountdownRef.current);
-    if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
-  
-    // 5 minutes total - warning at 4m 50s
-    inactivityTimerRef.current = setTimeout(() => {
-      setShowInactivityWarning(true);
-      setInactivityTimeLeft(10);
-      
-      inactivityCountdownRef.current = setInterval(() => {
-        setInactivityTimeLeft(prev => {
-          if (prev <= 1) {
-            clearInterval(inactivityCountdownRef.current!);
-            onLeaveChat();
-            return 0;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    }, 290000); // 4 minutes 50 seconds
-  }, [onLeaveChat]);
+    const resetInactivityTimer = useCallback(() => {
+        if (chat.isFriendChat) return; // No inactivity timer for friend chats
+        setShowInactivityWarning(false);
+        if (inactivityCountdownRef.current) clearInterval(inactivityCountdownRef.current);
+        if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+
+        inactivityTimerRef.current = setTimeout(() => {
+            setShowInactivityWarning(true);
+            setInactivityTimeLeft(10);
+
+            inactivityCountdownRef.current = setInterval(() => {
+                setInactivityTimeLeft(prev => {
+                    if (prev <= 1) {
+                        clearInterval(inactivityCountdownRef.current!);
+                        onLeaveChat();
+                        return 0;
+                    }
+                    return prev - 1;
+                });
+            }, 1000);
+        }, 290000); // 4 minutes 50 seconds (5 minute total timeout)
+    }, [onLeaveChat, chat.isFriendChat]);
 
   useEffect(() => {
     resetInactivityTimer();
@@ -139,7 +139,7 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
     return () => {
         unsubscribeMessages();
     };
-  }, [chat.id]);
+  }, [chat.id, db, resetInactivityTimer]);
 
   useEffect(() => {
     if (isAtBottomRef.current) {
@@ -354,3 +354,5 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
     </div>
   );
 }
+
+    
