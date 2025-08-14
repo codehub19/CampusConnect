@@ -223,7 +223,7 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
     if(accept) {
         const gameUpdate: any = { 'game.status': 'active', 'game.turn': incomingGameInvite.initiatorId };
         if (incomingGameInvite.gameType === 'tic-tac-toe') {
-            gameUpdate['game.players'] = { [incomingGameInvite.initiatorId]: 'X', [user!.uid]: 'O' };
+            gameUpdate['game.players'] = { [incomingGameInvite.initiatorId]: 'X', [user.uid]: 'O' };
         }
         await updateDoc(chatRef, gameUpdate);
     } else {
