@@ -418,11 +418,10 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
 
         const q = query(collection(db, "chats"),
             where("isFriendChat", "==", true),
-            where("memberIds", "==", sortedIds)
+            where("memberIds", "array-contains-all", sortedIds)
         );
 
         const querySnapshot = await getDocs(q);
-
         let chatData: Chat;
 
         if (!querySnapshot.empty) {
