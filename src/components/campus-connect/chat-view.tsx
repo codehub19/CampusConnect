@@ -73,11 +73,11 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
     if (inactivityCountdownRef.current) clearInterval(inactivityCountdownRef.current);
     if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
   
-    // Set a 4 minute 50 second timer to show the warning
+    // 5 minutes total - warning at 4m 50s
     inactivityTimerRef.current = setTimeout(() => {
       setShowInactivityWarning(true);
       setInactivityTimeLeft(10);
-      // Start a 10 second countdown to end the chat
+      
       inactivityCountdownRef.current = setInterval(() => {
         setInactivityTimeLeft(prev => {
           if (prev <= 1) {
@@ -88,7 +88,7 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
           return prev - 1;
         });
       }, 1000);
-    }, 290000); // 4 minutes 50 seconds (5 * 60 * 1000 - 10000)
+    }, 290000); // 4 minutes 50 seconds
   }, [onLeaveChat]);
 
   useEffect(() => {
@@ -112,6 +112,7 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
 
 
   useEffect(() => {
+    if (!chat.id) return;
     const messagesRef = collection(db, "chats", chat.id, "messages");
     const q = query(messagesRef, orderBy("timestamp", "asc"));
 
@@ -221,7 +222,7 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
     const chatRef = doc(db, 'chats', chat.id);
     if(accept) {
         const gameUpdate: any = { 'game.status': 'active', 'game.turn': incomingGameInvite.initiatorId };
-        if (incomingGameInvite.type === 'tic-tac-toe') {
+        if (incomingGameInvite.gameType === 'tic-tac-toe') {
             gameUpdate['game.players'] = { [incomingGameInvite.initiatorId]: 'X', [user!.uid]: 'O' };
         }
         await updateDoc(chatRef, gameUpdate);

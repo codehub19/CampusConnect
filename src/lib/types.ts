@@ -101,7 +101,6 @@ export interface Event {
 
 export interface WaitingUser {
   uid: string;
-  blockedUsers: string[];
   timestamp: any;
   pendingChatId: string | null;
   name: string;
