@@ -327,6 +327,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
             await switchToChat(newChatRef.id);
             setIsSearching(false); // ✅ stop searching after match
             dismiss(toastId);
+            
         } else {
             // logic for adding yourself to waiting_users if no partner found...
         }
@@ -383,15 +384,25 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
             });
 
             // Listener 2: For the partner's global user profile (for online status icon, name changes, etc.)
-            partnerListenerUnsub.current = onSnapshot(doc(db, 'users', partnerId), (doc) => {
+           partnerListenerUnsub.current = onSnapshot(doc(db, 'users', partnerId), (doc) => {
                 if (doc.exists()) {
                     const partnerData = doc.data() as UserProfile;
+
+                    // If the partner is no longer in this chat, they have left.
+                    if (partnerData.matchedChatId !== chatId) {
+                        handlePartnerLeft();
+                        return; // Stop further processing
+                    }
+
                     setActiveView(prev => {
                         if (prev.type === 'chat') {
                             return { ...prev, data: { ...prev.data, user: partnerData } };
                         }
                         return prev;
                     });
+                } else {
+                    // If the partner's document doesn't exist, they have left.
+                    handlePartnerLeft();
                 }
             });
         }
