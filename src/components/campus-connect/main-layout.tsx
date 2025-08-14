@@ -11,7 +11,7 @@ import ChatView from './chat-view';
 import WelcomeView from './welcome-view';
 import VideoCallView from './video-call-view';
 import type { Chat, User as UserProfile, FriendRequest, WaitingUser } from '@/lib/types';
-import { collection, query, where, onSnapshot, getFirestore, getDocs, doc, runTransaction, addDoc, serverTimestamp, setDoc, updateDoc, deleteDoc, orderBy, getDoc, arrayUnion, writeBatch, limit } from 'firebase/firestore';
+import { collection, query, where, onSnapshot, getFirestore, getDocs, doc, runTransaction, addDoc, serverTimestamp, setDoc, updateDoc, deleteDoc, orderBy, getDoc, arrayUnion, writeBatch, limit, arrayRemove } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '../ui/skeleton';
@@ -54,7 +54,7 @@ function LayoutUI() {
 
     // Listen for friend requests
     useEffect(() => {
-        if (!profile) return;
+        if (!profile?.id) return;
         const q = query(collection(db, 'friend_requests'), where("toId", "==", profile.id), where("status", "==", "pending"));
         const unsubscribe = onSnapshot(q, (snapshot) => {
             const requests = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as FriendRequest));
@@ -65,7 +65,7 @@ function LayoutUI() {
 
     // Listen for friends list
     useEffect(() => {
-        if (!profile || !profile.friends || profile.friends.length === 0) {
+        if (!profile?.friends || profile.friends.length === 0) {
             setFriends([]);
             return;
         }
@@ -73,6 +73,8 @@ function LayoutUI() {
         const unsubscribe = onSnapshot(friendsQuery, (snapshot) => {
             const friendsData = snapshot.docs.map(doc => doc.data() as UserProfile);
             setFriends(friendsData);
+        }, (error) => {
+            console.error("Error fetching friends: ", error);
         });
         return () => unsubscribe();
     }, [profile, db]);
@@ -225,40 +227,53 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
 
         cleanupListeners();
         
-        const chatRef = doc(db, 'chats', chatId);
-        await updateDoc(chatRef, { [`members.${user.uid}.active`]: false });
+        try {
+            const chatRef = doc(db, 'chats', chatId);
+            await updateDoc(chatRef, { [`members.${user.uid}.active`]: false });
+        } catch (error) {
+            console.error("Error leaving chat:", error);
+        }
 
         if (showToast) {
             toast({ title: "You have left the chat." });
         }
         setActiveView({ type: 'welcome' });
     }, [activeView, user, db, toast, cleanupListeners]);
-
+    
     const switchToChat = useCallback(async (chatId: string) => {
         if (!user) return;
         setIsSearching(false);
         cleanupListeners();
         dismiss();
-
+    
         const chatRef = doc(db, 'chats', chatId);
         
-        // This is to prevent a race condition when both users join at the same time
-        await updateDoc(chatRef, { [`members.${user.uid}.active`]: true });
-
-        const chatDoc = await getDoc(chatRef);
-        
-        if (chatDoc.exists()) {
-            const chatData = { id: chatDoc.id, ...chatDoc.data() } as Chat;
-            const partnerId = chatData.memberIds.find(id => id !== user.uid)!;
+        try {
+            // This is to prevent a race condition when both users join at the same time
+            await updateDoc(chatRef, { [`members.${user.uid}.active`]: true });
+    
+            const chatDoc = await getDoc(chatRef);
             
-            const partnerProfileDoc = await getDoc(doc(db, 'users', partnerId));
-            
-            if (partnerProfileDoc.exists()) {
-                const partnerProfile = partnerProfileDoc.data() as UserProfile;
-                setActiveView({ type: 'chat', data: { chat: chatData, user: partnerProfile } });
+            if (chatDoc.exists()) {
+                const chatData = { id: chatDoc.id, ...chatDoc.data() } as Chat;
+                const partnerId = chatData.memberIds.find(id => id !== user.uid)!;
+                
+                const partnerProfileDoc = await getDoc(doc(db, 'users', partnerId));
+                
+                if (partnerProfileDoc.exists()) {
+                    const partnerProfile = partnerProfileDoc.data() as UserProfile;
+                    setActiveView({ type: 'chat', data: { chat: chatData, user: partnerProfile } });
+                } else {
+                     handleLeaveChat(false);
+                }
+            } else {
+                handleLeaveChat(false);
             }
+        } catch (error) {
+            console.error("Error switching to chat:", error);
+            handleLeaveChat(false);
         }
-    }, [user, db, dismiss, cleanupListeners]);
+    }, [user, db, dismiss, cleanupListeners, handleLeaveChat]);
     
     // This effect sets up listeners for the currently active chat
     useEffect(() => {
@@ -380,7 +395,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                     const partnerProfileData = partnerProfileDoc.data() as UserProfile;
 
                     const newChatRef = doc(collection(db, 'chats'));
-                    const newChatData = {
+                    const newChatData: Chat = {
                         id: newChatRef.id,
                         createdAt: serverTimestamp(),
                         memberIds: [user.uid, partnerId].sort(),
@@ -405,7 +420,6 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                     timestamp: serverTimestamp(),
                     pendingChatId: null,
                     name: profile.name,
-                    isGuest: profile.isGuest ?? false,
                  });
                  // Start listening for someone to match with me
                  listenForMatches();
@@ -432,7 +446,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
 
         const q = query(collection(db, "chats"),
             where("isFriendChat", "==", true),
-            where("memberIds", "==", sortedIds)
+            where("memberIds", "array-contains-all", sortedIds)
         );
 
         const querySnapshot = await getDocs(q);
@@ -445,18 +459,20 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
             const friendDoc = await getDoc(doc(db, 'users', friendId));
             if (!friendDoc.exists()) return toast({ title: "Error", description: "Could not find user." });
             const friendProfile = friendDoc.data() as UserProfile;
+            
+            const chatDocRef = doc(collection(db, "chats"));
 
-            const newChatData = {
+            const newChatData: Omit<Chat, 'lastMessage'> = {
+                id: chatDocRef.id,
                 memberIds: sortedIds,
                 members: {
-                    [user.uid]: { name: profile!.name, avatar: profile!.avatar, online: true, active: true },
+                    [user.uid]: { name: profile.name, avatar: profile.avatar, online: true, active: true },
                     [friendId]: { name: friendProfile.name, avatar: friendProfile.avatar, online: true, active: true },
                 },
                 isFriendChat: true,
                 createdAt: serverTimestamp(),
             };
-            const chatDocRef = await addDoc(collection(db, "chats"), newChatData);
-            await updateDoc(chatDocRef, { id: chatDocRef.id });
+            await setDoc(chatDocRef, newChatData);
             const newChatDoc = await getDoc(chatDocRef);
             chatData = { id: newChatDoc.id, ...newChatDoc.data() } as Chat;
         }
@@ -526,5 +542,3 @@ export default function MainLayoutWrapper({ onNavigateHome }: { onNavigateHome: 
         <MainLayoutContent onNavigateHome={onNavigateHome} />
     )
 }
-
-    
