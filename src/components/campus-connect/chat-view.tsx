@@ -117,20 +117,38 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
     const q = query(messagesRef, orderBy("timestamp", "asc"));
 
     const unsubscribeMessages = onSnapshot(q, (snapshot) => {
-        let newMessages: Message[] = [];
-        snapshot.docChanges().forEach((change) => {
-            if (change.type === 'added') {
-                newMessages.push({ id: change.doc.id, ...change.doc.data() } as Message);
+        setMessages(prevMessages => {
+            const newMessages = [...prevMessages];
+            let changed = false;
+
+            snapshot.docChanges().forEach((change) => {
+                const messageData = { id: change.doc.id, ...change.doc.data() } as Message;
+                const existingIndex = newMessages.findIndex(msg => msg.id === messageData.id);
+
+                if (change.type === 'added') {
+                    if (existingIndex === -1) {
+                        newMessages.push(messageData);
+                        changed = true;
+                    }
+                } else if (change.type === 'modified') {
+                    if (existingIndex !== -1) {
+                        newMessages[existingIndex] = messageData;
+                        changed = true;
+                    }
+                } else if (change.type === 'removed') {
+                    if (existingIndex !== -1) {
+                        newMessages.splice(existingIndex, 1);
+                        changed = true;
+                    }
+                }
+            });
+            
+            if (changed) {
+                resetInactivityTimer();
+                return newMessages;
             }
-             if (change.type === 'modified') {
-                const modifiedMessage = { id: change.doc.id, ...change.doc.data() } as Message;
-                setMessages(prev => prev.map(msg => msg.id === modifiedMessage.id ? modifiedMessage : msg));
-            }
+            return prevMessages;
         });
-        if (newMessages.length > 0) {
-            setMessages(prev => [...prev, ...newMessages]);
-            resetInactivityTimer();
-        }
     });
 
     return () => {
