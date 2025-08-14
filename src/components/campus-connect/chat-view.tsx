@@ -26,8 +26,8 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 interface ChatViewProps {
   chat: Chat;
   partner: User;
-  onMessageSent: () => void;
   onLeaveChat: () => void;
+  onMessageSent: () => void;
 }
 
 const InactivityTimer = ({ timeLeft }: { timeLeft: number }) => (
@@ -340,5 +340,3 @@ export default function ChatView({ chat, partner, onLeaveChat, onMessageSent }: 
     </div>
   );
 }
-
-    

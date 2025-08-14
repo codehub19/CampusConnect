@@ -227,7 +227,7 @@ export default function MissedConnectionsView({ onNavigateHome }: MissedConnecti
                       <p className="text-foreground/90 whitespace-pre-wrap">{post.content}</p>
                     </CardContent>
                     <CardFooter className="flex-col items-start gap-4">
-                      <div className="flex items-center justify-start gap-4 text-sm text-muted-foreground">
+                      <div className="flex items-center justify-start gap-4 text-sm text-muted-foreground w-full">
                         <Badge variant="outline" className="flex items-center gap-1.5">
                             <Pin className="h-3 w-3" />
                             {post.location}

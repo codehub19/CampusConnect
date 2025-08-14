@@ -91,7 +91,7 @@ function AppContent() {
       setAppState('home');
     }
 
-  }, [loading, user, profile]);
+  }, [loading, user, profile, appState]);
 
 
   const handleAgree = () => {

@@ -128,6 +128,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         friends: [],
         profileComplete: false,
         pendingChatId: null,
+        isGuest: false,
         ...data,
       };
       await setDoc(userDocRef, defaultProfile);
