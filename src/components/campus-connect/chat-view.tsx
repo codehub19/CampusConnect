@@ -2,14 +2,14 @@
 "use client";
 
 import React, { useState, useRef, useEffect, UIEvent, useCallback } from 'react';
-import { Send, ArrowDown, Bot, IceCream, Image as ImageIcon, Timer, Gamepad2 } from 'lucide-react';
+import { Send, ArrowDown, IceCream, Image as ImageIcon, Timer, Gamepad2 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import type { User, Message, MessageContent, Chat, GameState } from '@/lib/types';
-import { getFirestore, onSnapshot, collection, query, orderBy, addDoc, serverTimestamp, doc, updateDoc, writeBatch, getDocs } from 'firebase/firestore';
+import { getFirestore, onSnapshot, collection, query, orderBy, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { firebaseApp } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
@@ -27,7 +27,6 @@ interface ChatViewProps {
   chat: Chat;
   partner: User;
   onLeaveChat: () => void;
-  onMessageSent: () => void;
 }
 
 const InactivityTimer = ({ timeLeft }: { timeLeft: number }) => (
@@ -117,44 +116,30 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
     const q = query(messagesRef, orderBy("timestamp", "asc"));
 
     const unsubscribeMessages = onSnapshot(q, (snapshot) => {
-        setMessages(prevMessages => {
-            const newMessages = [...prevMessages];
-            let changed = false;
-
-            snapshot.docChanges().forEach((change) => {
-                const messageData = { id: change.doc.id, ...change.doc.data() } as Message;
-                const existingIndex = newMessages.findIndex(msg => msg.id === messageData.id);
-
-                if (change.type === 'added') {
-                    if (existingIndex === -1) {
-                        newMessages.push(messageData);
-                        changed = true;
-                    }
-                } else if (change.type === 'modified') {
-                    if (existingIndex !== -1) {
-                        newMessages[existingIndex] = messageData;
-                        changed = true;
-                    }
-                } else if (change.type === 'removed') {
-                    if (existingIndex !== -1) {
-                        newMessages.splice(existingIndex, 1);
-                        changed = true;
-                    }
-                }
-            });
-            
-            if (changed) {
-                resetInactivityTimer();
-                return newMessages;
+        const addedMessages: Message[] = [];
+        snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+                addedMessages.push({ id: change.doc.id, ...change.doc.data() } as Message);
             }
-            return prevMessages;
         });
+
+        if (addedMessages.length > 0) {
+             setMessages(prevMessages => {
+                const existingIds = new Set(prevMessages.map(m => m.id));
+                const newUniqueMessages = addedMessages.filter(m => !existingIds.has(m.id));
+                if (newUniqueMessages.length === 0) {
+                    return prevMessages;
+                }
+                resetInactivityTimer();
+                return [...prevMessages, ...newUniqueMessages];
+            });
+        }
     });
 
     return () => {
         unsubscribeMessages();
     };
-  }, [chat.id, db, resetInactivityTimer]);
+  }, [chat.id]);
 
   useEffect(() => {
     if (isAtBottomRef.current) {
