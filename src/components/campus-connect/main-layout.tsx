@@ -263,8 +263,8 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         const waitingDocRef = doc(db, "waiting_users", user.uid);
         waitingListenerUnsub.current = onSnapshot(waitingDocRef, async (docSnap) => {
             const waitingData = docSnap.data();
-            if (waitingData && waitingData.matchedChatId) {
-                const chatId = waitingData.matchedChatId;
+            if (waitingData && waitingData.pendingChatId) {
+                const chatId = waitingData.pendingChatId;
                 cleanupListeners();
                 await deleteDoc(waitingDocRef);
                 switchToChat(chatId);
@@ -282,7 +282,6 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         const q = query(
             waitingUsersRef,
             where('uid', '!=', user.uid),
-            orderBy('uid'), 
             limit(10)
         );
 
@@ -304,7 +303,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                 const partnerProfileDoc = await getDoc(doc(db, "users", partnerId));
                 if (!partnerProfileDoc.exists()) throw new Error("Partner profile not found.");
 
-                const partnerProfile = partnerProfileDoc.data();
+                const partnerProfile = partnerProfileDoc.data() as UserProfile;
 
                 const newChatRef = doc(collection(db, 'chats'));
                 await setDoc(newChatRef, {
@@ -316,8 +315,8 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                     },
                     isFriendChat: false
                 });
-
-                await updateDoc(partner.ref, { matchedChatId: newChatRef.id });
+                
+                await updateDoc(partner.ref, { pendingChatId: newChatRef.id });
                 await switchToChat(newChatRef.id);
             } else {
                  const waitingDocRef = doc(db, 'waiting_users', user.uid);
@@ -325,9 +324,9 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                     uid: user.uid,
                     blockedUsers: profile.blockedUsers || [],
                     timestamp: serverTimestamp(),
-                    matchedChatId: null,
-                    isGuest: profile.isGuest ?? false,
+                    pendingChatId: null,
                     name: profile.name,
+                    isGuest: profile.isGuest ?? false,
                  });
                  listenForMatches();
             }
@@ -344,55 +343,58 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
     }, [user, profile, isSearching, db, toast, dismiss, listenForMatches, switchToChat]);
 
     useEffect(() => {
-        if (activeView.type === 'chat') {
-            const chatId = activeView.data.chat.id;
-            const partnerId = activeView.data.user.id;
-            
-            // This timeout gives both clients a moment to set their status to active
-            const timer = setTimeout(() => {
-                const chatRef = doc(db, 'chats', chatId);
-                chatListenerUnsub.current = onSnapshot(chatRef, (docSnap) => {
-                    if (docSnap.exists()) {
-                        const chatData = { id: docSnap.id, ...docSnap.data() } as Chat;
-                        const partnerIsActive = chatData.members[partnerId]?.active;
-                        
-                        if (partnerIsActive === false) {
-                            toast({
-                                title: "Partner Left",
-                                description: `${activeView.data.user.name} has left the chat.`
-                            });
-                            handleLeaveChat(false);
-                        } else {
-                            setActiveView(prev => {
-                                if (prev.type === 'chat') {
-                                    return { ...prev, data: { ...prev.data, chat: chatData } };
-                                }
-                                return prev;
-                            });
-                        }
-                    } else {
+        if (activeView.type !== 'chat') return;
+        
+        const chatId = activeView.data.chat.id;
+        const partnerId = activeView.data.user.id;
+        
+        // Delay listener setup to avoid race condition
+        const timer = setTimeout(() => {
+            const chatRef = doc(db, 'chats', chatId);
+            chatListenerUnsub.current = onSnapshot(chatRef, (docSnap) => {
+                if (docSnap.exists()) {
+                    const chatData = { id: docSnap.id, ...docSnap.data() } as Chat;
+                    const partnerIsActive = chatData.members[partnerId]?.active;
+                    
+                    if (partnerIsActive === false) {
+                        toast({
+                            title: "Partner Left",
+                            description: `${activeView.data.user.name} has left the chat.`
+                        });
                         handleLeaveChat(false);
+                    } else {
+                        // Update the active view with the latest chat data (e.g., for game state)
+                        setActiveView(prev => {
+                            if (prev.type === 'chat') {
+                                return { ...prev, data: { ...prev.data, chat: chatData } };
+                            }
+                            return prev;
+                        });
                     }
-                });
-            }, 1500); // 1.5 second delay
-    
-            partnerListenerUnsub.current = onSnapshot(doc(db, 'users', partnerId), (doc) => {
-                if (doc.exists()) {
-                    setActiveView(prev => {
-                        if (prev.type === 'chat') {
-                            return { ...prev, data: { ...prev.data, user: doc.data() as UserProfile } };
-                        }
-                        return prev;
-                    });
+                } else {
+                    // Chat document was deleted
+                    handleLeaveChat(false);
                 }
             });
+        }, 1500); // 1.5 second delay
 
-            return () => {
-                clearTimeout(timer);
-                cleanupListeners();
-            };
-        }
-    }, [activeView.type, activeView.data?.chat.id, activeView.data?.user.name, db, toast, handleLeaveChat, cleanupListeners]);
+        // Listener for partner's profile changes (e.g., online status)
+        partnerListenerUnsub.current = onSnapshot(doc(db, 'users', partnerId), (docSnap) => {
+            if (docSnap.exists()) {
+                setActiveView(prev => {
+                    if (prev.type === 'chat') {
+                        return { ...prev, data: { ...prev.data, user: docSnap.data() as UserProfile } };
+                    }
+                    return prev;
+                });
+            }
+        });
+
+        return () => {
+            clearTimeout(timer);
+            cleanupListeners();
+        };
+    }, [activeView.data?.chat.id, activeView.data?.user.id, activeView.data?.user.name, activeView.type, db, handleLeaveChat, cleanupListeners, toast]);
 
     const startChatWithFriend = async (friendId: string) => {
         if (!user || !profile) return;
@@ -495,5 +497,3 @@ export default function MainLayoutWrapper({ onNavigateHome }: { onNavigateHome: 
         <MainLayoutContent onNavigateHome={onNavigateHome} />
     )
 }
-
-    
