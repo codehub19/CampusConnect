@@ -15,7 +15,6 @@ export interface User {
   bio?: string;
   blockedUsers?: string[];
   friends?: string[];
-  pendingChatId?: string | null;
   lastSeen?: any;
 }
 
@@ -100,15 +99,9 @@ export interface Event {
 
 export interface WaitingUser {
   uid: string;
-<<<<<<< HEAD
-  name: string;
-  avatar: string;
-  isGuest?: boolean;
-=======
   blockedUsers: string[];
->>>>>>> 96fb5a500d93d25340bf813c7ae9b9eefb069ba1
   timestamp: any;
-  pendingChatId: string | null;
+  matchedChatId: string | null;
 }
 
 // Games
