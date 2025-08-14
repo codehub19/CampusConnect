@@ -16,10 +16,8 @@ import { firebaseApp } from '@/lib/firebase';
 import { useToast } from '@/hooks/use-toast';
 import { Skeleton } from '../ui/skeleton';
 import ChatHeader from './chat-header';
-import GameCenterView from './game-center-view';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import InactivityTimer from './inactivity-timer';
 
 type ActiveView =
     | { type: 'welcome' }
@@ -241,8 +239,11 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         dismiss();
 
         const chatRef = doc(db, 'chats', chatId);
-        const chatDoc = await getDoc(chatRef);
+        
+        await updateDoc(chatRef, { [`members.${user.uid}.active`]: true });
 
+        const chatDoc = await getDoc(chatRef);
+        
         if (chatDoc.exists()) {
             const chatData = { id: chatDoc.id, ...chatDoc.data() } as Chat;
             const partnerId = chatData.memberIds.find(id => id !== user.uid)!;
@@ -250,7 +251,6 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
             
             if (partnerProfileDoc.exists()) {
                 const partnerProfile = partnerProfileDoc.data() as UserProfile;
-                await updateDoc(chatRef, { [`members.${user.uid}.active`]: true });
                 setActiveView({ type: 'chat', data: { chat: chatData, user: partnerProfile } });
             }
         }
