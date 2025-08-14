@@ -69,6 +69,7 @@ export default function ChatView({ chat, partner, onLeaveChat, onMessageSent }: 
   };
 
   const resetInactivityTimer = useCallback(() => {
+    onMessageSent(); // Notify parent of activity to keep chat alive
     setShowInactivityWarning(false);
     if (inactivityCountdownRef.current) clearInterval(inactivityCountdownRef.current);
     if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
@@ -87,7 +88,7 @@ export default function ChatView({ chat, partner, onLeaveChat, onMessageSent }: 
             });
         }, 1000);
     }, 290000); // 4 minutes 50 seconds
-  }, [onLeaveChat]);
+  }, [onLeaveChat, onMessageSent]);
   
   useEffect(() => {
     resetInactivityTimer();
@@ -153,7 +154,7 @@ export default function ChatView({ chat, partner, onLeaveChat, onMessageSent }: 
         timestamp: serverTimestamp(),
         status: 'sent',
     });
-    onMessageSent(); // Notify parent about activity
+    resetInactivityTimer(); // Reset timer on sending a message
     scrollToBottom('smooth');
   };
 
@@ -340,3 +341,5 @@ export default function ChatView({ chat, partner, onLeaveChat, onMessageSent }: 
     </div>
   );
 }
+
+    
