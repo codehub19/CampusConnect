@@ -68,7 +68,7 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
   };
   
     const resetInactivityTimer = useCallback(() => {
-        if (chat.isFriendChat) return; // No inactivity timer for friend chats
+        if (chat.isFriendChat) return;
         setShowInactivityWarning(false);
         if (inactivityCountdownRef.current) clearInterval(inactivityCountdownRef.current);
         if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
@@ -87,67 +87,67 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
                     return prev - 1;
                 });
             }, 1000);
-        }, 290000); // 4 minutes 50 seconds (5 minute total timeout)
+        }, 290000);
     }, [onLeaveChat, chat.isFriendChat]);
 
-  useEffect(() => {
-    resetInactivityTimer();
-    return () => {
-      if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
-      if (inactivityCountdownRef.current) clearInterval(inactivityCountdownRef.current);
-    };
-  }, [resetInactivityTimer]);
+    useEffect(() => {
+        resetInactivityTimer();
+        return () => {
+            if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
+            if (inactivityCountdownRef.current) clearInterval(inactivityCountdownRef.current);
+        };
+    }, [resetInactivityTimer]);
   
-  useEffect(() => {
-    const gameData = chat.game;
-    setGameState(gameData || null);
+    useEffect(() => {
+        const gameData = chat.game;
+        setGameState(gameData || null);
 
-    if (gameData?.status === 'pending' && gameData?.initiatorId !== user?.uid) {
-       setIncomingGameInvite(gameData);
-    } else {
-       setIncomingGameInvite(null);
-    }
-  }, [chat.game, user?.uid]);
+        if (gameData?.status === 'pending' && gameData?.initiatorId !== user?.uid) {
+        setIncomingGameInvite(gameData);
+        } else {
+        setIncomingGameInvite(null);
+        }
+    }, [chat.game, user?.uid]);
 
 
-  useEffect(() => {
-    if (!chat.id) return;
-    const messagesRef = collection(db, "chats", chat.id, "messages");
-    const q = query(messagesRef, orderBy("timestamp", "asc"));
+    useEffect(() => {
+        if (!chat.id) return;
+        const messagesRef = collection(db, "chats", chat.id, "messages");
+        const q = query(messagesRef, orderBy("timestamp", "asc"));
 
-    const unsubscribeMessages = onSnapshot(q, (snapshot) => {
-        const addedMessages: Message[] = [];
-        snapshot.docChanges().forEach((change) => {
-            if (change.type === 'added') {
-                addedMessages.push({ id: change.doc.id, ...change.doc.data() } as Message);
+        const unsubscribeMessages = onSnapshot(q, (snapshot) => {
+            const addedMessages: Message[] = [];
+            snapshot.docChanges().forEach((change) => {
+                if (change.type === 'added') {
+                    addedMessages.push({ id: change.doc.id, ...change.doc.data() } as Message);
+                }
+            });
+
+            if (addedMessages.length > 0) {
+                setMessages(prevMessages => {
+                    const existingIds = new Set(prevMessages.map(m => m.id));
+                    const newUniqueMessages = addedMessages.filter(m => !existingIds.has(m.id));
+                    if (newUniqueMessages.length === 0) {
+                        return prevMessages;
+                    }
+                    resetInactivityTimer();
+                    return [...prevMessages, ...newUniqueMessages];
+                });
             }
         });
 
-        if (addedMessages.length > 0) {
-             setMessages(prevMessages => {
-                const existingIds = new Set(prevMessages.map(m => m.id));
-                const newUniqueMessages = addedMessages.filter(m => !existingIds.has(m.id));
-                if (newUniqueMessages.length === 0) {
-                    return prevMessages;
-                }
-                resetInactivityTimer();
-                return [...prevMessages, ...newUniqueMessages];
-            });
+        return () => {
+            unsubscribeMessages();
+        };
+    }, [chat.id, db, resetInactivityTimer]);
+
+    useEffect(() => {
+        if (isAtBottomRef.current) {
+            scrollToBottom();
+        } else {
+            setShowScrollToBottom(true);
         }
-    });
-
-    return () => {
-        unsubscribeMessages();
-    };
-  }, [chat.id, db, resetInactivityTimer]);
-
-  useEffect(() => {
-    if (isAtBottomRef.current) {
-        scrollToBottom();
-    } else {
-        setShowScrollToBottom(true);
-    }
-  }, [messages, gameState]);
+    }, [messages, gameState]);
 
   const handleScroll = (e: UIEvent<HTMLDivElement>) => {
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
