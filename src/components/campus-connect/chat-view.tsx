@@ -114,13 +114,26 @@ export default function ChatView({ chat, partner, onLeaveChat, onMessageSent }: 
   useEffect(() => {
     const messagesRef = collection(db, "chats", chat.id, "messages");
     const q = query(messagesRef, orderBy("timestamp", "asc"));
+    
+    // Set initial messages quickly
+    getDocs(q).then(snapshot => {
+      const initialMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
+      setMessages(initialMessages);
+    });
 
     const unsubscribeMessages = onSnapshot(q, (snapshot) => {
-      const fetchedMessages: Message[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
-      if (snapshot.docChanges().some(change => change.type === 'added')) {
-        resetInactivityTimer();
-      }
-      setMessages(fetchedMessages);
+        snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+                const newMessage = { id: change.doc.id, ...change.doc.data() } as Message;
+                // Avoid adding duplicates on initial load
+                setMessages(prev => prev.some(msg => msg.id === newMessage.id) ? prev : [...prev, newMessage]);
+                resetInactivityTimer();
+            }
+             if (change.type === 'modified') {
+                const modifiedMessage = { id: change.doc.id, ...change.doc.data() } as Message;
+                setMessages(prev => prev.map(msg => msg.id === modifiedMessage.id ? modifiedMessage : msg));
+            }
+        });
     });
 
     return () => {
@@ -341,5 +354,3 @@ export default function ChatView({ chat, partner, onLeaveChat, onMessageSent }: 
     </div>
   );
 }
-
-    
