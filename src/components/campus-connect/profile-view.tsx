@@ -35,7 +35,7 @@ const years = ["Freshman", "Sophomore", "Junior", "Senior", "Graduate"];
 
 const FriendListItem = ({ friendId }: { friendId: string }) => {
     const [friend, setFriend] = useState<User | null>(null);
-    const { user: currentUser, updateProfile } = useAuth();
+    const { user: currentUser } = useAuth();
     const { toast } = useToast();
     const db = getFirestore(firebaseApp);
     

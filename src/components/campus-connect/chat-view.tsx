@@ -9,7 +9,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
 import type { User, Message, MessageContent, Chat, GameState } from '@/lib/types';
-import { getFirestore, onSnapshot, collection, query, orderBy, addDoc, serverTimestamp, doc, updateDoc, writeBatch } from 'firebase/firestore';
+import { getFirestore, onSnapshot, collection, query, orderBy, addDoc, serverTimestamp, doc, updateDoc, writeBatch, getDocs } from 'firebase/firestore';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { firebaseApp } from '@/lib/firebase';
 import { useAuth } from '@/hooks/use-auth';
@@ -38,7 +38,7 @@ const InactivityTimer = ({ timeLeft }: { timeLeft: number }) => (
 );
 
 
-export default function ChatView({ chat, partner, onLeaveChat, onMessageSent }: ChatViewProps) {
+export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) {
   const { user, profile } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isGameCenterOpen, setGameCenterOpen] = useState(false);
@@ -67,29 +67,30 @@ export default function ChatView({ chat, partner, onLeaveChat, onMessageSent }: 
         }
     }, 100);
   };
-
+  
   const resetInactivityTimer = useCallback(() => {
-    onMessageSent(); // Notify parent of activity to keep chat alive
     setShowInactivityWarning(false);
     if (inactivityCountdownRef.current) clearInterval(inactivityCountdownRef.current);
     if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
-
-    inactivityTimerRef.current = setTimeout(() => {
-        setShowInactivityWarning(true);
-        setInactivityTimeLeft(10);
-        inactivityCountdownRef.current = setInterval(() => {
-            setInactivityTimeLeft(prev => {
-                if (prev <= 1) {
-                    clearInterval(inactivityCountdownRef.current!);
-                    onLeaveChat();
-                    return 0;
-                }
-                return prev - 1;
-            });
-        }, 1000);
-    }, 290000); // 4 minutes 50 seconds
-  }, [onLeaveChat, onMessageSent]);
   
+    // Set a 4 minute 50 second timer to show the warning
+    inactivityTimerRef.current = setTimeout(() => {
+      setShowInactivityWarning(true);
+      setInactivityTimeLeft(10);
+      // Start a 10 second countdown to end the chat
+      inactivityCountdownRef.current = setInterval(() => {
+        setInactivityTimeLeft(prev => {
+          if (prev <= 1) {
+            clearInterval(inactivityCountdownRef.current!);
+            onLeaveChat();
+            return 0;
+          }
+          return prev - 1;
+        });
+      }, 1000);
+    }, 290000); // 4 minutes 50 seconds (5 * 60 * 1000 - 10000)
+  }, [onLeaveChat]);
+
   useEffect(() => {
     resetInactivityTimer();
     return () => {
@@ -98,7 +99,6 @@ export default function ChatView({ chat, partner, onLeaveChat, onMessageSent }: 
     };
   }, [resetInactivityTimer]);
   
-  // This useEffect handles game state updates from the parent `chat` prop
   useEffect(() => {
     const gameData = chat.game;
     setGameState(gameData || null);
@@ -114,26 +114,22 @@ export default function ChatView({ chat, partner, onLeaveChat, onMessageSent }: 
   useEffect(() => {
     const messagesRef = collection(db, "chats", chat.id, "messages");
     const q = query(messagesRef, orderBy("timestamp", "asc"));
-    
-    // Set initial messages quickly
-    getDocs(q).then(snapshot => {
-      const initialMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
-      setMessages(initialMessages);
-    });
 
     const unsubscribeMessages = onSnapshot(q, (snapshot) => {
+        let newMessages: Message[] = [];
         snapshot.docChanges().forEach((change) => {
             if (change.type === 'added') {
-                const newMessage = { id: change.doc.id, ...change.doc.data() } as Message;
-                // Avoid adding duplicates on initial load
-                setMessages(prev => prev.some(msg => msg.id === newMessage.id) ? prev : [...prev, newMessage]);
-                resetInactivityTimer();
+                newMessages.push({ id: change.doc.id, ...change.doc.data() } as Message);
             }
              if (change.type === 'modified') {
                 const modifiedMessage = { id: change.doc.id, ...change.doc.data() } as Message;
                 setMessages(prev => prev.map(msg => msg.id === modifiedMessage.id ? modifiedMessage : msg));
             }
         });
+        if (newMessages.length > 0) {
+            setMessages(prev => [...prev, ...newMessages]);
+            resetInactivityTimer();
+        }
     });
 
     return () => {
@@ -167,7 +163,7 @@ export default function ChatView({ chat, partner, onLeaveChat, onMessageSent }: 
         timestamp: serverTimestamp(),
         status: 'sent',
     });
-    resetInactivityTimer(); // Reset timer on sending a message
+    resetInactivityTimer();
     scrollToBottom('smooth');
   };
 

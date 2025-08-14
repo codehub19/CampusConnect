@@ -64,15 +64,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             goOnline(rtdb);
             const statusRef = ref(rtdb, `/status/${firebaseUser.uid}`);
             
-            // This promise will resolve when the client is disconnected.
-             onDisconnect(statusRef).set({ state: 'offline', last_changed: rtdbServerTimestamp() }).then(() => {
+            onDisconnect(statusRef).set({ state: 'offline', last_changed: rtdbServerTimestamp() }).then(() => {
                 updateDoc(userDocRef, { online: false, lastSeen: serverTimestamp() });
              });
 
-             // Set the user's status to online in RTDB.
             await set(statusRef, { state: 'online', last_changed: rtdbServerTimestamp() });
-
-            // Also update Firestore to reflect the online status immediately.
             await updateDoc(userDocRef, { online: true }).catch(() => {});
         }
 
@@ -128,7 +124,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         friends: [],
         profileComplete: false,
         pendingChatId: null,
-        isGuest: false,
+        isGuest: data.isGuest ?? false,
         ...data,
       };
       await setDoc(userDocRef, defaultProfile);
@@ -168,7 +164,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         name: email.split('@')[0],
         profileComplete: false,
      });
-     // Ensure email is sent before we do anything else
      await sendEmailVerification(result.user);
      toast({
         title: 'Verification Email Sent',
