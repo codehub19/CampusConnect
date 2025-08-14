@@ -122,16 +122,16 @@ export default function CreateEventView({ isOpen, onOpenChange, eventToEdit }: C
               description
         });
         
-        const newEvent: Omit<Event, 'id'> = {
+        const newEventData: Omit<Event, 'id'> = {
           ...eventData,
           organizer: profile.name,
           authorId: user.uid,
           imageUrl: imageResult.imageUrl,
           chatId: `event-${Date.now()}-${Math.random()}`,
           timestamp: serverTimestamp(),
-        };
+        } as Omit<Event, 'id'>;
         
-        await addDoc(collection(db, 'events'), newEvent);
+        await addDoc(collection(db, 'events'), newEventData);
         
         toast({
           title: 'Event Created!',

@@ -11,6 +11,7 @@ import type { User, Message, MessageContent, Event } from '@/lib/types';
 import { getFirestore, onSnapshot, collection, query, orderBy, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import Image from 'next/image';
+import { Textarea } from '../ui/textarea';
 
 interface GroupChatViewProps {
   event: Event;
@@ -121,7 +122,7 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
-        <header className="flex items-center p-4 border-b border-border sticky top-0 bg-background/80 backdrop-blur-sm z-10">
+        <header className="flex items-center p-4 border-b border-border sticky top-0 bg-background/80 backdrop-blur-sm z-10 flex-shrink-0">
           <div className="w-1/3">
             <Button variant="ghost" size="icon" onClick={onLeaveChat}>
               <ArrowLeft className="h-5 w-5" />
@@ -134,7 +135,7 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
           </div>
         </header>
 
-        <div className="h-full flex flex-col relative flex-1">
+        <div className="flex-1 flex flex-col relative min-h-0">
             <ScrollArea className="flex-grow p-4" ref={scrollAreaRef} onScroll={handleScroll}>
             <div className="space-y-4">
                 {messages.map((message, index) => {
@@ -182,11 +183,11 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
                     <ArrowDown className="h-5 w-5" />
                 </Button>
             )}
-            <div className="p-4 border-t">
+            <div className="p-4 border-t flex-shrink-0">
                 <form onSubmit={handleSendMessage} className="flex w-full items-center gap-2">
-                <textarea
+                <Textarea
                     placeholder="Type a message..."
-                    className="flex-1 resize-none bg-background focus-visible:ring-1 focus-visible:ring-offset-0 flex min-h-[40px] w-full rounded-md border border-input px-3 py-2 text-base ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 md:text-sm"
+                    className="flex-1 resize-none bg-background focus-visible:ring-1 focus-visible:ring-offset-0"
                     rows={1}
                     onKeyDown={(e) => {
                     if (e.key === 'Enter' && !e.shiftKey) {

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { CalendarDays, ArrowRight, HeartCrack, Lightbulb, Users, Bot } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import SuggestionView from "./suggestion-view";
+import { useAuth } from "@/hooks/use-auth";
 
 interface HomeViewProps {
   onNavigateToEvents: () => void;
@@ -16,11 +17,19 @@ interface HomeViewProps {
   userName: string;
   onOpenProfile: () => void;
   userAvatar?: string;
-  onlineCount: number | null;
 }
 
-export default function HomeView({ onNavigateToEvents, onNavigateToMissedConnections, onNavigateToChat, onNavigateToAIChat, userName, onOpenProfile, userAvatar, onlineCount }: HomeViewProps) {
+export default function HomeView({ onNavigateToEvents, onNavigateToMissedConnections, onNavigateToChat, onNavigateToAIChat, userName, onOpenProfile, userAvatar }: HomeViewProps) {
   const [isSuggestionOpen, setSuggestionOpen] = useState(false);
+  const { requireAuth } = useAuth();
+
+  const handleOpenProfile = () => {
+    requireAuth(onOpenProfile);
+  };
+
+  const handleSuggestionClick = () => {
+    requireAuth(() => setSuggestionOpen(true));
+  }
 
   return (
     <>
@@ -28,7 +37,7 @@ export default function HomeView({ onNavigateToEvents, onNavigateToMissedConnect
     <div className="flex flex-col min-h-screen bg-background">
        <header className="flex items-center justify-between p-4 border-b border-border sticky top-0 bg-background/80 backdrop-blur-sm z-10">
         <h1 className="text-xl font-bold text-foreground">CampusConnect</h1>
-        <Button onClick={onOpenProfile} variant="ghost" size="icon" className="rounded-full h-10 w-10">
+        <Button onClick={handleOpenProfile} variant="ghost" size="icon" className="rounded-full h-10 w-10">
             <Avatar className="h-10 w-10">
                 <AvatarImage src={userAvatar} alt={userName} data-ai-hint="profile avatar" />
                 <AvatarFallback>{userName.charAt(0)}</AvatarFallback>
@@ -44,7 +53,7 @@ export default function HomeView({ onNavigateToEvents, onNavigateToMissedConnect
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-6xl">
             <Card 
                 className="bg-card/80 border-border shadow-lg hover:shadow-primary/20 hover:border-primary/50 transition-all duration-300 transform hover:-translate-y-1 flex flex-col cursor-pointer"
-                onClick={onNavigateToChat}
+                onClick={() => requireAuth(onNavigateToChat)}
             >
                 <CardHeader>
                     <div className="flex items-center gap-4">
@@ -69,25 +78,25 @@ export default function HomeView({ onNavigateToEvents, onNavigateToMissedConnect
 
             <Card 
                 className="bg-card/80 border-border shadow-lg hover:shadow-green-500/10 hover:border-green-500/50 transition-all duration-300 transform hover:-translate-y-1 flex flex-col cursor-pointer"
-                onClick={onNavigateToAIChat}
+                onClick={onNavigateToEvents}
             >
                 <CardHeader>
                     <div className="flex items-center gap-4">
                         <div className="p-3 bg-green-500/10 rounded-lg">
-                            <Bot className="h-8 w-8 text-green-500" />
+                            <CalendarDays className="h-8 w-8 text-green-500" />
                         </div>
                         <div>
-                            <CardTitle className="text-2xl font-bold">AI Assistant</CardTitle>
-                            <CardDescription>Get answers about campus life.</CardDescription>
+                            <CardTitle className="text-2xl font-bold">Campus Events</CardTitle>
+                            <CardDescription>Discover what's happening on campus.</CardDescription>
                         </div>
                     </div>
                 </CardHeader>
                 <CardContent className="flex-grow flex flex-col justify-between">
                     <p className="text-muted-foreground mb-6">
-                        Ask about dining hall hours, study spots, or get advice from our helpful AI.
+                        Find study groups, parties, club meetings, and more. Join event-specific group chats.
                     </p>
                     <Button variant="secondary" className="w-full font-bold text-lg py-6 mt-auto bg-green-500/10 hover:bg-green-500/20 text-green-400 border-green-500/20">
-                        Chat with AI <ArrowRight className="ml-2 h-5 w-5" />
+                        Browse Events <ArrowRight className="ml-2 h-5 w-5" />
                     </Button>
                 </CardContent>
             </Card>
@@ -116,11 +125,36 @@ export default function HomeView({ onNavigateToEvents, onNavigateToMissedConnect
                     </Button>
                 </CardContent>
             </Card>
+
+             <Card 
+                className="bg-card/80 border-border shadow-lg hover:shadow-yellow-500/10 hover:border-yellow-500/50 transition-all duration-300 transform hover:-translate-y-1 flex flex-col cursor-pointer md:col-span-2 lg:col-span-3"
+                onClick={() => requireAuth(onNavigateToAIChat)}
+            >
+                <CardHeader>
+                    <div className="flex items-center gap-4">
+                        <div className="p-3 bg-yellow-500/10 rounded-lg">
+                            <Bot className="h-8 w-8 text-yellow-500" />
+                        </div>
+                        <div>
+                            <CardTitle className="text-2xl font-bold">AI Assistant</CardTitle>
+                            <CardDescription>Get answers about campus life, ask for advice, or just chat.</CardDescription>
+                        </div>
+                    </div>
+                </CardHeader>
+                <CardContent className="flex-grow flex flex-col justify-between">
+                     <p className="text-muted-foreground mb-6">
+                        Your friendly AI guide to everything on campus. Powered by Google's Gemini models.
+                    </p>
+                    <Button variant="secondary" className="w-full font-bold text-lg py-6 mt-auto bg-yellow-500/10 hover:bg-yellow-500/20 text-yellow-400 border-yellow-500/20">
+                        Chat with AI <ArrowRight className="ml-2 h-5 w-5" />
+                    </Button>
+                </CardContent>
+            </Card>
         </div>
       </main>
 
        <div className="fixed bottom-4 left-4 z-50">
-        <Button onClick={() => setSuggestionOpen(true)} variant="outline" size="icon" className="rounded-full h-14 w-14 shadow-lg bg-card/80 border-border hover:bg-accent">
+        <Button onClick={handleSuggestionClick} variant="outline" size="icon" className="rounded-full h-14 w-14 shadow-lg bg-card/80 border-border hover:bg-accent">
             <Lightbulb className="h-6 w-6 text-yellow-400" />
         </Button>
       </div>

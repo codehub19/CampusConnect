@@ -2,13 +2,13 @@
 "use client";
 
 import React from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { getFirestore, doc, updateDoc } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import type { GameState } from '@/lib/types';
 import { useAuth } from '@/hooks/use-auth';
-import { toast } from '@/hooks/use-toast';
+import { useToast } from '@/hooks/use-toast';
 
 
 interface GameCenterViewProps {
@@ -19,20 +19,20 @@ interface GameCenterViewProps {
 }
 
 export default function GameCenterView({ isOpen, onOpenChange, chatId, partnerId }: GameCenterViewProps) {
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const db = getFirestore(firebaseApp);
+  const { toast } = useToast();
 
   const inviteToGame = async (gameType: 'tic-tac-toe' | 'connect-four' | 'dots-and-boxes') => {
     if (!user) return;
     
-    let initialGameState: GameState = {
+    let initialGameState: Partial<GameState> = {
+        gameType,
         type: gameType,
         status: 'pending',
         initiatorId: user.uid,
         winner: null,
         turn: null,
-        players: {},
-        board: [],
     };
     
     if (gameType === 'tic-tac-toe') {
@@ -57,11 +57,10 @@ export default function GameCenterView({ isOpen, onOpenChange, chatId, partnerId
     onOpenChange(false);
     toast({ title: "Game Invite Sent!", description: "Waiting for your partner to accept."})
   }
-  
-  const isGuest = profile?.isGuest;
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
+      <DialogTrigger data-game-center-trigger className="hidden"></DialogTrigger>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Game Center</DialogTitle>
@@ -82,8 +81,6 @@ export default function GameCenterView({ isOpen, onOpenChange, chatId, partnerId
                 onClick={() => inviteToGame('connect-four')} 
                 variant="secondary" 
                 className="w-full justify-start h-auto text-left p-4"
-                disabled={isGuest}
-                title={isGuest ? 'Sign up to play this game' : ''}
             >
                 <div>
                     <h3 className="font-bold text-lg">Connect Four</h3>
@@ -94,8 +91,6 @@ export default function GameCenterView({ isOpen, onOpenChange, chatId, partnerId
                 onClick={() => inviteToGame('dots-and-boxes')} 
                 variant="secondary" 
                 className="w-full justify-start h-auto text-left p-4"
-                disabled={isGuest}
-                title={isGuest ? 'Sign up to play this game' : ''}
             >
                 <div>
                     <h3 className="font-bold text-lg">Dots and Boxes</h3>

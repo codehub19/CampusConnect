@@ -6,11 +6,13 @@ export interface User {
   name: string;
   avatar: string;
   online: boolean;
-  isGuest?: boolean;
   profileComplete?: boolean;
   gender: 'male' | 'female' | 'other' | 'prefer-not-to-say';
   preference: 'anyone' | 'males' | 'females';
   interests: string[];
+  major?: string;
+  year?: string;
+  bio?: string;
   blockedUsers?: string[];
   friends?: string[];
   pendingChatId?: string | null;
@@ -98,15 +100,20 @@ export interface Event {
 
 export interface WaitingUser {
   uid: string;
+<<<<<<< HEAD
   name: string;
   avatar: string;
   isGuest?: boolean;
+=======
+  blockedUsers: string[];
+>>>>>>> 96fb5a500d93d25340bf813c7ae9b9eefb069ba1
   timestamp: any;
   pendingChatId: string | null;
 }
 
 // Games
 export interface GameState {
+  gameType: 'tic-tac-toe' | 'connect-four' | 'dots-and-boxes';
   type: 'tic-tac-toe' | 'connect-four' | 'dots-and-boxes';
   status: 'pending' | 'active' | 'win' | 'draw';
   initiatorId: string;

@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import {
   getAuth,
   onAuthStateChanged,
@@ -10,7 +10,8 @@ import {
   GoogleAuthProvider,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
-  signInAnonymously,
+  sendEmailVerification,
+  sendPasswordResetEmail,
   type User as FirebaseUser,
 } from 'firebase/auth';
 import {
@@ -22,7 +23,7 @@ import {
   updateDoc,
   serverTimestamp,
 } from 'firebase/firestore';
-import { getDatabase, ref, onDisconnect, set, serverTimestamp as rtdbServerTimestamp } from 'firebase/database';
+import { getDatabase, ref, onDisconnect, set, serverTimestamp as rtdbServerTimestamp, goOnline, goOffline } from 'firebase/database';
 import { firebaseApp, rtdb } from '@/lib/firebase';
 import type { User } from '@/lib/types';
 import { useToast } from './use-toast';
@@ -34,9 +35,12 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   signUpWithEmail: (email: string, password: string) => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
-  signInAsGuest: (displayName: string) => Promise<void>;
+  sendPasswordReset: (email: string) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (data: Partial<User>) => Promise<void>;
+  authModalOpen: boolean;
+  setAuthModalOpen: React.Dispatch<React.SetStateAction<boolean>>;
+  requireAuth: (callback: () => void) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -45,6 +49,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [profile, setProfile] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
   const { toast } = useToast();
   const auth = getAuth(firebaseApp);
   const db = getFirestore(firebaseApp);
@@ -55,14 +60,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setUser(firebaseUser);
         const userDocRef = doc(db, 'users', firebaseUser.uid);
         
-        // Firestore and RTDB online status
-        if (rtdb) {
+        if (rtdb && firebaseUser.emailVerified) {
+            goOnline(rtdb);
             const statusRef = ref(rtdb, `/status/${firebaseUser.uid}`);
-            await updateDoc(userDocRef, { online: true }).catch(() => {}); // Fails if doc doesn't exist, which is fine
-            await set(statusRef, { state: 'online', last_changed: rtdbServerTimestamp() });
-            onDisconnect(statusRef).set({ state: 'offline', last_changed: rtdbServerTimestamp() });
-        }
+            
+            // This promise will resolve when the client is disconnected.
+             onDisconnect(statusRef).set({ state: 'offline', last_changed: rtdbServerTimestamp() }).then(() => {
+                updateDoc(userDocRef, { online: false, lastSeen: serverTimestamp() });
+             });
 
+             // Set the user's status to online in RTDB.
+            await set(statusRef, { state: 'online', last_changed: rtdbServerTimestamp() });
+
+            // Also update Firestore to reflect the online status immediately.
+            await updateDoc(userDocRef, { online: true }).catch(() => {});
+        }
 
         const unsubProfile = onSnapshot(userDocRef, (docSnap) => {
           if (docSnap.exists()) {
@@ -73,16 +85,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         return () => unsubProfile();
       } else {
+        if(profile?.id && rtdb) {
+            const statusRef = ref(rtdb, `/status/${profile.id}`);
+            set(statusRef, { state: 'offline', last_changed: rtdbServerTimestamp() });
+        }
         setUser(null);
         setProfile(null);
         setLoading(false);
+        if (rtdb) {
+            goOffline(rtdb);
+        }
       }
     });
 
     return () => unsubscribe();
-  }, [auth, db]);
+  }, [auth, db, profile?.id]);
 
-  const createProfile = async (uid: string, data: Partial<User>, isGuest = false) => {
+  const requireAuth = useCallback((callback: () => void) => {
+    if (user && profile?.profileComplete) {
+      callback();
+    } else {
+      setAuthModalOpen(true);
+    }
+  }, [user, profile]);
+
+  const createProfile = async (uid: string, data: Partial<User>) => {
     const userDocRef = doc(db, 'users', uid);
     const userDoc = await getDoc(userDocRef);
     if (!userDoc.exists()) {
@@ -94,10 +121,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         gender: 'prefer-not-to-say',
         preference: 'anyone',
         interests: [],
+        major: '',
+        year: '',
+        bio: '',
         blockedUsers: [],
         friends: [],
-        isGuest,
-        profileComplete: isGuest, // Guests don't need profile setup
+        profileComplete: false,
         pendingChatId: null,
         ...data,
       };
@@ -118,6 +147,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               profileComplete: false,
           });
       }
+      setAuthModalOpen(false);
     } catch (error: any) {
       if (error.code === 'auth/popup-closed-by-user') {
         toast({
@@ -137,16 +167,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         name: email.split('@')[0],
         profileComplete: false,
      });
+     // Ensure email is sent before we do anything else
+     await sendEmailVerification(result.user);
+     toast({
+        title: 'Verification Email Sent',
+        description: 'Please check your inbox to verify your email address.',
+        duration: 10000,
+     });
+     setAuthModalOpen(false);
   };
     
   const signInWithEmail = async (email: string, password: string) => {
-    await signInWithEmailAndPassword(auth, email, password);
+    const result = await signInWithEmailAndPassword(auth, email, password);
+    if (!result.user.emailVerified) {
+        await signOut(auth);
+        throw new Error('Please verify your email before logging in. Check your inbox for a verification link.');
+    }
+    setAuthModalOpen(false);
   };
 
-  const signInAsGuest = async (displayName: string) => {
-    if (!displayName) throw new Error("Display name cannot be empty.");
-    const result = await signInAnonymously(auth);
-    await createProfile(result.user.uid, { name: displayName }, true);
+  const sendPasswordReset = async (email: string) => {
+    await sendPasswordResetEmail(auth, email);
   };
 
   const updateProfile = async (data: Partial<User>) => {
@@ -159,8 +200,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (user && rtdb) {
       const userDocRef = doc(db, 'users', user.uid);
       const statusRef = ref(rtdb, `/status/${user.uid}`);
-      
-      // Set offline status before signing out
       await updateDoc(userDocRef, { online: false, lastSeen: serverTimestamp() }).catch(e => console.error("Error setting user offline:", e));
       await set(statusRef, { state: 'offline', last_changed: rtdbServerTimestamp() }).catch(e => console.error("Error setting RTDB status offline:", e));
     }
@@ -174,9 +213,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     signInWithGoogle,
     signUpWithEmail,
     signInWithEmail,
-    signInAsGuest,
+    sendPasswordReset,
     logout,
     updateProfile,
+    authModalOpen,
+    setAuthModalOpen,
+    requireAuth,
   };
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
@@ -189,5 +231,3 @@ export const useAuth = () => {
   }
   return context;
 };
-
-    

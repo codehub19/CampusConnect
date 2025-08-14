@@ -1,6 +1,7 @@
 
 "use client";
 
+import React from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import type { GameState } from '@/lib/types';
 import { doc, getFirestore, runTransaction, updateDoc } from 'firebase/firestore';
@@ -11,59 +12,50 @@ import { toast } from '@/hooks/use-toast';
 interface TicTacToeProps {
     chatId: string;
     gameState: GameState;
+    setGameState: React.Dispatch<React.SetStateAction<GameState | null>>;
 }
 
-export default function TicTacToe({ chatId, gameState }: TicTacToeProps) {
+export default function TicTacToe({ chatId, gameState, setGameState }: TicTacToeProps) {
     const { user } = useAuth();
     const db = getFirestore(firebaseApp);
 
-    const { status, initiatorId, players, turn, winner, board } = gameState;
+    const { status, players, turn, winner, board } = gameState;
     const mySymbol = user ? players[user.uid] : null;
     const isMyTurn = turn === user?.uid;
-    
-    const handleAccept = async () => {
-        const chatRef = doc(db, 'chats', chatId);
-        await updateDoc(chatRef, {
-            'game.status': 'active',
-            'game.players': {
-                [initiatorId]: 'X',
-                [user!.uid]: 'O',
-            },
-            'game.turn': initiatorId
-        });
-    }
-
-    const handleDecline = async () => {
-        const chatRef = doc(db, 'chats', chatId);
-        await updateDoc(chatRef, { game: null });
-        toast({ title: 'Game declined' });
-    }
 
     const handleMove = async (index: number) => {
-        if (!isMyTurn || board[index] !== null) return;
+        if (!isMyTurn || board[index] !== null || status !== 'active') return;
+        
         const chatRef = doc(db, 'chats', chatId);
+        const partnerId = Object.keys(players).find(id => id !== user?.uid);
 
+        // Optimistic update
+        const newBoard = [...board];
+        newBoard[index] = mySymbol;
+
+        const hasWon = checkWinner(newBoard, mySymbol);
+        const isDraw = !hasWon && newBoard.every(cell => cell !== null);
+        
+        const newGameData: Partial<GameState> = {
+            board: newBoard,
+            turn: hasWon || isDraw ? null : partnerId,
+            status: hasWon ? 'win' : isDraw ? 'draw' : 'active',
+            winner: hasWon ? user?.uid : null,
+        };
+
+        setGameState(prev => prev ? ({ ...prev, ...newGameData }) : null);
+
+        // Firestore transaction
         try {
             await runTransaction(db, async (transaction) => {
                 const chatDoc = await transaction.get(chatRef);
                 if (!chatDoc.exists()) throw "Chat does not exist!";
                 
                 const currentGame = chatDoc.data().game as GameState;
-                if(currentGame.board[index] !== null || currentGame.turn !== user?.uid) return;
-
-                const newBoard = [...currentGame.board];
-                newBoard[index] = mySymbol;
-
-                const hasWon = checkWinner(newBoard, mySymbol);
-                const isDraw = !hasWon && newBoard.every(cell => cell !== null);
-                
-                const partnerId = Object.keys(players).find(id => id !== user?.uid);
-
-                const newGameData: Partial<GameState> = {
-                    board: newBoard,
-                    turn: hasWon || isDraw ? null : partnerId,
-                    status: hasWon ? 'win' : isDraw ? 'draw' : 'active',
-                    winner: hasWon ? user?.uid : null,
+                if(currentGame.board[index] !== null || currentGame.turn !== user?.uid) {
+                    // If server state is different, revert local state and abort
+                    setGameState(currentGame);
+                    return;
                 };
                 
                 transaction.update(chatRef, { game: {...currentGame, ...newGameData} });
@@ -71,6 +63,8 @@ export default function TicTacToe({ chatId, gameState }: TicTacToeProps) {
         } catch (e) {
             console.error("Tic Tac Toe move failed: ", e);
             toast({ variant: 'destructive', title: 'Error making move' });
+            // Revert on error
+            setGameState(gameState);
         }
     };
 
@@ -91,7 +85,7 @@ export default function TicTacToe({ chatId, gameState }: TicTacToeProps) {
     const getStatusText = () => {
         switch (status) {
             case 'pending':
-                return initiatorId === user?.uid ? "Waiting for opponent..." : "invites you to play!";
+                return "Waiting for opponent to accept...";
             case 'active':
                 return isMyTurn ? `Your turn (${mySymbol})` : "Opponent's turn";
             case 'win':
@@ -103,22 +97,10 @@ export default function TicTacToe({ chatId, gameState }: TicTacToeProps) {
         }
     };
 
-    if (status === 'pending' && initiatorId !== user?.uid) {
-        return (
-            <div className="p-4 h-full flex flex-col items-center justify-center text-center">
-                <p className="font-semibold mb-4">Your opponent wants to play Tic-Tac-Toe!</p>
-                <div className="flex gap-2">
-                    <Button onClick={handleAccept}>Accept</Button>
-                    <Button variant="destructive" onClick={handleDecline}>Decline</Button>
-                </div>
-            </div>
-        )
-    }
-
     return (
         <div className="p-4 h-full flex flex-col items-center justify-center text-center">
             <h3 className="font-bold text-lg mb-2">Tic-Tac-Toe</h3>
-            <p className="mb-4">{getStatusText()}</p>
+            <p className="mb-4 h-6">{getStatusText()}</p>
             <div className="grid grid-cols-3 gap-2 w-full max-w-[200px]">
                 {board.map((cell, index) => (
                     <button
@@ -132,7 +114,10 @@ export default function TicTacToe({ chatId, gameState }: TicTacToeProps) {
                 ))}
             </div>
             {(status === 'win' || status === 'draw') ? (
-                 <Button onClick={handleQuit} variant="secondary" className="mt-4">Back to Game Center</Button>
+                 <Button onClick={() => {
+                     const gameCenter = document.querySelector<HTMLButtonElement>('[data-game-center-trigger]');
+                     if(gameCenter) gameCenter.click();
+                 }} variant="secondary" className="mt-4">Play Another Game</Button>
             ) : (
                  <Button onClick={handleQuit} variant="destructive" className="mt-4">Quit Game</Button>
             )}

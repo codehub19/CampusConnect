@@ -30,10 +30,9 @@ export default function ChatHeader({ partner, onGameClick, onVideoCallClick, onL
   const { toast } = useToast();
 
   const isFriend = profile?.friends?.includes(partner.id);
-  const isGuest = profile?.isGuest || partner.isGuest;
   
   const handleAddFriend = async () => {
-    if (!user || !partner || isFriend || isGuest) return;
+    if (!user || !partner || isFriend) return;
     const requestId = [user.uid, partner.id].sort().join('_');
     const requestRef = doc(db, "friend_requests", requestId);
 
@@ -68,7 +67,7 @@ export default function ChatHeader({ partner, onGameClick, onVideoCallClick, onL
         </div>
       </div>
       <div className="flex items-center gap-1">
-        {!isFriend && !isGuest && (
+        {!isFriend && (
             <Button variant="ghost" size="icon" onClick={handleAddFriend} title="Add Friend">
                 <UserPlus className="h-5 w-5" />
             </Button>

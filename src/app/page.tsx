@@ -16,14 +16,33 @@ import { goOffline, goOnline } from 'firebase/database';
 import { rtdb } from '@/lib/firebase';
 import AiAssistantView from '@/components/campus-connect/ai-assistant-view';
 import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 
-type AppState = 'loading' | 'policy' | 'auth' | 'profile_setup' | 'home' | 'events' | 'missed_connections' | 'chat' | 'ai_chat';
+type AppState = 'loading' | 'policy' | 'auth' | 'verify_email' | 'profile_setup' | 'home' | 'events' | 'missed_connections' | 'chat' | 'ai_chat';
+
+function VerifyEmailView({ onTryAnotherEmail }: { onTryAnotherEmail: () => void }) {
+    return (
+        <div className="flex h-screen w-screen items-center justify-center bg-background p-4">
+            <Alert className="max-w-md">
+                <AlertTitle className="text-xl font-bold">Verify Your Email</AlertTitle>
+                <AlertDescription>
+                    We've sent a verification link to your email address. Please check your inbox and click the link to continue. You can close this page after verifying.
+                </AlertDescription>
+                <div className="mt-4">
+                    <Button variant="link" onClick={onTryAnotherEmail} className="p-0 text-muted-foreground">
+                        Use a different email address
+                    </Button>
+                </div>
+            </Alert>
+        </div>
+    );
+}
 
 function AppContent() {
-  const { user, loading, profile, updateProfile } = useAuth();
+  const { user, loading, profile, updateProfile, authModalOpen, setAuthModalOpen, logout } = useAuth();
   const [isProfileOpen, setProfileOpen] = useState(false);
-  const [appState, setAppState] = useState<AppState>('loading');
-  const [onlineCount, setOnlineCount] = useState<number | null>(null);
+  const [appState, setAppState] = useState<AppState>('home'); // Default to home
+  const [initialLoading, setInitialLoading] = useState(true);
 
   useEffect(() => {
     // Only establish RTDB connection if user is logged in
@@ -34,42 +53,45 @@ function AppContent() {
     goOnline(rtdb);
   }, [user]);
 
-  
   // Effect to manage state transitions based on auth changes and policy agreement
   useEffect(() => {
     if (loading) {
-      setAppState('loading');
       return;
     }
-    
+     // Once loading is false, the initial load is complete
+    setInitialLoading(false);
+
     if (typeof window !== 'undefined' && localStorage.getItem('policyAgreed') !== 'true') {
       setAppState('policy');
       return;
     }
 
     if (!user) {
-      setAppState('auth');
-      return;
-    }
-    
-    if (!profile) {
-      // Still waiting for profile to load, stay in a loading-like state
-      setAppState('loading');
-      return;
+        // User is not logged in, but we allow them to browse.
+        // We set the app state to home, but don't handle auth here.
+        // Auth is handled by the modal triggered by `requireAuth`.
+        if (['profile_setup', 'verify_email', 'chat'].includes(appState)) {
+             setAppState('home');
+        }
+        return;
     }
 
-    if (!profile.profileComplete && !profile.isGuest) {
+    if (!user.emailVerified) {
+        setAppState('verify_email');
+        return;
+    }
+    
+    if (profile && !profile.profileComplete) {
       setAppState('profile_setup');
       return;
     }
     
-    // If we've gotten past profile setup, default to home.
-    // Avoids reverting to 'home' if user navigates away and state changes.
-    if (['profile_setup', 'auth', 'policy', 'loading'].includes(appState)) {
+    // If we've gotten past all checks and are in a state only for logged-out/setup users, move to home.
+    if (['policy', 'auth', 'verify_email', 'profile_setup'].includes(appState)) {
       setAppState('home');
     }
 
-  }, [loading, user, profile, appState]);
+  }, [loading, user, profile]);
 
 
   const handleAgree = () => {
@@ -77,14 +99,20 @@ function AppContent() {
       localStorage.setItem('policyAgreed', 'true');
     }
     // The useEffect will now handle transitioning to the correct state
-    setAppState('loading');
+    setAppState('home');
+  };
+
+  const handleTryAnotherEmail = async () => {
+    await logout();
+    setAuthModalOpen(true);
+    setAppState('home'); // or 'auth' to show the modal immediately
   };
 
   const navigateTo = (state: AppState) => {
     setAppState(state);
   }
 
-  if (appState === 'loading') {
+  if (initialLoading) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -94,14 +122,15 @@ function AppContent() {
 
   return (
     <>
+      {authModalOpen && <AuthView />}
       {profile && <ProfileView user={profile} isOpen={isProfileOpen} onOpenChange={setProfileOpen} onProfileUpdate={updateProfile} />}
 
       {(() => {
         switch (appState) {
           case 'policy':
             return <PolicyView onAgree={handleAgree} />;
-          case 'auth':
-            return <AuthView onlineCount={onlineCount} />;
+          case 'verify_email':
+            return <VerifyEmailView onTryAnotherEmail={handleTryAnotherEmail} />;
           case 'profile_setup':
             return <ProfileSetupView />;
           case 'home':
@@ -110,10 +139,9 @@ function AppContent() {
               onNavigateToMissedConnections={() => navigateTo('missed_connections')}
               onNavigateToChat={() => navigateTo('chat')}
               onNavigateToAIChat={() => navigateTo('ai_chat')}
-              userName={profile?.name || 'User'}
+              userName={profile?.name || 'Guest'}
               onOpenProfile={() => setProfileOpen(true)}
               userAvatar={profile?.avatar}
-              onlineCount={onlineCount}
             />;
           case 'events':
             return <EventsView onNavigateHome={() => navigateTo('home')} />;
@@ -131,7 +159,7 @@ function AppContent() {
               </div>
             );
           default:
-            return <AuthView onlineCount={onlineCount} />;
+            return <HomeView onNavigateToEvents={() => navigateTo('events')} onNavigateToMissedConnections={() => navigateTo('missed_connections')} onNavigateToChat={() => navigateTo('chat')} onNavigateToAIChat={() => navigateTo('ai_chat')} userName="Guest" onOpenProfile={() => setProfileOpen(true)} />;
         }
       })()}
     </>
