@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, UIEvent, useCallback } from 'react';
-import { Send, ArrowDown, Bot, IceCream, Image as ImageIcon, Timer } from 'lucide-react';
+import { Send, ArrowDown, Bot, IceCream, Image as ImageIcon, Timer, Gamepad2 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -97,6 +97,19 @@ export default function ChatView({ chat, partner, onLeaveChat, onMessageSent }: 
     };
   }, [resetInactivityTimer]);
   
+  // This useEffect handles game state updates from the parent `chat` prop
+  useEffect(() => {
+    const gameData = chat.game;
+    setGameState(gameData || null);
+
+    if (gameData?.status === 'pending' && gameData?.initiatorId !== user?.uid) {
+       setIncomingGameInvite(gameData);
+    } else {
+       setIncomingGameInvite(null);
+    }
+  }, [chat.game, user?.uid]);
+
+
   useEffect(() => {
     const messagesRef = collection(db, "chats", chat.id, "messages");
     const q = query(messagesRef, orderBy("timestamp", "asc"));
@@ -108,25 +121,11 @@ export default function ChatView({ chat, partner, onLeaveChat, onMessageSent }: 
       }
       setMessages(fetchedMessages);
     });
-    
-    const chatDocRef = doc(db, 'chats', chat.id);
-    const unsubscribeChat = onSnapshot(chatDocRef, (docSnap) => {
-        const chatData = docSnap.data();
-        const gameData = chatData?.game as GameState | null;
-        setGameState(gameData || null);
-
-        if (gameData?.status === 'pending' && gameData?.initiatorId !== user?.uid) {
-           setIncomingGameInvite(gameData);
-        } else {
-           setIncomingGameInvite(null);
-        }
-    });
 
     return () => {
         unsubscribeMessages();
-        unsubscribeChat();
     };
-  }, [chat.id, db, user?.uid, resetInactivityTimer]);
+  }, [chat.id, db, resetInactivityTimer]);
 
   useEffect(() => {
     if (isAtBottomRef.current) {
@@ -315,6 +314,10 @@ export default function ChatView({ chat, partner, onLeaveChat, onMessageSent }: 
                              <span className="sr-only">Upload Image</span>
                         </Button>
                         <input type="file" ref={fileInputRef} onChange={handleImageUpload} accept="image/*" className="hidden" />
+                         <Button type="button" variant="ghost" size="icon" onClick={() => setGameCenterOpen(true)}>
+                            <Gamepad2 className="h-5 w-5" />
+                            <span className="sr-only">Play a game</span>
+                        </Button>
                         <Textarea
                             placeholder="Type a message..."
                             className="flex-1 resize-none bg-secondary border-transparent focus-visible:ring-1 focus-visible:ring-primary focus-visible:ring-offset-0"
@@ -337,3 +340,5 @@ export default function ChatView({ chat, partner, onLeaveChat, onMessageSent }: 
     </div>
   );
 }
+
+    

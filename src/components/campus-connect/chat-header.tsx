@@ -78,10 +78,6 @@ export default function ChatHeader({ partner, onGameClick, onVideoCallClick, onL
                 <span>Friends</span>
             </div>
         )}
-        <Button variant="ghost" size="icon" onClick={onGameClick}>
-          <Gamepad2 className="h-5 w-5" />
-          <span className="sr-only">Play a game</span>
-        </Button>
         <Button variant="ghost" size="icon" onClick={onVideoCallClick}>
           <Video className="h-5 w-5" />
           <span className="sr-only">Start video call</span>
@@ -101,3 +97,5 @@ export default function ChatHeader({ partner, onGameClick, onVideoCallClick, onL
     </>
   );
 }
+
+    

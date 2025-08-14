@@ -19,6 +19,7 @@ import ChatHeader from './chat-header';
 import GameCenterView from './game-center-view';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import InactivityTimer from './inactivity-timer';
 
 type ActiveView =
     | { type: 'welcome' }
@@ -30,7 +31,6 @@ const MainLayoutContext = React.createContext<{
     onBlockUser: () => void;
     onLeaveChat: () => void;
     onVideoCallToggle: (isOpen: boolean) => void;
-    onGameToggle: (isOpen: boolean) => void;
     isSearching: boolean;
     onFindNewChat: () => void;
     onStopSearching: () => void;
@@ -165,7 +165,7 @@ function LayoutUI() {
 }
 
 function MainHeader() {
-    const { onBlockUser, onLeaveChat, onVideoCallToggle, onGameToggle, activeView } = useMainLayout();
+    const { onBlockUser, onLeaveChat, onVideoCallToggle, activeView } = useMainLayout();
     const { isMobile } = useSidebar();
 
     return (
@@ -176,7 +176,7 @@ function MainHeader() {
                     {activeView.type === 'chat' ? (
                         <ChatHeader
                             partner={activeView.data.user}
-                            onGameClick={() => onGameToggle(true)}
+                            onGameClick={() => { /* Moved to chat-view */ }}
                             onVideoCallClick={() => onVideoCallToggle(true)}
                             onBlockUser={onBlockUser}
                             onLeaveChat={onLeaveChat}
@@ -203,7 +203,6 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
     const [activeView, setActiveView] = useState<ActiveView>({ type: 'welcome' });
     const [isSearching, setIsSearching] = useState(false);
     const [isVideoCallOpen, setIsVideoCallOpen] = useState(false);
-    const [isGameCenterOpen, setGameCenterOpen] = useState(false);
 
     const waitingListenerUnsub = useRef<() => void | null>(null);
     const partnerListenerUnsub = useRef<() => void | null>(null);
@@ -327,6 +326,8 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                     blockedUsers: profile.blockedUsers || [],
                     timestamp: serverTimestamp(),
                     matchedChatId: null,
+                    isGuest: profile.isGuest ?? false,
+                    name: profile.name,
                  });
                  listenForMatches();
             }
@@ -464,7 +465,6 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         onBlockUser: handleBlockUser,
         onLeaveChat: () => handleLeaveChat(true),
         onVideoCallToggle: setIsVideoCallOpen,
-        onGameToggle: setGameCenterOpen,
         isSearching,
         onFindNewChat: findNewChat,
         onStopSearching: stopSearching,
@@ -485,14 +485,6 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
             {activeView.type === 'chat' && isVideoCallOpen &&
                 <VideoCallView chatId={activeView.data.chat.id} onClose={() => setIsVideoCallOpen(false)} />
             }
-            {activeView.type === 'chat' && isGameCenterOpen &&
-                <GameCenterView
-                    isOpen={isGameCenterOpen}
-                    onOpenChange={setGameCenterOpen}
-                    chatId={activeView.data.chat.id}
-                    partnerId={activeView.data.user.id}
-                />
-            }
             <LayoutUI />
         </MainLayoutContext.Provider>
     );
@@ -503,3 +495,5 @@ export default function MainLayoutWrapper({ onNavigateHome }: { onNavigateHome: 
         <MainLayoutContent onNavigateHome={onNavigateHome} />
     )
 }
+
+    
