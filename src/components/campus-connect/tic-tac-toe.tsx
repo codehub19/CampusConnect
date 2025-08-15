@@ -4,7 +4,7 @@
 import React from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import type { GameState } from '@/lib/types';
-import { doc, getFirestore, runTransaction, updateDoc } from 'firebase/firestore';
+import { doc, getFirestore, updateDoc } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
@@ -43,27 +43,15 @@ export default function TicTacToe({ chatId, gameState, setGameState }: TicTacToe
             winner: hasWon ? user?.uid : null,
         };
 
-        setGameState(prev => prev ? ({ ...prev, ...newGameData }) : null);
+        const optimisticGameState = { ...gameState, ...newGameData };
+        setGameState(optimisticGameState);
 
-        // Firestore transaction
         try {
-            await runTransaction(db, async (transaction) => {
-                const chatDoc = await transaction.get(chatRef);
-                if (!chatDoc.exists()) throw "Chat does not exist!";
-                
-                const currentGame = chatDoc.data().game as GameState;
-                if(currentGame.board[index] !== null || currentGame.turn !== user?.uid) {
-                    // If server state is different, abort. The optimistic UI will be corrected by the snapshot listener.
-                    return;
-                };
-                
-                transaction.update(chatRef, { game: {...currentGame, ...newGameData} });
-            });
+            await updateDoc(chatRef, { game: optimisticGameState });
         } catch (e) {
             console.error("Tic Tac Toe move failed: ", e);
-            toast({ variant: 'destructive', title: 'Error making move' });
-            // Revert on error
-            setGameState(gameState);
+            toast({ variant: 'destructive', title: 'Error', description: 'Could not make move. The game may be out of sync.' });
+            // Revert on error - the snapshot listener should correct the state.
         }
     };
 

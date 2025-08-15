@@ -4,13 +4,12 @@
 import React from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import type { GameState } from '@/lib/types';
-import { doc, getFirestore, runTransaction, updateDoc } from 'firebase/firestore';
+import { doc, getFirestore, updateDoc } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { Avatar, AvatarFallback } from '../ui/avatar';
-import { User } from 'lucide-react';
 
 interface DotsAndBoxesProps {
     chatId: string;
@@ -19,7 +18,7 @@ interface DotsAndBoxesProps {
 }
 
 export default function DotsAndBoxes({ chatId, gameState, setGameState }: DotsAndBoxesProps) {
-    const { user, profile } = useAuth();
+    const { user } = useAuth();
     const db = getFirestore(firebaseApp);
     const { status, players, turn, scores, gridSize, h_lines, v_lines, boxes } = gameState;
 
@@ -68,19 +67,10 @@ export default function DotsAndBoxes({ chatId, gameState, setGameState }: DotsAn
         setGameState(tempState);
 
         try {
-            await runTransaction(db, async (transaction) => {
-                const chatDoc = await transaction.get(chatRef);
-                if (!chatDoc.exists()) throw "Chat does not exist!";
-                const game = chatDoc.data().game as GameState;
-                if (game.turn !== user?.uid) return; // Abort if state changed
-                if ((type === 'h' && game.h_lines[index]) || (type === 'v' && game.v_lines[index])) return;
-                
-                transaction.update(chatRef, { game: tempState });
-            });
+            await updateDoc(chatRef, { game: tempState });
         } catch (e) {
              console.error("Dots and Boxes move failed: ", e);
-             toast({ variant: 'destructive', title: 'Error making move' });
-             setGameState(gameState); // Revert on error
+             toast({ variant: 'destructive', title: 'Error', description: 'Could not make move. The game may be out of sync.' });
         }
     };
     
