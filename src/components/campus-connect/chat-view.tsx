@@ -1,14 +1,14 @@
 
 "use client";
 
-import React, { useState, useRef, useEffect, useLayoutEffect, UIEvent, useCallback } from 'react';
+import React, { useState, useRef, useEffect, UIEvent, useCallback } from 'react';
 import { Send, ArrowDown, IceCream, Image as ImageIcon, Timer, Gamepad2 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Textarea } from '@/components/ui/textarea';
 import { cn } from '@/lib/utils';
-import type { User, Message, MessageContent, Chat, GameState } from '@/lib/types';
+import type { User, Message, MessageContent, Chat, GameState, ImageMessageContent, TextMessageContent } from '@/lib/types';
 import { getFirestore, onSnapshot, collection, query, orderBy, addDoc, serverTimestamp, doc, updateDoc } from 'firebase/firestore';
 import { getStorage, ref as storageRef, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { firebaseApp } from '@/lib/firebase';
@@ -57,25 +57,17 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
   const storage = getStorage(firebaseApp);
 
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
-  
-  const atBottomRef = useRef(true);
-
-  const scrollToBottom = (behavior: 'smooth' | 'auto' = 'auto') => {
-    const scrollArea = scrollAreaRef.current;
-    if (scrollArea) {
-      scrollArea.scrollTo({ top: scrollArea.scrollHeight, behavior });
-    }
-  };
+  const [shouldScrollToBottom, setShouldScrollToBottom] = useState(true);
 
   useEffect(() => {
-    scrollToBottom('auto');
-  }, []);
-
-  useEffect(() => {
-    if (atBottomRef.current) {
-        scrollToBottom('smooth');
+    if (shouldScrollToBottom && scrollAreaRef.current) {
+      scrollAreaRef.current.scrollTo({
+        top: scrollAreaRef.current.scrollHeight,
+        behavior: 'smooth',
+      });
+      setShouldScrollToBottom(false);
     }
-  }, [messages]);
+  }, [messages, shouldScrollToBottom]);
 
   const resetInactivityTimer = useCallback(() => {
       if (chat.isFriendChat) return;
@@ -121,46 +113,47 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
 
 
   useEffect(() => {
-      if (!chat.id) return;
-      const messagesRef = collection(db, "chats", chat.id, "messages");
-      const q = query(messagesRef, orderBy("timestamp", "asc"));
+    if (!chat.id || !user) return;
+    const messagesRef = collection(db, "chats", chat.id, "messages");
+    const q = query(messagesRef, orderBy("timestamp", "asc"));
 
-      const unsubscribeMessages = onSnapshot(q, (snapshot) => {
-          const scrollArea = scrollAreaRef.current;
-          if (scrollArea) {
-              const isAtBottom = scrollArea.scrollHeight - scrollArea.scrollTop - scrollArea.clientHeight < 50;
-              atBottomRef.current = isAtBottom;
-              setShowScrollToBottom(!isAtBottom);
-          }
+    const unsubscribeMessages = onSnapshot(q, (snapshot) => {
+        const scrollArea = scrollAreaRef.current;
+        let wasAtBottom = false;
+        if (scrollArea) {
+            wasAtBottom = scrollArea.scrollHeight - scrollArea.scrollTop - scrollArea.clientHeight < 50;
+        }
 
-          const addedMessages: Message[] = [];
-          snapshot.docChanges().forEach((change) => {
-              if (change.type === 'added') {
-                  addedMessages.push({ id: change.doc.id, ...change.doc.data() } as Message);
-              }
-          });
+        let newMessagesAdded = false;
+        snapshot.docChanges().forEach((change) => {
+            if (change.type === 'added') {
+                newMessagesAdded = true;
+            }
+        });
+        
+        if (newMessagesAdded) {
+            const allMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
+            setMessages(allMessages);
+            resetInactivityTimer();
+            if (wasAtBottom) {
+                setShouldScrollToBottom(true);
+            } else {
+                setShowScrollToBottom(true);
+            }
+        }
+    });
 
-          if (addedMessages.length > 0) {
-               setMessages(prevMessages => {
-                  const existingIds = new Set(prevMessages.map(m => m.id));
-                  const newUniqueMessages = addedMessages.filter(m => !existingIds.has(m.id));
-                  if (newUniqueMessages.length === 0) return prevMessages;
-                  resetInactivityTimer();
-                  return [...prevMessages, ...newUniqueMessages];
-              });
-          }
-      });
-
-      return () => {
-          unsubscribeMessages();
-      };
-  }, [chat.id, db, resetInactivityTimer]);
+    return () => {
+        unsubscribeMessages();
+    };
+}, [chat.id, db, user, resetInactivityTimer]);
 
   const handleScroll = (e: UIEvent<HTMLDivElement>) => {
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
     const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
-    atBottomRef.current = isAtBottom;
-    setShowScrollToBottom(!isAtBottom);
+    if (isAtBottom) {
+        setShowScrollToBottom(false);
+    }
   };
 
   const sendNewMessage = async (content: MessageContent) => {
@@ -173,7 +166,7 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
         status: 'sent',
     });
     resetInactivityTimer();
-    scrollToBottom('smooth');
+    setShouldScrollToBottom(true);
   };
 
   const handleSendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -249,7 +242,7 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
             if (error.code === 'storage/unauthorized') {
                 description = 'Upload failed. You do not have permission. Please check Storage security rules in your Firebase project.';
             } else if (error.code === 'storage/retry-limit-exceeded' || error.message.includes('CORS')) {
-                description = 'Upload failed. Please check your Firebase Storage CORS and security rules.';
+                description = 'Upload failed. Please check your Firebase Storage CORS configuration.';
             }
             toast({ 
                 variant: 'destructive', 
@@ -361,15 +354,15 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
                                 ? 'bg-gradient-to-br from-primary to-purple-600 text-white rounded-br-none'
                                 : 'bg-secondary text-secondary-foreground rounded-bl-none'
                             )}>
-                                {message.content.type === 'text' && <p className="whitespace-pre-wrap">{message.content.value as string}</p>}
+                                {message.content.type === 'text' && <p className="whitespace-pre-wrap">{(message.content as TextMessageContent).value}</p>}
                                 {message.content.type === 'image' && (
                                     <Image 
-                                        src={(message.content.value as any).url} 
-                                        alt={(message.content.value as any).name} 
+                                        src={(message.content as ImageMessageContent).value.url} 
+                                        alt={(message.content as ImageMessageContent).value.name} 
                                         width={200} 
                                         height={200} 
                                         className="rounded-md object-cover cursor-pointer"
-                                        onClick={() => window.open((message.content.value as any).url, '_blank')}
+                                        onClick={() => window.open((message.content as ImageMessageContent).value.url, '_blank')}
                                     />
                                 )}
                             </div>
@@ -379,7 +372,11 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
                 </ScrollArea>
                 {showScrollToBottom && (
                     <Button
-                        onClick={() => scrollToBottom('smooth')}
+                        onClick={() => { 
+                            if(scrollAreaRef.current) {
+                                scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: 'smooth' });
+                            }
+                        }}
                         variant="secondary"
                         size="icon"
                         className="absolute bottom-20 right-4 rounded-full h-10 w-10 shadow-lg animate-bounce"

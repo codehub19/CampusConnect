@@ -1,16 +1,15 @@
 
 "use client";
 
-import React, { useState, useRef, useEffect, useLayoutEffect, UIEvent } from 'react';
+import React, { useState, useRef, useEffect, UIEvent } from 'react';
 import { Send, ArrowDown, ArrowLeft } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
-import type { User, Message, MessageContent, Event } from '@/lib/types';
+import type { User, Message, MessageContent, Event, TextMessageContent } from '@/lib/types';
 import { getFirestore, onSnapshot, collection, query, orderBy, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
-import Image from 'next/image';
 import { Textarea } from '../ui/textarea';
 
 interface GroupChatViewProps {
@@ -29,25 +28,17 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const db = getFirestore(firebaseApp);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
-  
-  const atBottomRef = useRef(true);
-
-  const scrollToBottom = (behavior: 'smooth' | 'auto' = 'auto') => {
-    const scrollArea = scrollAreaRef.current;
-    if (scrollArea) {
-        scrollArea.scrollTo({ top: scrollArea.scrollHeight, behavior });
-    }
-  };
+  const [shouldScrollToBottom, setShouldScrollToBottom] = useState(true);
 
   useEffect(() => {
-    scrollToBottom('auto');
-  }, []);
-
-  useEffect(() => {
-    if (atBottomRef.current) {
-        scrollToBottom('smooth');
+    if (shouldScrollToBottom && scrollAreaRef.current) {
+      scrollAreaRef.current.scrollTo({
+        top: scrollAreaRef.current.scrollHeight,
+        behavior: 'smooth',
+      });
+      setShouldScrollToBottom(false);
     }
-  }, [messages]);
+  }, [messages, shouldScrollToBottom]);
 
   useEffect(() => {
     if (!event.chatId) return;
@@ -56,58 +47,53 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
     const q = query(messagesRef, orderBy("timestamp", "asc"));
 
     const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const scrollArea = scrollAreaRef.current;
-      if (scrollArea) {
-          const isAtBottom = scrollArea.scrollHeight - scrollArea.scrollTop - scrollArea.clientHeight < 50;
-          atBottomRef.current = isAtBottom;
-          setShowScrollToBottom(!isAtBottom);
-      }
-      
-      const addedMessages: EnrichedMessage[] = [];
-      const newUsersToFetch = new Set<string>();
+        const scrollArea = scrollAreaRef.current;
+        let wasAtBottom = false;
+        if (scrollArea) {
+            wasAtBottom = scrollArea.scrollHeight - scrollArea.scrollTop - scrollArea.clientHeight < 50;
+        }
 
-      snapshot.docChanges().forEach(change => {
-          if (change.type === 'added') {
-            const msg = { id: change.doc.id, ...change.doc.data() } as Message;
-            addedMessages.push(msg);
+        const newUsersToFetch = new Set<string>();
+        const fetchedMessages = snapshot.docs.map(doc => {
+            const msg = { id: doc.id, ...doc.data() } as Message;
             if (!usersCache[msg.senderId] && msg.senderId !== currentUser.id) {
                 newUsersToFetch.add(msg.senderId);
             }
-          }
-      });
-      
-      if (newUsersToFetch.size > 0) {
-        const newCache = { ...usersCache };
-        await Promise.all(Array.from(newUsersToFetch).map(async (userId) => {
-          const userRef = doc(db, 'users', userId);
-          const userSnap = await getDoc(userRef);
-          if (userSnap.exists()) {
-            newCache[userId] = userSnap.data() as User;
-          }
-        }));
-        setUsersCache(newCache);
-      }
-
-      if (addedMessages.length > 0) {
-        setMessages(prevMessages => {
-          const existingIds = new Set(prevMessages.map(m => m.id));
-          const newUniqueMessages = addedMessages.filter(m => !existingIds.has(m.id));
-          if (newUniqueMessages.length === 0) return prevMessages;
-
-          return [...prevMessages, ...newUniqueMessages];
+            return msg;
         });
-      }
+      
+        if (newUsersToFetch.size > 0) {
+            const newCache = { ...usersCache };
+            await Promise.all(Array.from(newUsersToFetch).map(async (userId) => {
+                const userRef = doc(db, 'users', userId);
+                const userSnap = await getDoc(userRef);
+                if (userSnap.exists()) {
+                    newCache[userId] = userSnap.data() as User;
+                }
+            }));
+            setUsersCache(newCache);
+        }
+        
+        setMessages(fetchedMessages);
+
+        if (wasAtBottom) {
+            setShouldScrollToBottom(true);
+        } else {
+            if (snapshot.docChanges().some(change => change.type === 'added')) {
+                 setShowScrollToBottom(true);
+            }
+        }
     });
 
     return () => unsubscribe();
-  }, [event.chatId, db, usersCache, currentUser.id]);
-
+}, [event.chatId, db, usersCache, currentUser.id]);
 
   const handleScroll = (e: UIEvent<HTMLDivElement>) => {
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
     const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
-    atBottomRef.current = isAtBottom;
-    setShowScrollToBottom(!isAtBottom);
+    if(isAtBottom) {
+        setShowScrollToBottom(false);
+    }
   };
 
   const sendNewMessage = async (content: MessageContent) => {
@@ -118,7 +104,7 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
             content: content,
             timestamp: serverTimestamp(),
         });
-        scrollToBottom('smooth');
+        setShouldScrollToBottom(true);
     }
   }
 
@@ -186,7 +172,7 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
                             : 'bg-secondary text-secondary-foreground rounded-bl-none'
                         )}
                         >
-                            <p>{message.content.value as string}</p>
+                            <p>{(message.content as TextMessageContent).value}</p>
                         </div>
                     </div>
                 </div>
@@ -195,7 +181,11 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
             </ScrollArea>
             {showScrollToBottom && (
                 <Button
-                    onClick={() => scrollToBottom('smooth')}
+                    onClick={() => {
+                        if(scrollAreaRef.current) {
+                            scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: 'smooth' });
+                        }
+                    }}
                     variant="secondary"
                     size="icon"
                     className="absolute bottom-20 right-4 rounded-full h-10 w-10 shadow-lg animate-bounce"

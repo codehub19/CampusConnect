@@ -175,7 +175,7 @@ export default function MissedConnectionsView({ onNavigateHome }: MissedConnecti
           
           return newReportCount;
         }).then(async (newReportCount) => {
-          toast({ title: "Post Reported", description: "Thank you for your feedback." });
+          toast({ title: "Post Reported", description: "Thank you for helping keep our community safe." });
           if (newReportCount !== undefined && newReportCount >= 10) {
               await handleReportedPost({ postId: post.id, authorId: post.authorId });
               toast({ variant: 'destructive', title: "Post Removed", description: "This post has been removed due to multiple reports." });
@@ -236,7 +236,7 @@ export default function MissedConnectionsView({ onNavigateHome }: MissedConnecti
                             <Clock className="h-3 w-3" />
                             {post.timeOfDay}
                         </Badge>
-                         <Button variant="ghost" size="icon" className="h-8 w-8 ml-auto text-muted-foreground hover:text-destructive" onClick={() => handleReportPost(post)}>
+                         <Button variant="ghost" size="icon" className="h-8 w-8 ml-auto text-muted-foreground hover:text-destructive" onClick={() => handleReportPost(post)} aria-label="Report Post">
                           <AlertTriangle className="h-4 w-4"/>
                           <span className="sr-only">Report Post</span>
                         </Button>

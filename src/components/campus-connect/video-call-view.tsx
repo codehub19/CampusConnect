@@ -3,7 +3,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
-import { Mic, MicOff, Video, VideoOff, PhoneOff, PhoneCall } from 'lucide-react';
+import { Mic, MicOff, Video, VideoOff, PhoneOff, PhoneCall, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { useAuth } from '@/hooks/use-auth';
 import { getFirestore, collection, doc, onSnapshot, addDoc, setDoc, deleteDoc, getDocs, writeBatch, query, updateDoc } from 'firebase/firestore';
@@ -52,6 +52,7 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
     if (pc.current) {
         pc.current.ontrack = null;
         pc.current.onicecandidate = null;
+        pc.current.onconnectionstatechange = null;
         pc.current.close();
         pc.current = null;
     }
@@ -79,11 +80,13 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
         try {
             const callsQuery = query(collection(db, 'chats', chatId, 'calls'));
             const callsSnapshot = await getDocs(callsQuery);
-            const batch = writeBatch(db);
-            callsSnapshot.forEach((callDoc) => {
-                batch.delete(callDoc.ref);
-            });
-            await batch.commit();
+            if (!callsSnapshot.empty) {
+                const batch = writeBatch(db);
+                callsSnapshot.forEach((callDoc) => {
+                    batch.delete(callDoc.ref);
+                });
+                await batch.commit();
+            }
         } catch (e) {
             console.warn("Could not delete call documents.", e);
         }
@@ -136,6 +139,13 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
         remoteVideoRef.current.srcObject = remoteStreamRef.current;
       }
     };
+    
+    pc.current.onconnectionstatechange = () => {
+      if(pc.current?.connectionState === 'disconnected') {
+        hangUp(true);
+        toast({title: "Call Disconnected", description: "The connection was lost."});
+      }
+    }
 
     const offerDescription = await pc.current.createOffer();
     await pc.current.setLocalDescription(offerDescription);
@@ -245,7 +255,8 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
       unsubscribe();
       if(isCallActive) hangUp(true);
     };
-  }, [chatId, db, user, isCallActive, profile?.name, toast, hangUp]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId, db, user, isCallActive, profile?.name, toast]);
 
 
   const toggleAudio = () => {
@@ -293,7 +304,7 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
         <video ref={remoteVideoRef} autoPlay playsInline className="h-full w-full object-contain" />
         <video ref={localVideoRef} autoPlay playsInline muted className="absolute bottom-6 right-6 w-1/3 max-w-[150px] md:w-1/4 md:max-w-xs rounded-xl shadow-2xl border-2 border-primary" />
         
-        {!isCallActive && (
+        {!isCallActive && hasCameraPermission !== false && (
             <Button onClick={startCall} size="lg" className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full h-20 w-20">
                 <PhoneCall className="h-8 w-8" />
             </Button>
@@ -315,9 +326,10 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
         
         {hasCameraPermission === false && (
             <div className="absolute inset-0 flex items-center justify-center bg-black/50">
-              <div className="bg-background p-6 rounded-lg max-w-sm text-center">
+              <div className="bg-background p-6 rounded-lg max-w-sm text-center flex flex-col items-center gap-4">
+                  <AlertCircle className="h-12 w-12 text-destructive"/>
                   <h3 className="text-lg font-bold">Camera Access Required</h3>
-                  <p className="text-sm text-muted-foreground mt-2">
+                  <p className="text-sm text-muted-foreground">
                       Please allow camera access to use this feature. You may need to refresh the page and grant permissions in your browser settings.
                   </p>
                   <Button onClick={onClose} className="mt-4">Close</Button>

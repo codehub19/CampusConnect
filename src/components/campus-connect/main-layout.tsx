@@ -6,7 +6,7 @@ import { Sidebar, SidebarProvider, SidebarTrigger, SidebarContent, SidebarHeader
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
-import { LogOut, Search, UserPlus, X, Check, MessageSquare, ArrowLeft, Users } from 'lucide-react';
+import { LogOut, Search, UserPlus, X, Check, MessageSquare, ArrowLeft, Users, User, Heart } from 'lucide-react';
 import ChatView from './chat-view';
 import WelcomeView from './welcome-view';
 import VideoCallView from './video-call-view';
@@ -153,7 +153,13 @@ function LayoutUI() {
                                         </div>
                                         <div className={cn("h-2.5 w-2.5 rounded-full", friend.online ? 'bg-green-500' : 'bg-gray-500')} />
                                     </div>
-                                )) : <p className="text-xs text-center text-muted-foreground p-4">No friends yet. Find a chat and add someone!</p>}
+                                )) : 
+                                <div className="text-center text-xs text-muted-foreground p-4 flex flex-col items-center gap-2">
+                                    <Users className="h-8 w-8" />
+                                    <p className="font-semibold">No Friends Yet</p>
+                                    <p>Find a chat, make a connection, and add friends to see them here!</p>
+                                </div>
+                                }
                             </div>
                         </TabsContent>
                     </Tabs>

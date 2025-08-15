@@ -42,11 +42,16 @@ export interface Chat {
   game?: GameState | null;
 }
 
+export type TextMessageContent = { type: 'text'; value: string };
+export type ImageMessageContent = { type: 'image'; value: { url: string; name: string } };
+export type VideoMessageContent = { type: 'video'; value: { url: string; name: string } };
+export type FileMessageContent = { type: 'file'; value: { url: string; name: string } };
+
 export type MessageContent = 
-    | { type: 'text', value: string }
-    | { type: 'image', value: { url: string, name: string } }
-    | { type: 'video', value: { url: string, name: string } }
-    | { type: 'file', value: { url: string, name: string } };
+    | TextMessageContent
+    | ImageMessageContent
+    | VideoMessageContent
+    | FileMessageContent;
 
 export interface Message {
   id: string;
@@ -136,5 +141,3 @@ export interface FriendRequest {
   status: 'pending' | 'accepted' | 'declined';
   timestamp: any;
 }
-
-    
