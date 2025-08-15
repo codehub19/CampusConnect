@@ -87,7 +87,7 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
     });
 
     return () => unsubscribe();
-  }, [event.chatId, db]);
+  }, [event.chatId, db, usersCache]);
 
 
   const handleScroll = (e: UIEvent<HTMLDivElement>) => {
@@ -124,7 +124,7 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
   };
   
   const getSender = (senderId: string) => {
-    return usersCache[senderId] || { name: 'Loading...', avatar: '' };
+    return usersCache[senderId] || { name: 'Loading...', avatar: undefined };
   }
 
   return (
