@@ -51,6 +51,13 @@ export default function ChatHeader({ partner, onGameClick, onVideoCallClick, onL
     }
   }
 
+  const handleVideoCallClick = () => {
+    toast({
+      title: "Feature Coming Soon!",
+      description: "Video calling will be available in a future update.",
+    });
+  };
+
   return (
     <>
       <div className="flex items-center gap-4">
@@ -78,7 +85,7 @@ export default function ChatHeader({ partner, onGameClick, onVideoCallClick, onL
                 <span>Friends</span>
             </div>
         )}
-        <Button variant="ghost" size="icon" onClick={onVideoCallClick}>
+        <Button variant="ghost" size="icon" onClick={handleVideoCallClick}>
           <Video className="h-5 w-5" />
           <span className="sr-only">Start video call</span>
         </Button>
