@@ -231,7 +231,10 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         
         try {
             const chatRef = doc(db, 'chats', chatId);
-            await updateDoc(chatRef, { [`members.${user.uid}.active`]: false });
+            const chatSnap = await getDoc(chatRef);
+            if (chatSnap.exists()) {
+              await updateDoc(chatRef, { [`members.${user.uid}.active`]: false });
+            }
         } catch (error) {
             console.error("Error leaving chat:", error);
         }
@@ -289,11 +292,11 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                 const partnerIsActive = updatedChatData.members[partnerId]?.active;
 
                 if (partnerIsActive === false) {
-                     handleLeaveChat(true);
                      toast({
                          title: "Partner Left",
                          description: `${partnerProfile.name} has left the chat.`
                      });
+                     handleLeaveChat(false);
                 } else {
                      setActiveView(prev => {
                          if (prev.type === 'chat' && prev.data.chat.id === updatedChatData.id) {
@@ -430,7 +433,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
 
         const q = query(collection(db, "chats"),
             where("isFriendChat", "==", true),
-            where("memberIds", "==", sortedIds),
+            where("memberIds", "array-contains-all", sortedIds),
             limit(1)
         );
 
