@@ -100,6 +100,7 @@ export interface Event {
 }
 
 export interface WaitingUser {
+  id: string;
   uid: string;
   timestamp: any;
   pendingChatId: string | null;

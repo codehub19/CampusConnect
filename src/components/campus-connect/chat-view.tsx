@@ -65,13 +65,13 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
       scrollArea.scrollTo({ top: scrollArea.scrollHeight, behavior });
     }
   };
-
-  useEffect(() => {
-    if (isAtBottomRef.current) {
-        scrollToBottom();
-    }
-  }, [messages]);
   
+    useEffect(() => {
+        if (isAtBottomRef.current) {
+            scrollToBottom('smooth');
+        }
+    }, [messages]);
+
     const resetInactivityTimer = useCallback(() => {
         if (chat.isFriendChat) return;
         setShowInactivityWarning(false);
@@ -184,22 +184,61 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
     }
   };
   
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file || !user) return;
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file || !user) return;
 
-    const imageRef = storageRef(storage, `chat-images/${chat.id}/${Date.now()}-${file.name}`);
-    try {
-        toast({ title: 'Uploading image...' });
-        const snapshot = await uploadBytes(imageRef, file);
-        const url = await getDownloadURL(snapshot.ref);
-        await sendNewMessage({ type: 'image', value: { url, name: file.name }});
-        toast({ title: 'Image sent!' });
-    } catch (error) {
-        console.error("Image upload failed:", error);
-        toast({ variant: 'destructive', title: 'Upload Failed', description: 'Could not upload your image.' });
-    }
-  };
+        const MAX_SIZE_MB = 1;
+        const TARGET_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
+
+        try {
+            toast({ title: 'Processing image...' });
+
+            let imageBlob: Blob = file;
+
+            // Resize if larger than 1MB
+            if (file.size > TARGET_SIZE_BYTES) {
+                imageBlob = await new Promise((resolve, reject) => {
+                    const img = document.createElement('img');
+                    img.src = URL.createObjectURL(file);
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        const ctx = canvas.getContext('2d');
+                        if (!ctx) return reject(new Error('Could not get canvas context'));
+                        
+                        const scaleFactor = Math.sqrt(TARGET_SIZE_BYTES / file.size);
+                        canvas.width = img.width * scaleFactor;
+                        canvas.height = img.height * scaleFactor;
+
+                        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+                        canvas.toBlob((blob) => {
+                            if (blob) {
+                                resolve(blob);
+                            } else {
+                                reject(new Error('Canvas to Blob conversion failed'));
+                            }
+                        }, 'image/jpeg', 0.8); // Adjust quality for better compression
+                    };
+                    img.onerror = reject;
+                });
+            }
+
+            toast({ title: 'Uploading image...' });
+            const imageRef = storageRef(storage, `chat-images/${chat.id}/${Date.now()}-${file.name.split('.')[0]}.jpg`);
+            const snapshot = await uploadBytes(imageRef, imageBlob);
+            const url = await getDownloadURL(snapshot.ref);
+
+            await sendNewMessage({ type: 'image', value: { url, name: file.name }});
+            toast({ title: 'Image sent!' });
+        } catch (error) {
+            console.error("Image upload failed:", error);
+            toast({ variant: 'destructive', title: 'Upload Failed', description: 'Could not upload your image.' });
+        } finally {
+            if (fileInputRef.current) {
+                fileInputRef.current.value = '';
+            }
+        }
+    };
 
   const handleGenerateIcebreaker = async () => {
     if (!profile || !partner) return;
@@ -300,7 +339,16 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
                                 : 'bg-secondary text-secondary-foreground rounded-bl-none'
                             )}>
                                 {message.content.type === 'text' && <p className="whitespace-pre-wrap">{message.content.value as string}</p>}
-                                {message.content.type === 'image' && <Image src={(message.content.value as any).url} alt={(message.content.value as any).name} width={200} height={200} className="rounded-md"/>}
+                                {message.content.type === 'image' && (
+                                    <Image 
+                                        src={(message.content.value as any).url} 
+                                        alt={(message.content.value as any).name} 
+                                        width={200} 
+                                        height={200} 
+                                        className="rounded-md object-cover cursor-pointer"
+                                        onClick={() => window.open((message.content.value as any).url, '_blank')}
+                                    />
+                                )}
                             </div>
                         </div>
                         )})}
