@@ -44,9 +44,9 @@ export default function VideoCallView({ chatId, onClose }: VideoCallViewProps) {
   
   const isPolitelyEndingCall = useRef(false);
 
-  const callDocUnsubscribe = useRef<() => void | null>(null);
-  const answerCandidatesUnsubscribe = useRef<() => void | null>(null);
-  const offerCandidatesUnsubscribe = useRef<() => void | null>(null);
+  const callDocUnsubscribe = useRef<(() => void) | null>(null);
+  const answerCandidatesUnsubscribe = useRef<(() => void) | null>(null);
+  const offerCandidatesUnsubscribe = useRef<(() => void) | null>(null);
 
   const cleanupPeerConnection = useCallback(() => {
     if (pc.current) {
