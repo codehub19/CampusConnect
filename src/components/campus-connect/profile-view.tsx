@@ -154,6 +154,7 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
         await deleteDoc(doc(db, 'missed_connections', postId));
         toast({ title: "Post Deleted" });
     } catch (error) {
+        console.error("Error deleting post: ", error);
         toast({ variant: 'destructive', title: "Error", description: "Could not delete the post." });
     }
   };

@@ -123,7 +123,7 @@ function LayoutUI() {
                         </TabsList>
                         <TabsContent value="random" className="text-center p-4 space-y-4">
                             <p className="text-sm text-muted-foreground">Find a random user to chat with.</p>
-                            <Button onClick={handleFindClick} className="w-full">
+                            <Button onClick={handleFindClick} className="w-full" aria-label={isSearching ? 'Stop searching for a chat' : 'Find a new chat'}>
                                 <Search className="mr-2 h-4 w-4" />
                                 {isSearching ? 'Searching...' : 'Find New Chat'}
                             </Button>
@@ -561,5 +561,3 @@ export default function MainLayoutWrapper({ onNavigateHome }: { onNavigateHome: 
         <MainLayoutContent onNavigateHome={onNavigateHome} />
     )
 }
-
-    
