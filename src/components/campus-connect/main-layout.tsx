@@ -18,6 +18,7 @@ import { Skeleton } from '../ui/skeleton';
 import ChatHeader from './chat-header';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { acceptFriendRequest } from '@/ai/flows/accept-friend-request';
 
 type ActiveView =
     | { type: 'welcome' }
@@ -80,16 +81,32 @@ function LayoutUI() {
     }, [profile?.friends, db]);
 
     const handleAcceptFriend = async (req: FriendRequest) => {
+        if (!profile) return;
         const batch = writeBatch(db);
-        batch.update(doc(db, 'users', req.toId), { friends: arrayUnion(req.fromId) });
 
-        const fromUserRef = doc(db, 'users', req.fromId);
-        batch.update(fromUserRef, { friends: arrayUnion(req.toId) });
+        // Action 1: Update the current user's document (allowed by rules)
+        const currentUserRef = doc(db, 'users', profile.id);
+        batch.update(currentUserRef, { friends: arrayUnion(req.fromId) });
 
-        batch.update(doc(db, 'friend_requests', req.id), { status: 'accepted' });
+        // Action 2: Update the friend request status (allowed by rules)
+        const requestRef = doc(db, 'friend_requests', req.id);
+        batch.update(requestRef, { status: 'accepted' });
 
-        await batch.commit();
-        toast({ title: 'Friend Added!' });
+        try {
+            // Commit the actions the client is allowed to do.
+            await batch.commit();
+
+            // Action 3: Trigger the secure server-side flow to update the other user.
+            await acceptFriendRequest({
+                requesterId: req.fromId, // The user who sent the request
+                accepterId: profile.id,  // The current user who is accepting
+            });
+            
+            toast({ title: 'Friend Added!' });
+        } catch (error) {
+            console.error("Error accepting friend request: ", error);
+            toast({ variant: 'destructive', title: 'Error', description: 'Could not add friend. Please try again.' });
+        }
     };
 
     const handleDeclineFriend = async (reqId: string) => {
