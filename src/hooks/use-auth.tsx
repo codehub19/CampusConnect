@@ -140,7 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!userDoc.exists()) {
           await createProfile(result.user.uid, { 
               name: result.user.displayName || result.user.email?.split('@')[0], 
-              avatar: result.user.photoURL,
+              avatar: result.user.photoURL || undefined,
               profileComplete: false,
           });
       }
