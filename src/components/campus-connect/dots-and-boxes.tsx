@@ -20,7 +20,7 @@ interface DotsAndBoxesProps {
 export default function DotsAndBoxes({ chatId, gameState, setGameState }: DotsAndBoxesProps) {
     const { user } = useAuth();
     const db = getFirestore(firebaseApp);
-    const { status, players, turn, scores, gridSize, h_lines, v_lines, boxes } = gameState;
+    const { status, players, turn, scores, gridSize, h_lines, v_lines, boxes, winner } = gameState;
 
     const myPlayerId = user ? players[user.uid] as string : null;
     const isMyTurn = turn === user?.uid;
@@ -32,7 +32,6 @@ export default function DotsAndBoxes({ chatId, gameState, setGameState }: DotsAn
 
         const chatRef = doc(db, 'chats', chatId);
 
-        // Create a deep copy for the optimistic update
         const tempState = JSON.parse(JSON.stringify(gameState));
         if (type === 'h') tempState.h_lines[index] = user!.uid;
         else tempState.v_lines[index] = user!.uid;
@@ -56,14 +55,13 @@ export default function DotsAndBoxes({ chatId, gameState, setGameState }: DotsAn
         
         tempState.turn = (boxesCompleted > 0) ? user!.uid : partnerId;
         
-        const totalScore = Object.values(tempState.scores).reduce((a: number, b: unknown) => a + (b as number), 0);
+        const totalScore = Object.values(tempState.scores).reduce((a, b) => (a as number) + (b as number), 0);
         if (totalScore === gridSize * gridSize) {
             tempState.status = tempState.scores[user!.uid] === tempState.scores[partnerId] ? 'draw' : 'win';
             tempState.winner = tempState.scores[user!.uid] > tempState.scores[partnerId] ? user!.uid : (tempState.scores[user!.uid] < tempState.scores[partnerId] ? partnerId : null);
             tempState.turn = null;
         }
 
-        // Apply the optimistic update to the local state
         setGameState(tempState);
 
         try {
