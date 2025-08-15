@@ -64,7 +64,10 @@ const handleReportedPostFlow = ai.defineFlow(
     } catch (error) {
       console.error('Error handling reported post:', error);
       // We can re-throw the error if we want the caller to be aware of the failure.
-      throw new Error(`Failed to handle reported post: ${error.message}`);
+      if (error instanceof Error) {
+        throw new Error(`Failed to handle reported post: ${error.message}`);
+      }
+      throw new Error('Failed to handle reported post with an unknown error.');
     }
   }
 );
