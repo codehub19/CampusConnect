@@ -26,31 +26,35 @@ export default function ConnectFour({ chatId, gameState, setGameState }: Connect
 
     const handleMove = async (colIndex: number) => {
         if (!isMyTurn || status !== 'active') return;
-        const chatRef = doc(db, 'chats', chatId);
-
-        // Optimistic update
+        
         let landingRow = -1;
-        const tempBoard = [...board];
+        const currentBoard = gameState.board;
         for (let r = 5; r >= 0; r--) {
-            if (tempBoard[colIndex + r * 7] === null) {
+            if (currentBoard[colIndex + r * 7] === null) {
                 landingRow = r;
                 break;
             }
         }
         if(landingRow === -1) return; // Column is full
+        
+        const chatRef = doc(db, 'chats', chatId);
 
+        // Optimistic update
+        const tempBoard = [...currentBoard];
         tempBoard[colIndex + landingRow * 7] = myPlayerNumber;
+
         const hasWon = checkWinner(tempBoard, myPlayerNumber as number);
         const isDraw = !hasWon && tempBoard.every(cell => cell !== null);
         const partnerId = Object.keys(players).find(id => id !== user?.uid);
 
-        setGameState(prev => prev ? ({
-            ...prev,
+        const newGameData: Partial<GameState> = {
             board: tempBoard,
             turn: hasWon || isDraw ? null : partnerId,
             status: hasWon ? 'win' : isDraw ? 'draw' : 'active',
             winner: hasWon ? user?.uid : null,
-        }) : null);
+        };
+
+        setGameState(prev => prev ? ({ ...prev, ...newGameData }) : null);
 
         try {
             await runTransaction(db, async (transaction) => {
@@ -60,20 +64,20 @@ export default function ConnectFour({ chatId, gameState, setGameState }: Connect
                 const game = chatDoc.data().game as GameState;
                 if (game.turn !== user?.uid || game.status !== 'active') return;
 
-                // The transaction will use the already-calculated new state
-                const newGameData: Partial<GameState> = {
-                    board: tempBoard,
-                    turn: hasWon || isDraw ? null : partnerId,
-                    status: hasWon ? 'win' : isDraw ? 'draw' : 'active',
-                    winner: hasWon ? user?.uid : null,
-                };
-                
+                const landingRowCheck = -1;
+                 for (let r = 5; r >= 0; r--) {
+                    if (game.board[colIndex + r * 7] === null) {
+                        break;
+                    }
+                }
+                if(landingRowCheck !== -1 && landingRowCheck !== landingRow) return; // a move was made in this col
+
                 transaction.update(chatRef, { game: {...game, ...newGameData} });
             });
         } catch (e) {
             console.error("Connect Four move failed: ", e);
             toast({ variant: 'destructive', title: 'Error making move' });
-            // Optional: Revert optimistic update on error
+            // Revert optimistic update on error
             setGameState(gameState);
         }
     };

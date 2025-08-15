@@ -53,8 +53,7 @@ export default function TicTacToe({ chatId, gameState, setGameState }: TicTacToe
                 
                 const currentGame = chatDoc.data().game as GameState;
                 if(currentGame.board[index] !== null || currentGame.turn !== user?.uid) {
-                    // If server state is different, revert local state and abort
-                    setGameState(currentGame);
+                    // If server state is different, abort. The optimistic UI will be corrected by the snapshot listener.
                     return;
                 };
                 

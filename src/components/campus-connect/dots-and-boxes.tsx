@@ -33,7 +33,7 @@ export default function DotsAndBoxes({ chatId, gameState, setGameState }: DotsAn
 
         const chatRef = doc(db, 'chats', chatId);
 
-        // Optimistic update
+        // Create a deep copy for the optimistic update
         const tempState = JSON.parse(JSON.stringify(gameState));
         if (type === 'h') tempState.h_lines[index] = user!.uid;
         else tempState.v_lines[index] = user!.uid;
@@ -57,11 +57,14 @@ export default function DotsAndBoxes({ chatId, gameState, setGameState }: DotsAn
         
         tempState.turn = (boxesCompleted > 0) ? user!.uid : partnerId;
         
-        if (Object.values(tempState.scores).reduce((a: number, b: number) => a + b, 0) === gridSize * gridSize) {
+        const totalScore = Object.values(tempState.scores).reduce((a: number, b: number) => a + b, 0);
+        if (totalScore === gridSize * gridSize) {
             tempState.status = tempState.scores[user!.uid] === tempState.scores[partnerId] ? 'draw' : 'win';
             tempState.winner = tempState.scores[user!.uid] > tempState.scores[partnerId] ? user!.uid : (tempState.scores[user!.uid] < tempState.scores[partnerId] ? partnerId : null);
             tempState.turn = null;
         }
+
+        // Apply the optimistic update to the local state
         setGameState(tempState);
 
         try {
@@ -70,6 +73,7 @@ export default function DotsAndBoxes({ chatId, gameState, setGameState }: DotsAn
                 if (!chatDoc.exists()) throw "Chat does not exist!";
                 const game = chatDoc.data().game as GameState;
                 if (game.turn !== user?.uid) return; // Abort if state changed
+                if ((type === 'h' && game.h_lines[index]) || (type === 'v' && game.v_lines[index])) return;
                 
                 transaction.update(chatRef, { game: tempState });
             });
