@@ -139,7 +139,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const userDoc = await getDoc(userDocRef);
       if (!userDoc.exists()) {
           await createProfile(result.user.uid, { 
-              name: result.user.displayName, 
+              name: result.user.displayName || result.user.email?.split('@')[0], 
               avatar: result.user.photoURL,
               profileComplete: false,
           });
