@@ -59,18 +59,18 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const isAtBottomRef = useRef(true);
 
-  const scrollToBottom = (behavior: 'smooth' | 'auto' = 'auto') => {
+  const scrollToBottom = useCallback((behavior: 'smooth' | 'auto' = 'auto') => {
     const scrollArea = scrollAreaRef.current;
     if (scrollArea) {
       scrollArea.scrollTo({ top: scrollArea.scrollHeight, behavior });
     }
-  };
+  }, []);
   
     useEffect(() => {
         if (isAtBottomRef.current) {
             scrollToBottom('smooth');
         }
-    }, [messages]);
+    }, [messages, scrollToBottom]);
 
     const resetInactivityTimer = useCallback(() => {
         if (chat.isFriendChat) return;
@@ -235,14 +235,18 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
             
             dismiss(uploadToastId);
             toast({ title: 'Image sent!' });
-        } catch (error) {
+        } catch (error: any) {
             console.error("Image upload failed:", error);
             if(processingToastId) dismiss(processingToastId);
             if(uploadToastId) dismiss(uploadToastId);
+            let description = 'Could not upload your image. Please try again.';
+            if (error.code === 'storage/unauthorized' || error.code === 'storage/retry-limit-exceeded') {
+                description = 'Upload failed. Please check your Firebase Storage security and CORS rules.';
+            }
             toast({ 
                 variant: 'destructive', 
                 title: 'Upload Failed', 
-                description: 'Could not upload your image. Please check your Firebase Storage security rules.' 
+                description: description,
             });
         } finally {
             if (fileInputRef.current) {
