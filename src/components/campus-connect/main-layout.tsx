@@ -110,9 +110,9 @@ function LayoutUI() {
             <Sidebar>
                 <SidebarHeader>
                     <div className="flex items-center justify-between">
-                        <Button variant="ghost" size="icon" onClick={onNavigateHome}><ArrowLeft /></Button>
+                        <Button variant="ghost" size="icon" onClick={onNavigateHome} aria-label="Back to Home"><ArrowLeft /></Button>
                         <h2 className="font-semibold text-lg">{profile?.name}</h2>
-                        <Button variant="ghost" size="icon" onClick={logout}><LogOut /></Button>
+                        <Button variant="ghost" size="icon" onClick={logout} aria-label="Log Out"><LogOut /></Button>
                     </div>
                 </SidebarHeader>
                 <SidebarContent>
@@ -136,8 +136,8 @@ function LayoutUI() {
                                         <div key={req.id} className="flex items-center justify-between p-2 rounded-md hover:bg-sidebar-accent">
                                             <span>{req.fromName}</span>
                                             <div className="flex gap-2">
-                                                <Button size="icon" variant="ghost" className="h-7 w-7 text-green-500" onClick={() => handleAcceptFriend(req)}><Check /></Button>
-                                                <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500" onClick={() => handleDeclineFriend(req.id)}><X /></Button>
+                                                <Button size="icon" variant="ghost" className="h-7 w-7 text-green-500" onClick={() => handleAcceptFriend(req)} aria-label="Accept Friend Request"><Check /></Button>
+                                                <Button size="icon" variant="ghost" className="h-7 w-7 text-red-500" onClick={() => handleDeclineFriend(req.id)} aria-label="Decline Friend Request"><X /></Button>
                                             </div>
                                         </div>
                                     ))}
@@ -154,10 +154,12 @@ function LayoutUI() {
                                         <div className={cn("h-2.5 w-2.5 rounded-full", friend.online ? 'bg-green-500' : 'bg-gray-500')} />
                                     </div>
                                 )) : 
-                                <div className="text-center text-xs text-muted-foreground p-4 flex flex-col items-center gap-2">
-                                    <Users className="h-8 w-8" />
-                                    <p className="font-semibold">No Friends Yet</p>
-                                    <p>Find a chat, make a connection, and add friends to see them here!</p>
+                                <div className="text-center text-xs text-muted-foreground p-4 flex flex-col items-center gap-4">
+                                    <Users className="h-10 w-10 text-muted-foreground/50" />
+                                    <div>
+                                        <p className="font-semibold text-sm">No Friends Yet</p>
+                                        <p>Find a chat, make a connection, and add friends to see them here!</p>
+                                    </div>
                                 </div>
                                 }
                             </div>
@@ -210,9 +212,9 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
     const [isSearching, setIsSearching] = useState(false);
     const [isVideoCallOpen, setIsVideoCallOpen] = useState(false);
 
-    const waitingListenerUnsub = useRef<() => void | null>(null);
-    const chatListenerUnsub = useRef<() => void | null>(null);
-    const partnerListenerUnsub = useRef<() => void | null>(null);
+    const waitingListenerUnsub = useRef<(() => void) | null>(null);
+    const chatListenerUnsub = useRef<(() => void) | null>(null);
+    const partnerListenerUnsub = useRef<(() => void) | null>(null);
 
     const { toast, dismiss } = useToast();
     const db = getFirestore(firebaseApp);
@@ -487,6 +489,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                 },
                 isFriendChat: true,
                 createdAt: serverTimestamp(),
+                game: null,
             };
             await setDoc(chatDocRef, newChatData);
         }
@@ -513,7 +516,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
 
         await updateDoc(doc(db, 'users', user.uid), { blockedUsers: arrayUnion(partnerId) });
         toast({ title: "User Blocked", description: `You will not be matched with ${activeView.data.user.name} again.` });
-        handleLeaveChat();
+        handleLeaveChat(false);
     }
     
      useEffect(() => {
