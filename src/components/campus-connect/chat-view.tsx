@@ -190,13 +190,14 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
 
         const MAX_SIZE_MB = 1;
         const TARGET_SIZE_BYTES = MAX_SIZE_MB * 1024 * 1024;
+        let processingToastId: string | undefined;
+        let uploadToastId: string | undefined;
 
         try {
-            toast({ title: 'Processing image...' });
+            ({ id: processingToastId } = toast({ title: 'Processing image...' }));
 
             let imageBlob: Blob = file;
 
-            // Resize if larger than 1MB
             if (file.size > TARGET_SIZE_BYTES) {
                 imageBlob = await new Promise((resolve, reject) => {
                     const img = document.createElement('img');
@@ -217,20 +218,26 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
                             } else {
                                 reject(new Error('Canvas to Blob conversion failed'));
                             }
-                        }, 'image/jpeg', 0.8); // Adjust quality for better compression
+                        }, 'image/jpeg', 0.8);
                     };
                     img.onerror = reject;
                 });
             }
+            
+            dismiss(processingToastId);
+            ({ id: uploadToastId } = toast({ title: 'Uploading image...' }));
 
-            toast({ title: 'Uploading image...' });
             const imageRef = storageRef(storage, `chat-images/${chat.id}/${Date.now()}-${file.name.split('.')[0]}.jpg`);
             const snapshot = await uploadBytes(imageRef, imageBlob);
             const url = await getDownloadURL(snapshot.ref);
 
             await sendNewMessage({ type: 'image', value: { url, name: file.name }});
+            
+            dismiss(uploadToastId);
             toast({ title: 'Image sent!' });
         } catch (error) {
+            if(processingToastId) dismiss(processingToastId);
+            if(uploadToastId) dismiss(uploadToastId);
             console.error("Image upload failed:", error);
             toast({ variant: 'destructive', title: 'Upload Failed', description: 'Could not upload your image.' });
         } finally {
