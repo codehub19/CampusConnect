@@ -9,8 +9,19 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import { getFirestore, doc, updateDoc, arrayUnion } from 'firebase/firestore';
-import { firebaseApp } from '@/lib/firebase';
+import { getFirestore as getAdminFirestore, cert, getApps, initializeApp } from 'firebase-admin/firestore';
+import { arrayUnion } from 'firebase/firestore';
+
+// Initialize Firebase Admin SDK if not already initialized
+if (!getApps().length) {
+  initializeApp({
+    credential: cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    }),
+  });
+}
 
 const AcceptFriendRequestInputSchema = z.object({
   requesterId: z.string().describe('The ID of the user who sent the friend request.'),
@@ -29,14 +40,14 @@ const acceptFriendRequestFlow = ai.defineFlow(
     outputSchema: z.void(),
   },
   async ({ requesterId, accepterId }) => {
-    const db = getFirestore(firebaseApp);
+    const db = getAdminFirestore();
     try {
       // This flow runs with admin privileges, so it can securely update
       // the document of the user who *sent* the request.
-      const requesterUserRef = doc(db, 'users', requesterId);
+      const requesterUserRef = db.collection('users').doc(requesterId);
       
       // Add the accepter's ID to the requester's friends list.
-      await updateDoc(requesterUserRef, {
+      await requesterUserRef.update({
         friends: arrayUnion(accepterId),
       });
 
