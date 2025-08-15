@@ -77,7 +77,7 @@ function LayoutUI() {
             console.error("Error fetching friends: ", error);
         });
         return () => unsubscribe();
-    }, [profile, db]);
+    }, [profile?.friends, db]);
 
     const handleAcceptFriend = async (req: FriendRequest) => {
         const batch = writeBatch(db);
@@ -207,7 +207,6 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
     const waitingListenerUnsub = useRef<() => void | null>(null);
     const chatListenerUnsub = useRef<() => void | null>(null);
     const partnerListenerUnsub = useRef<() => void | null>(null);
-    const activeChatId = useRef<string | null>(null);
 
     const { toast, dismiss } = useToast();
     const db = getFirestore(firebaseApp);
@@ -219,7 +218,6 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         waitingListenerUnsub.current = null;
         chatListenerUnsub.current = null;
         partnerListenerUnsub.current = null;
-        activeChatId.current = null;
     }, []);
 
     const handleLeaveChat = useCallback(async (showToast = true) => {
@@ -238,18 +236,15 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         } catch (error) {
             console.error("Error leaving chat:", error);
         }
-
+        
         if (showToast) {
             toast({ title: "You have left the chat." });
         }
         setActiveView({ type: 'welcome' });
-    }, [activeView, user, db, toast, cleanupListeners]);
-    
-     const switchToChat = useCallback(async (chatId: string) => {
-        if (activeChatId.current === chatId) return;
-        
+    }, [activeView.type, user, db, toast, cleanupListeners]);
+
+    const switchToChat = useCallback(async (chatId: string) => {
         cleanupListeners();
-        activeChatId.current = chatId;
         setIsSearching(false);
         dismiss();
 
@@ -258,7 +253,6 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
 
         if (!chatDocSnap.exists()) {
             console.error("Attempted to switch to a non-existent chat.");
-            handleLeaveChat(false);
             return;
         }
 
@@ -267,7 +261,6 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
 
         if (!partnerId) {
             console.error("Could not find partner in chat.");
-            handleLeaveChat(false);
             return;
         }
 
@@ -276,39 +269,12 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
 
         if (!partnerDocSnap.exists()) {
             console.error("Partner profile does not exist.");
-            handleLeaveChat(false);
             return;
         }
         
         const partnerProfile = partnerDocSnap.data() as UserProfile;
         
-        // Ensure our own status is active in the chat
         await updateDoc(chatDocRef, { [`members.${user!.uid}.active`]: true });
-
-        // Set up the listeners for the new chat
-        chatListenerUnsub.current = onSnapshot(chatDocRef, (docSnap) => {
-            if (docSnap.exists()) {
-                const updatedChatData = { id: docSnap.id, ...docSnap.data() } as Chat;
-                const partnerIsActive = updatedChatData.members[partnerId]?.active;
-
-                if (partnerIsActive === false) {
-                     toast({
-                         title: "Partner Left",
-                         description: `${partnerProfile.name} has left the chat.`
-                     });
-                     handleLeaveChat(false);
-                } else {
-                     setActiveView(prev => {
-                         if (prev.type === 'chat' && prev.data.chat.id === updatedChatData.id) {
-                            return { ...prev, data: { ...prev.data, chat: updatedChatData } };
-                         }
-                         return prev;
-                     });
-                }
-            } else {
-                handleLeaveChat(false);
-            }
-        });
 
         partnerListenerUnsub.current = onSnapshot(partnerDocRef, (docSnap) => {
             if (docSnap.exists()) {
@@ -320,12 +286,60 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                 });
             }
         });
-
+        
         setActiveView({ type: 'chat', data: { chat: chatData, user: partnerProfile } });
 
-    }, [user, db, cleanupListeners, dismiss, handleLeaveChat, toast]);
+    }, [user, db, cleanupListeners, dismiss]);
 
-    
+     useEffect(() => {
+        if (activeView.type !== 'chat' || !user) {
+            if (chatListenerUnsub.current) {
+                chatListenerUnsub.current();
+                chatListenerUnsub.current = null;
+            }
+            return;
+        };
+
+        const chatId = activeView.data.chat.id;
+        const partnerId = activeView.data.user.id;
+        const partnerName = activeView.data.user.name;
+
+        const chatDocRef = doc(db, 'chats', chatId);
+        chatListenerUnsub.current = onSnapshot(chatDocRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const updatedChatData = { id: docSnap.id, ...docSnap.data() } as Chat;
+                const partnerIsActive = updatedChatData.members[partnerId]?.active;
+
+                if (partnerIsActive === false) {
+                    toast({
+                        title: "Partner Left",
+                        description: `${partnerName} has left the chat.`
+                    });
+                    setActiveView({ type: 'welcome' });
+                    cleanupListeners();
+                } else {
+                     setActiveView(prev => {
+                         if (prev.type === 'chat' && prev.data.chat.id === updatedChatData.id) {
+                            return { ...prev, data: { ...prev.data, chat: updatedChatData } };
+                         }
+                         return prev;
+                     });
+                }
+            } else {
+                setActiveView({ type: 'welcome' });
+                cleanupListeners();
+            }
+        });
+        
+        return () => {
+            if (chatListenerUnsub.current) {
+                chatListenerUnsub.current();
+                chatListenerUnsub.current = null;
+            }
+        }
+
+    }, [activeView, user, db, toast, cleanupListeners]);
+
     const listenForMatches = useCallback(() => {
         if (!user || waitingListenerUnsub.current) return;
         cleanupListeners();
@@ -337,12 +351,16 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                 if (waitingData && waitingData.pendingChatId) {
                     const chatId = waitingData.pendingChatId;
                     await deleteDoc(waitingDocRef); // Clean up my waiting doc
-                    cleanupListeners();
                     switchToChat(chatId);
+                }
+            } else {
+                // If my waiting doc is deleted by someone else (e.g. stopSearching), I should stop listening.
+                if(isSearching) {
+                    stopSearching();
                 }
             }
         });
-    }, [user, db, cleanupListeners, switchToChat]);
+    }, [user, db, cleanupListeners, switchToChat, isSearching]);
     
     const findNewChat = useCallback(async () => {
         if (!user || !profile || isSearching) return;
@@ -351,46 +369,42 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         toast({ title: 'Searching for a chat...' });
 
         const waitingUsersRef = collection(db, 'waiting_users');
-        const q = query(waitingUsersRef, where('uid', '!=', user.uid), limit(10));
         
         try {
-            const querySnapshot = await getDocs(q);
-            const blockedByMe = profile.blockedUsers || [];
-            
-            let partner: (WaitingUser & {id: string}) | null = null;
-            for (const docSnap of querySnapshot.docs) {
-                const potentialPartner = { id: docSnap.id, ...docSnap.data() } as WaitingUser & { id: string };
-                if (potentialPartner.pendingChatId) continue;
+            await runTransaction(db, async (transaction) => {
+                const q = query(waitingUsersRef, where('uid', '!=', user.uid), limit(10));
+                const waitingSnapshot = await getDocs(q);
 
-                const partnerProfileDoc = await getDoc(doc(db, 'users', potentialPartner.id));
-                const partnerProfile = partnerProfileDoc.data() as UserProfile | undefined;
+                const blockedByMe = profile.blockedUsers || [];
+                let partner: (WaitingUser & {id: string}) | null = null;
+                
+                for (const docSnap of waitingSnapshot.docs) {
+                    const potentialPartner = { id: docSnap.id, ...docSnap.data() } as WaitingUser & { id: string };
+                    if (potentialPartner.pendingChatId) continue;
 
-                if (partnerProfile && !blockedByMe.includes(potentialPartner.id) && !(partnerProfile.blockedUsers || []).includes(user.uid)) {
-                    partner = potentialPartner;
-                    break;
-                }
-            }
-            
-            if (partner) {
-                const partnerWaitingRef = doc(db, 'waiting_users', partner.id);
-                const newChatRef = doc(collection(db, 'chats')); // Generate ID upfront
+                    const partnerProfileDoc = await getDoc(doc(db, 'users', potentialPartner.id));
+                    const partnerProfile = partnerProfileDoc.data() as UserProfile | undefined;
 
-                await runTransaction(db, async (transaction) => {
-                    const partnerWaitingDoc = await transaction.get(partnerWaitingRef);
-                    if (!partnerWaitingDoc.exists() || partnerWaitingDoc.data().pendingChatId) {
-                        throw "Partner is no longer available.";
+                    if (partnerProfile && !blockedByMe.includes(potentialPartner.id) && !(partnerProfile.blockedUsers || []).includes(user.uid)) {
+                        partner = potentialPartner;
+                        break;
                     }
+                }
+                
+                if (partner) {
+                    const partnerWaitingRef = doc(db, 'waiting_users', partner.id);
+                    const newChatRef = doc(collection(db, 'chats'));
                     
-                    const partnerProfileDoc = await getDoc(doc(db, 'users', partner.id!));
+                    const partnerProfileDoc = await getDoc(doc(db, 'users', partner.id));
                     if (!partnerProfileDoc.exists()) throw new Error("Partner profile not found.");
                     const partnerProfileData = partnerProfileDoc.data() as UserProfile;
 
                     const newChatData: Omit<Chat, 'id'> = {
                         createdAt: serverTimestamp(),
-                        memberIds: [user.uid, partner!.id].sort(),
+                        memberIds: [user.uid, partner.id].sort(),
                         members: {
                             [user.uid]: { name: profile.name, avatar: profile.avatar, online: true, active: true },
-                            [partner!.id]: { name: partnerProfileData.name, avatar: partnerProfileData.avatar, online: true, active: true }
+                            [partner.id]: { name: partnerProfileData.name, avatar: partnerProfileData.avatar, online: true, active: true }
                         },
                         isFriendChat: false,
                         game: null,
@@ -398,20 +412,26 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                     
                     transaction.set(newChatRef, newChatData);
                     transaction.update(partnerWaitingRef, { pendingChatId: newChatRef.id });
-                });
+                    
+                    return newChatRef.id;
 
-                await switchToChat(newChatRef.id);
-
-            } else {
-                 const waitingDocRef = doc(db, 'waiting_users', user.uid);
-                 await setDoc(waitingDocRef, {
-                    uid: user.uid,
-                    timestamp: serverTimestamp(),
-                    pendingChatId: null,
-                    name: profile.name,
-                 });
-                 listenForMatches();
-            }
+                } else {
+                    const waitingDocRef = doc(db, 'waiting_users', user.uid);
+                    transaction.set(waitingDocRef, {
+                        uid: user.uid,
+                        timestamp: serverTimestamp(),
+                        pendingChatId: null,
+                        name: profile.name,
+                    });
+                    return null;
+                }
+            }).then(chatId => {
+                if (chatId) {
+                    switchToChat(chatId);
+                } else {
+                    listenForMatches();
+                }
+            });
         } catch (err: any) {
             setIsSearching(false);
             dismiss();
@@ -421,9 +441,6 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                 title: 'Matchmaking failed',
                 description: err?.message ?? 'Could not find a match. Please try again.'
             });
-            if(err.message === "Partner is no longer available.") {
-                setTimeout(() => findNewChat(), 1000); // Retry
-            }
         }
     }, [user, profile, isSearching, db, toast, dismiss, listenForMatches, switchToChat]);
 
