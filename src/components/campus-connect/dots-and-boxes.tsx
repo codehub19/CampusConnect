@@ -56,7 +56,7 @@ export default function DotsAndBoxes({ chatId, gameState, setGameState }: DotsAn
         
         tempState.turn = (boxesCompleted > 0) ? user!.uid : partnerId;
         
-        const totalScore = Object.values(tempState.scores).reduce((a: number, b: number) => a + b, 0);
+        const totalScore = Object.values(tempState.scores).reduce((a: number, b: unknown) => a + (b as number), 0);
         if (totalScore === gridSize * gridSize) {
             tempState.status = tempState.scores[user!.uid] === tempState.scores[partnerId] ? 'draw' : 'win';
             tempState.winner = tempState.scores[user!.uid] > tempState.scores[partnerId] ? user!.uid : (tempState.scores[user!.uid] < tempState.scores[partnerId] ? partnerId : null);
