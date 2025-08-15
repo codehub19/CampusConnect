@@ -39,6 +39,12 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
   };
 
   useEffect(() => {
+    if (isAtBottomRef.current) {
+        scrollToBottom();
+    }
+  }, [messages]);
+
+  useEffect(() => {
     if (!event.chatId) return;
 
     const messagesRef = collection(db, "group_chats", event.chatId, "messages");
@@ -76,9 +82,7 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
             const newUniqueMessages = addedMessages.filter(m => !existingIds.has(m.id));
             if (newUniqueMessages.length === 0) return prevMessages;
 
-            if (isAtBottomRef.current) {
-                setTimeout(() => scrollToBottom('smooth'), 100);
-            } else {
+            if (!isAtBottomRef.current) {
                 setShowScrollToBottom(true);
             }
             return [...prevMessages, ...newUniqueMessages];

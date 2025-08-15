@@ -65,6 +65,12 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
       scrollArea.scrollTo({ top: scrollArea.scrollHeight, behavior });
     }
   };
+
+  useEffect(() => {
+    if (isAtBottomRef.current) {
+        scrollToBottom();
+    }
+  }, [messages]);
   
     const resetInactivityTimer = useCallback(() => {
         if (chat.isFriendChat) return;
@@ -128,9 +134,7 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
                     const newUniqueMessages = addedMessages.filter(m => !existingIds.has(m.id));
                     if (newUniqueMessages.length === 0) return prevMessages;
                     
-                    if (isAtBottomRef.current) {
-                        setTimeout(() => scrollToBottom('smooth'), 100);
-                    } else {
+                    if (!isAtBottomRef.current) {
                         setShowScrollToBottom(true);
                     }
                     resetInactivityTimer();
@@ -142,7 +146,7 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
         return () => {
             unsubscribeMessages();
         };
-    }, [chat.id]);
+    }, [chat.id, db, resetInactivityTimer]);
 
   const handleScroll = (e: UIEvent<HTMLDivElement>) => {
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
@@ -349,5 +353,3 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
     </div>
   );
 }
-
-    
