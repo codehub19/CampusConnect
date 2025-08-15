@@ -32,8 +32,9 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
   const isAtBottomRef = useRef(true);
 
   const scrollToBottom = (behavior: 'smooth' | 'auto' = 'auto') => {
-    if (scrollAreaRef.current) {
-        scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior });
+    const scrollArea = scrollAreaRef.current;
+    if (scrollArea) {
+        scrollArea.scrollTo({ top: scrollArea.scrollHeight, behavior });
     }
   };
 
@@ -44,52 +45,54 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
     const q = query(messagesRef, orderBy("timestamp", "asc"));
 
     const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const fetchedMessages: Message[] = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
-      
-      const enrichedMessages: EnrichedMessage[] = [];
+      const addedMessages: EnrichedMessage[] = [];
       const newUsersToFetch = new Set<string>();
-      
-      for (const msg of fetchedMessages) {
-        let sender: User | undefined = usersCache[msg.senderId];
-        if (!sender) {
-            newUsersToFetch.add(msg.senderId);
-        }
-        enrichedMessages.push({ ...msg, sender });
-      }
 
-      if(newUsersToFetch.size > 0) {
-        const newCache = {...usersCache};
-        await Promise.all(Array.from(newUsersToFetch).map(async (userId) => {
-            const userRef = doc(db, 'users', userId);
-            const userSnap = await getDoc(userRef);
-            if(userSnap.exists()){
-                const userData = userSnap.data() as User;
-                newCache[userId] = userData;
-                enrichedMessages.forEach(msg => {
-                    if (msg.senderId === userId) msg.sender = userData;
-                });
+      snapshot.docChanges().forEach(change => {
+          if (change.type === 'added') {
+            const msg = { id: change.doc.id, ...change.doc.data() } as Message;
+            addedMessages.push(msg);
+            if (!usersCache[msg.senderId]) {
+                newUsersToFetch.add(msg.senderId);
             }
+          }
+      });
+      
+      if (newUsersToFetch.size > 0) {
+        const newCache = { ...usersCache };
+        await Promise.all(Array.from(newUsersToFetch).map(async (userId) => {
+          const userRef = doc(db, 'users', userId);
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists()) {
+            newCache[userId] = userSnap.data() as User;
+          }
         }));
         setUsersCache(newCache);
       }
 
-      setMessages(enrichedMessages);
+      if (addedMessages.length > 0) {
+         setMessages(prevMessages => {
+            const existingIds = new Set(prevMessages.map(m => m.id));
+            const newUniqueMessages = addedMessages.filter(m => !existingIds.has(m.id));
+            if (newUniqueMessages.length === 0) return prevMessages;
+
+            if (isAtBottomRef.current) {
+                setTimeout(() => scrollToBottom('smooth'), 100);
+            } else {
+                setShowScrollToBottom(true);
+            }
+            return [...prevMessages, ...newUniqueMessages];
+        });
+      }
     });
 
     return () => unsubscribe();
-  }, [event.chatId, db, usersCache]);
+  }, [event.chatId, db]);
 
-  useEffect(() => {
-    if (isAtBottomRef.current) {
-        scrollToBottom();
-    } else {
-        setShowScrollToBottom(true);
-    }
-  }, [messages]);
 
   const handleScroll = (e: UIEvent<HTMLDivElement>) => {
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 10;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50; // Add a 50px threshold
     isAtBottomRef.current = isAtBottom;
     if (isAtBottom) {
       setShowScrollToBottom(false);
@@ -119,6 +122,10 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
         if(textarea) textarea.value = '';
     }
   };
+  
+  const getSender = (senderId: string) => {
+    return usersCache[senderId] || { name: 'Loading...', avatar: '' };
+  }
 
   return (
     <div className="flex flex-col h-screen bg-background text-foreground">
@@ -140,6 +147,7 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
             <div className="space-y-4">
                 {messages.map((message, index) => {
                 const showSenderInfo = index === 0 || messages[index - 1].senderId !== message.senderId;
+                const sender = getSender(message.senderId);
                 return (
                 <div
                     key={message.id}
@@ -150,13 +158,13 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
                 >
                     {message.senderId !== currentUser.id && (
                     <Avatar className={cn("h-8 w-8", !showSenderInfo && 'invisible')}>
-                        {message.sender && <AvatarImage src={message.sender.avatar} alt={message.sender.name} />}
-                        {message.sender && <AvatarFallback>{message.sender.name.charAt(0)}</AvatarFallback>}
+                        <AvatarImage src={sender.avatar} alt={sender.name} />
+                        <AvatarFallback>{sender.name.charAt(0)}</AvatarFallback>
                     </Avatar>
                     )}
                     <div className={cn("flex flex-col", message.senderId === currentUser.id ? 'items-end' : 'items-start' )}>
-                        {message.senderId !== currentUser.id && showSenderInfo && message.sender && (
-                            <span className="text-xs text-muted-foreground ml-2 mb-1">{message.sender.name}</span>
+                        {message.senderId !== currentUser.id && showSenderInfo && (
+                            <span className="text-xs text-muted-foreground ml-2 mb-1">{sender.name}</span>
                         )}
                         <div
                         className={cn(

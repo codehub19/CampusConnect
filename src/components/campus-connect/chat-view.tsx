@@ -60,11 +60,10 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
   const isAtBottomRef = useRef(true);
 
   const scrollToBottom = (behavior: 'smooth' | 'auto' = 'auto') => {
-    setTimeout(() => {
-        if (scrollAreaRef.current) {
-            scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior });
-        }
-    }, 100);
+    const scrollArea = scrollAreaRef.current;
+    if (scrollArea) {
+      scrollArea.scrollTo({ top: scrollArea.scrollHeight, behavior });
+    }
   };
   
     const resetInactivityTimer = useCallback(() => {
@@ -124,11 +123,15 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
             });
 
             if (addedMessages.length > 0) {
-                setMessages(prevMessages => {
+                 setMessages(prevMessages => {
                     const existingIds = new Set(prevMessages.map(m => m.id));
                     const newUniqueMessages = addedMessages.filter(m => !existingIds.has(m.id));
-                    if (newUniqueMessages.length === 0) {
-                        return prevMessages;
+                    if (newUniqueMessages.length === 0) return prevMessages;
+                    
+                    if (isAtBottomRef.current) {
+                        setTimeout(() => scrollToBottom('smooth'), 100);
+                    } else {
+                        setShowScrollToBottom(true);
                     }
                     resetInactivityTimer();
                     return [...prevMessages, ...newUniqueMessages];
@@ -139,19 +142,11 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
         return () => {
             unsubscribeMessages();
         };
-    }, [chat.id, db, resetInactivityTimer]);
-
-    useEffect(() => {
-        if (isAtBottomRef.current) {
-            scrollToBottom();
-        } else {
-            setShowScrollToBottom(true);
-        }
-    }, [messages, gameState]);
+    }, [chat.id]);
 
   const handleScroll = (e: UIEvent<HTMLDivElement>) => {
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 10;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50; // Add a 50px threshold
     isAtBottomRef.current = isAtBottom;
     if (isAtBottom) {
       setShowScrollToBottom(false);
