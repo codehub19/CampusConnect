@@ -241,7 +241,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
             toast({ title: "You have left the chat." });
         }
         setActiveView({ type: 'welcome' });
-    }, [activeView.type, user, db, toast, cleanupListeners]);
+    }, [activeView, user, db, toast, cleanupListeners]);
 
     const switchToChat = useCallback(async (chatId: string) => {
         cleanupListeners();
@@ -326,6 +326,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                      });
                 }
             } else {
+                toast({ title: "Chat ended", description: "This chat no longer exists."})
                 setActiveView({ type: 'welcome' });
                 cleanupListeners();
             }
@@ -372,7 +373,11 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         
         try {
             await runTransaction(db, async (transaction) => {
-                const q = query(waitingUsersRef, where('uid', '!=', user.uid), limit(10));
+                const q = query(
+                    waitingUsersRef,
+                    where('uid', '!=', user.uid),
+                    limit(10)
+                );
                 const waitingSnapshot = await getDocs(q);
 
                 const blockedByMe = profile.blockedUsers || [];
@@ -450,7 +455,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
 
         const q = query(collection(db, "chats"),
             where("isFriendChat", "==", true),
-            where("memberIds", "array-contains-all", sortedIds),
+            where("memberIds", "==", sortedIds),
             limit(1)
         );
 
@@ -547,3 +552,5 @@ export default function MainLayoutWrapper({ onNavigateHome }: { onNavigateHome: 
         <MainLayoutContent onNavigateHome={onNavigateHome} />
     )
 }
+
+    
