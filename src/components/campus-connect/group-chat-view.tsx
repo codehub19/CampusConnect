@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useRef, useEffect, UIEvent } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, UIEvent } from 'react';
 import { Send, ArrowDown, ArrowLeft } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -29,7 +29,18 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const db = getFirestore(firebaseApp);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
-  const isAtBottomRef = useRef(true);
+  
+  const scrollSnapshot = useRef({
+    shouldScroll: true,
+    scrollHeight: 0,
+  });
+
+  useLayoutEffect(() => {
+    const scrollArea = scrollAreaRef.current;
+    if (scrollArea && scrollSnapshot.current.shouldScroll) {
+      scrollArea.scrollTop = scrollArea.scrollHeight;
+    }
+  }, [messages]);
 
   const scrollToBottom = (behavior: 'smooth' | 'auto' = 'auto') => {
     const scrollArea = scrollAreaRef.current;
@@ -37,12 +48,6 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
         scrollArea.scrollTo({ top: scrollArea.scrollHeight, behavior });
     }
   };
-
-  useEffect(() => {
-    if (isAtBottomRef.current) {
-        scrollToBottom();
-    }
-  }, [messages]);
 
   useEffect(() => {
     if (!event.chatId) return;
@@ -77,15 +82,24 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
       }
 
       if (addedMessages.length > 0) {
-         setMessages(prevMessages => {
-            const existingIds = new Set(prevMessages.map(m => m.id));
-            const newUniqueMessages = addedMessages.filter(m => !existingIds.has(m.id));
-            if (newUniqueMessages.length === 0) return prevMessages;
+        const scrollArea = scrollAreaRef.current;
+        if (scrollArea) {
+          const { scrollTop, scrollHeight, clientHeight } = scrollArea;
+          const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
+          scrollSnapshot.current = {
+              shouldScroll: isAtBottom,
+              scrollHeight: scrollHeight,
+          };
+          if(!isAtBottom) {
+              setShowScrollToBottom(true);
+          }
+        }
+        setMessages(prevMessages => {
+          const existingIds = new Set(prevMessages.map(m => m.id));
+          const newUniqueMessages = addedMessages.filter(m => !existingIds.has(m.id));
+          if (newUniqueMessages.length === 0) return prevMessages;
 
-            if (!isAtBottomRef.current) {
-                setShowScrollToBottom(true);
-            }
-            return [...prevMessages, ...newUniqueMessages];
+          return [...prevMessages, ...newUniqueMessages];
         });
       }
     });
@@ -96,8 +110,7 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
 
   const handleScroll = (e: UIEvent<HTMLDivElement>) => {
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50; // Add a 50px threshold
-    isAtBottomRef.current = isAtBottom;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
     if (isAtBottom) {
       setShowScrollToBottom(false);
     }

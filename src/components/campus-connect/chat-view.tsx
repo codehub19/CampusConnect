@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useRef, useEffect, UIEvent, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, UIEvent, useCallback } from 'react';
 import { Send, ArrowDown, IceCream, Image as ImageIcon, Timer, Gamepad2 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -57,7 +57,18 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
   const storage = getStorage(firebaseApp);
 
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
-  const isAtBottomRef = useRef(true);
+  
+  const scrollSnapshot = useRef({
+    shouldScroll: true,
+    scrollHeight: 0,
+  });
+
+  useLayoutEffect(() => {
+    const scrollArea = scrollAreaRef.current;
+    if (scrollArea && scrollSnapshot.current.shouldScroll) {
+      scrollArea.scrollTop = scrollArea.scrollHeight;
+    }
+  }, [messages]);
 
   const scrollToBottom = useCallback((behavior: 'smooth' | 'auto' = 'auto') => {
     const scrollArea = scrollAreaRef.current;
@@ -66,12 +77,6 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
     }
   }, []);
   
-    useEffect(() => {
-        if (isAtBottomRef.current) {
-            scrollToBottom('smooth');
-        }
-    }, [messages, scrollToBottom]);
-
     const resetInactivityTimer = useCallback(() => {
         if (chat.isFriendChat) return;
         setShowInactivityWarning(false);
@@ -129,14 +134,22 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
             });
 
             if (addedMessages.length > 0) {
+                 const scrollArea = scrollAreaRef.current;
+                 if (scrollArea) {
+                    const { scrollTop, scrollHeight, clientHeight } = scrollArea;
+                    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
+                    scrollSnapshot.current = {
+                        shouldScroll: isAtBottom,
+                        scrollHeight: scrollHeight,
+                    };
+                    if(!isAtBottom) {
+                        setShowScrollToBottom(true);
+                    }
+                 }
                  setMessages(prevMessages => {
                     const existingIds = new Set(prevMessages.map(m => m.id));
                     const newUniqueMessages = addedMessages.filter(m => !existingIds.has(m.id));
                     if (newUniqueMessages.length === 0) return prevMessages;
-                    
-                    if (!isAtBottomRef.current) {
-                        setShowScrollToBottom(true);
-                    }
                     resetInactivityTimer();
                     return [...prevMessages, ...newUniqueMessages];
                 });
@@ -150,8 +163,7 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
 
   const handleScroll = (e: UIEvent<HTMLDivElement>) => {
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50; // Add a 50px threshold
-    isAtBottomRef.current = isAtBottom;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
     if (isAtBottom) {
       setShowScrollToBottom(false);
     }
@@ -224,7 +236,7 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
                 });
             }
             
-            dismiss(processingToastId);
+            if (processingToastId) dismiss(processingToastId);
             ({ id: uploadToastId } = toast({ title: 'Uploading image...' }));
 
             const imageRef = storageRef(storage, `chat-images/${chat.id}/${Date.now()}-${file.name.split('.')[0]}.jpg`);
@@ -233,7 +245,7 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
 
             await sendNewMessage({ type: 'image', value: { url, name: file.name }});
             
-            dismiss(uploadToastId);
+            if (uploadToastId) dismiss(uploadToastId);
             toast({ title: 'Image sent!' });
         } catch (error: any) {
             console.error("Image upload failed:", error);
