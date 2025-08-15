@@ -30,17 +30,7 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
   const db = getFirestore(firebaseApp);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   
-  const scrollSnapshot = useRef({
-    shouldScroll: true,
-    scrollHeight: 0,
-  });
-
-  useLayoutEffect(() => {
-    const scrollArea = scrollAreaRef.current;
-    if (scrollArea && scrollSnapshot.current.shouldScroll) {
-      scrollArea.scrollTop = scrollArea.scrollHeight;
-    }
-  }, [messages]);
+  const atBottomRef = useRef(true);
 
   const scrollToBottom = (behavior: 'smooth' | 'auto' = 'auto') => {
     const scrollArea = scrollAreaRef.current;
@@ -50,12 +40,29 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
   };
 
   useEffect(() => {
+    scrollToBottom('auto');
+  }, []);
+
+  useEffect(() => {
+    if (atBottomRef.current) {
+        scrollToBottom('smooth');
+    }
+  }, [messages]);
+
+  useEffect(() => {
     if (!event.chatId) return;
 
     const messagesRef = collection(db, "group_chats", event.chatId, "messages");
     const q = query(messagesRef, orderBy("timestamp", "asc"));
 
     const unsubscribe = onSnapshot(q, async (snapshot) => {
+      const scrollArea = scrollAreaRef.current;
+      if (scrollArea) {
+          const isAtBottom = scrollArea.scrollHeight - scrollArea.scrollTop - scrollArea.clientHeight < 50;
+          atBottomRef.current = isAtBottom;
+          setShowScrollToBottom(!isAtBottom);
+      }
+      
       const addedMessages: EnrichedMessage[] = [];
       const newUsersToFetch = new Set<string>();
 
@@ -63,7 +70,7 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
           if (change.type === 'added') {
             const msg = { id: change.doc.id, ...change.doc.data() } as Message;
             addedMessages.push(msg);
-            if (!usersCache[msg.senderId]) {
+            if (!usersCache[msg.senderId] && msg.senderId !== currentUser.id) {
                 newUsersToFetch.add(msg.senderId);
             }
           }
@@ -82,18 +89,6 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
       }
 
       if (addedMessages.length > 0) {
-        const scrollArea = scrollAreaRef.current;
-        if (scrollArea) {
-          const { scrollTop, scrollHeight, clientHeight } = scrollArea;
-          const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
-          scrollSnapshot.current = {
-              shouldScroll: isAtBottom,
-              scrollHeight: scrollHeight,
-          };
-          if(!isAtBottom) {
-              setShowScrollToBottom(true);
-          }
-        }
         setMessages(prevMessages => {
           const existingIds = new Set(prevMessages.map(m => m.id));
           const newUniqueMessages = addedMessages.filter(m => !existingIds.has(m.id));
@@ -105,15 +100,14 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
     });
 
     return () => unsubscribe();
-  }, [event.chatId, db, usersCache]);
+  }, [event.chatId, db, usersCache, currentUser.id]);
 
 
   const handleScroll = (e: UIEvent<HTMLDivElement>) => {
     const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
     const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
-    if (isAtBottom) {
-      setShowScrollToBottom(false);
-    }
+    atBottomRef.current = isAtBottom;
+    setShowScrollToBottom(!isAtBottom);
   };
 
   const sendNewMessage = async (content: MessageContent) => {
@@ -141,7 +135,8 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
   };
   
   const getSender = (senderId: string) => {
-    return usersCache[senderId] || { name: 'Loading...', avatar: undefined };
+    if(senderId === currentUser.id) return currentUser;
+    return usersCache[senderId] || { name: '...', avatar: undefined };
   }
 
   return (
@@ -176,7 +171,7 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
                     {message.senderId !== currentUser.id && (
                     <Avatar className={cn("h-8 w-8", !showSenderInfo && 'invisible')}>
                         <AvatarImage src={sender.avatar} alt={sender.name} />
-                        <AvatarFallback>{sender.name.charAt(0)}</AvatarFallback>
+                        <AvatarFallback>{sender.name?.charAt(0)}</AvatarFallback>
                     </Avatar>
                     )}
                     <div className={cn("flex flex-col", message.senderId === currentUser.id ? 'items-end' : 'items-start' )}>
