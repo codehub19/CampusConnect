@@ -24,7 +24,7 @@ import {
   serverTimestamp,
 } from 'firebase/firestore';
 import { getDatabase, ref, onDisconnect, set, serverTimestamp as rtdbServerTimestamp, goOnline, goOffline } from 'firebase/database';
-import { firebaseApp, rtdb } from '@/lib/firebase';
+import { firebaseApp } from '@/lib/firebase';
 import type { User } from '@/lib/types';
 import { useToast } from './use-toast';
 
@@ -53,25 +53,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const { toast } = useToast();
   const auth = getAuth(firebaseApp);
   const db = getFirestore(firebaseApp);
+  const rtdb = getDatabase(firebaseApp);
+
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       if (firebaseUser) {
         setUser(firebaseUser);
         const userDocRef = doc(db, 'users', firebaseUser.uid);
-        
-        if (rtdb && firebaseUser.emailVerified) {
-            goOnline(rtdb);
-            const statusRef = ref(rtdb, `/status/${firebaseUser.uid}`);
-            
-            onDisconnect(statusRef).set({ state: 'offline', last_changed: rtdbServerTimestamp() }).then(() => {
-                updateDoc(userDocRef, { online: false, lastSeen: serverTimestamp() });
-             });
 
-            await set(statusRef, { state: 'online', last_changed: rtdbServerTimestamp() });
-            await updateDoc(userDocRef, { online: true }).catch(() => {});
+        if (firebaseUser.emailVerified) {
+          const statusRef = ref(rtdb, `/status/${firebaseUser.uid}`);
+          const isOnline = { state: 'online', last_changed: rtdbServerTimestamp() };
+          const isOffline = { state: 'offline', last_changed: rtdbServerTimestamp() };
+
+          onDisconnect(statusRef).set(isOffline).then(() => {
+            set(statusRef, isOnline);
+            updateDoc(userDocRef, { online: true });
+          });
         }
-
+        
         const unsubProfile = onSnapshot(userDocRef, (docSnap) => {
           if (docSnap.exists()) {
             const userProfile = { id: docSnap.id, ...docSnap.data() } as User;
@@ -81,21 +82,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
         return () => unsubProfile();
       } else {
-        if(profile?.id && rtdb) {
+        if(profile?.id) {
             const statusRef = ref(rtdb, `/status/${profile.id}`);
             set(statusRef, { state: 'offline', last_changed: rtdbServerTimestamp() });
         }
         setUser(null);
         setProfile(null);
         setLoading(false);
-        if (rtdb) {
-            goOffline(rtdb);
-        }
       }
     });
 
     return () => unsubscribe();
-  }, [auth, db, profile?.id]);
+  }, [auth, db, profile?.id, rtdb]);
 
   const requireAuth = useCallback((callback: () => void) => {
     if (user && profile?.profileComplete) {
@@ -193,11 +191,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const logout = async () => {
-    if (user && rtdb) {
-      const userDocRef = doc(db, 'users', user.uid);
+    if (user) {
       const statusRef = ref(rtdb, `/status/${user.uid}`);
-      await updateDoc(userDocRef, { online: false, lastSeen: serverTimestamp() }).catch(e => console.error("Error setting user offline:", e));
-      await set(statusRef, { state: 'offline', last_changed: rtdbServerTimestamp() }).catch(e => console.error("Error setting RTDB status offline:", e));
+      await set(statusRef, { state: 'offline', last_changed: rtdbServerTimestamp() });
+      await updateDoc(doc(db, 'users', user.uid), { online: false, lastSeen: serverTimestamp() }).catch(e => console.error("Error setting user offline:", e));
     }
     await signOut(auth);
   };

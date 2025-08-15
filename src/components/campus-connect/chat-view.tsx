@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect, UIEvent, useCallback } from 'react';
-import { Send, ArrowDown, IceCream, Image as ImageIcon, Timer, Gamepad2 } from 'lucide-react';
+import { Send, ArrowDown, IceCream, Image as ImageIcon, Gamepad2 } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -29,14 +29,6 @@ interface ChatViewProps {
   onLeaveChat: () => void;
 }
 
-const InactivityTimer = ({ timeLeft }: { timeLeft: number }) => (
-    <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-destructive/80 text-destructive-foreground rounded-full px-4 py-2 text-sm font-semibold flex items-center gap-2 shadow-lg backdrop-blur-sm">
-        <Timer className="h-5 w-5" />
-        <p>Chat will end due to inactivity in <span className="font-bold">{timeLeft}</span> seconds.</p>
-    </div>
-);
-
-
 export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) {
   const { user, profile } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -44,11 +36,6 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
   const [gameState, setGameState] = useState<GameState | null>(chat.game || null);
   const [isSending, setIsSending] = useState(false);
   const [incomingGameInvite, setIncomingGameInvite] = useState<GameState | null>(null);
-  
-  const [showInactivityWarning, setShowInactivityWarning] = useState(false);
-  const [inactivityTimeLeft, setInactivityTimeLeft] = useState(10);
-  const inactivityTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const inactivityCountdownRef = useRef<NodeJS.Timeout | null>(null);
 
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -84,37 +71,6 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
   }, [messages, showScrollToBottom]);
 
 
-  const resetInactivityTimer = useCallback(() => {
-      if (chat.isFriendChat) return;
-      setShowInactivityWarning(false);
-      if (inactivityCountdownRef.current) clearInterval(inactivityCountdownRef.current);
-      if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
-
-      inactivityTimerRef.current = setTimeout(() => {
-          setShowInactivityWarning(true);
-          setInactivityTimeLeft(10);
-
-          inactivityCountdownRef.current = setInterval(() => {
-              setInactivityTimeLeft(prev => {
-                  if (prev <= 1) {
-                      clearInterval(inactivityCountdownRef.current!);
-                      onLeaveChat();
-                      return 0;
-                  }
-                  return prev - 1;
-              });
-          }, 1000);
-      }, 290000);
-  }, [onLeaveChat, chat.isFriendChat]);
-
-  useEffect(() => {
-      resetInactivityTimer();
-      return () => {
-          if (inactivityTimerRef.current) clearTimeout(inactivityTimerRef.current);
-          if (inactivityCountdownRef.current) clearInterval(inactivityCountdownRef.current);
-      };
-  }, [resetInactivityTimer]);
-
   useEffect(() => {
       const gameData = chat.game;
       setGameState(gameData || null);
@@ -141,7 +97,6 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
 
         const allMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
         setMessages(allMessages);
-        resetInactivityTimer();
 
         if (wasAtBottom) {
             setShowScrollToBottom(false);
@@ -154,7 +109,7 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
     });
 
     return () => unsubscribeMessages();
-}, [chat.id, db, user, resetInactivityTimer]);
+}, [chat.id, db, user]);
 
   const sendNewMessage = async (content: MessageContent) => {
     if (!user) return;
@@ -165,7 +120,6 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
         timestamp: serverTimestamp(),
         status: 'sent',
     });
-    resetInactivityTimer();
     setShowScrollToBottom(false);
   };
 
@@ -332,7 +286,6 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
                 </div>
              )}
             <div className="flex flex-col flex-1 min-h-0 relative">
-                 {showInactivityWarning && <InactivityTimer timeLeft={inactivityTimeLeft} />}
                  <ScrollArea className="flex-grow p-4" ref={scrollAreaRef} onScroll={handleScroll}>
                     <div className="space-y-4">
                         {messages.map((message) => {
@@ -419,5 +372,3 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
     </div>
   );
 }
-
-    

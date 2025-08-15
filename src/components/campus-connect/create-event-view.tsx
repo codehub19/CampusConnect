@@ -55,7 +55,7 @@ export default function CreateEventView({ isOpen, onOpenChange, eventToEdit }: C
   const isEditMode = !!eventToEdit;
 
   useEffect(() => {
-    if (isEditMode && eventToEdit) {
+    if (isOpen && isEditMode && eventToEdit) {
       setTitle(eventToEdit.title);
       setDescription(eventToEdit.description);
       setLocation(eventToEdit.location);
@@ -275,5 +275,3 @@ export default function CreateEventView({ isOpen, onOpenChange, eventToEdit }: C
     </Dialog>
   );
 }
-
-    
