@@ -236,10 +236,14 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
             dismiss(uploadToastId);
             toast({ title: 'Image sent!' });
         } catch (error) {
+            console.error("Image upload failed:", error);
             if(processingToastId) dismiss(processingToastId);
             if(uploadToastId) dismiss(uploadToastId);
-            console.error("Image upload failed:", error);
-            toast({ variant: 'destructive', title: 'Upload Failed', description: 'Could not upload your image.' });
+            toast({ 
+                variant: 'destructive', 
+                title: 'Upload Failed', 
+                description: 'Could not upload your image. Please check your Firebase Storage security rules.' 
+            });
         } finally {
             if (fileInputRef.current) {
                 fileInputRef.current.value = '';
