@@ -240,8 +240,10 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
             if(processingToastId) dismiss(processingToastId);
             if(uploadToastId) dismiss(uploadToastId);
             let description = 'Could not upload your image. Please try again.';
-            if (error.code === 'storage/unauthorized' || error.code === 'storage/retry-limit-exceeded') {
-                description = 'Upload failed. Please check your Firebase Storage security and CORS rules.';
+            if (error.code === 'storage/unauthorized') {
+                description = 'Upload failed. You do not have permission. Please check Storage security rules in your Firebase project.';
+            } else if (error.code === 'storage/retry-limit-exceeded' || error.message.includes('CORS')) {
+                description = 'Upload failed. Please check your Firebase Storage CORS and security rules.';
             }
             toast({ 
                 variant: 'destructive', 
