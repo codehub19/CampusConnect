@@ -182,7 +182,11 @@ export default function MissedConnectionsView({ onNavigateHome }: MissedConnecti
           }
         });
       } catch (error: any) {
-          toast({ variant: 'destructive', title: "Report Failed", description: error.message });
+          if (error instanceof Error) {
+            toast({ variant: 'destructive', title: "Report Failed", description: error.message });
+          } else {
+            toast({ variant: 'destructive', title: "Report Failed", description: "An unknown error occurred." });
+          }
       }
     });
   };
@@ -260,3 +264,5 @@ export default function MissedConnectionsView({ onNavigateHome }: MissedConnecti
     </>
   );
 }
+
+    

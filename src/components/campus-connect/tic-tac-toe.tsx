@@ -4,7 +4,7 @@
 import React from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import type { GameState } from '@/lib/types';
-import { doc, getFirestore, updateDoc } from 'firebase/firestore';
+import { doc, getFirestore, updateDoc, runTransaction } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
@@ -27,35 +27,39 @@ export default function TicTacToe({ chatId, gameState, setGameState }: TicTacToe
         if (!isMyTurn || board[index] !== null || status !== 'active') return;
         
         const chatRef = doc(db, 'chats', chatId);
-        const partnerId = Object.keys(players).find(id => id !== user?.uid);
-
-        // Optimistic update
         const newBoard = [...board];
         newBoard[index] = mySymbol;
-
-        const hasWon = checkWinner(newBoard, mySymbol);
-        const isDraw = !hasWon && newBoard.every(cell => cell !== null);
-        
-        const newGameData: Partial<GameState> = {
-            board: newBoard,
-            turn: hasWon || isDraw ? null : partnerId,
-            status: hasWon ? 'win' : isDraw ? 'draw' : 'active',
-            winner: hasWon ? user?.uid : null,
-        };
-
-        const optimisticGameState = { ...gameState, ...newGameData };
-        setGameState(optimisticGameState);
+        setGameState(prev => ({...prev!, board: newBoard, turn: null}));
 
         try {
-            await updateDoc(chatRef, { game: optimisticGameState });
-        } catch (e) {
+            await runTransaction(db, async (transaction) => {
+                const docSnap = await transaction.get(chatRef);
+                if (!docSnap.exists()) throw new Error("Chat does not exist!");
+                const currentGame = docSnap.data().game as GameState;
+                if(currentGame.turn !== user?.uid) throw new Error("Not your turn!");
+                if(currentGame.board[index] !== null) throw new Error("This cell is already taken!");
+
+                const hasWon = checkWinner(newBoard, mySymbol);
+                const isDraw = !hasWon && newBoard.every(cell => cell !== null);
+                const partnerId = Object.keys(players).find(id => id !== user?.uid);
+                
+                const newGameData: Partial<GameState> = {
+                    board: newBoard,
+                    turn: hasWon || isDraw ? null : partnerId,
+                    status: hasWon ? 'win' : isDraw ? 'draw' : 'active',
+                    winner: hasWon ? user?.uid : null,
+                };
+                
+                transaction.update(chatRef, { game: {...currentGame, ...newGameData} });
+            });
+        } catch (e: any) {
             console.error("Tic Tac Toe move failed: ", e);
-            toast({ variant: 'destructive', title: 'Error', description: 'Could not make move. The game may be out of sync.' });
-            // Revert on error - the snapshot listener should correct the state.
+            toast({ variant: 'destructive', title: 'Error', description: e.message || 'Could not make move.' });
         }
     };
 
     const checkWinner = (board: any[], player: any) => {
+        if (!player) return false;
         const winConditions = [
             [0, 1, 2], [3, 4, 5], [6, 7, 8], // rows
             [0, 3, 6], [1, 4, 7], [2, 5, 8], // columns
@@ -111,3 +115,5 @@ export default function TicTacToe({ chatId, gameState, setGameState }: TicTacToe
         </div>
     )
 }
+
+    

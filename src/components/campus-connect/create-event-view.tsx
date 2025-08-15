@@ -81,6 +81,13 @@ export default function CreateEventView({ isOpen, onOpenChange, eventToEdit }: C
     setCapacity('');
   }
 
+  const handleOpenChange = (open: boolean) => {
+    if(!open) {
+      clearForm();
+    }
+    onOpenChange(open);
+  }
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!user || !profile) return;
@@ -139,8 +146,7 @@ export default function CreateEventView({ isOpen, onOpenChange, eventToEdit }: C
         });
       }
       
-      onOpenChange(false);
-      clearForm();
+      handleOpenChange(false);
     } catch (error) {
       console.error("Error creating/updating event:", error);
       toast({
@@ -154,7 +160,7 @@ export default function CreateEventView({ isOpen, onOpenChange, eventToEdit }: C
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onOpenChange}>
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogContent className="sm:max-w-2xl">
         <form onSubmit={handleSubmit}>
           <DialogHeader>
@@ -269,3 +275,5 @@ export default function CreateEventView({ isOpen, onOpenChange, eventToEdit }: C
     </Dialog>
   );
 }
+
+    

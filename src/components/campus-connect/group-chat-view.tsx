@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useRef, useEffect, UIEvent } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { Send, ArrowDown, ArrowLeft } from 'lucide-react';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
@@ -28,17 +28,32 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const db = getFirestore(firebaseApp);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
-  const [shouldScrollToBottom, setShouldScrollToBottom] = useState(true);
+  const lastScrollTopRef = useRef(0);
 
-  useEffect(() => {
-    if (shouldScrollToBottom && scrollAreaRef.current) {
-      scrollAreaRef.current.scrollTo({
-        top: scrollAreaRef.current.scrollHeight,
-        behavior: 'smooth',
-      });
-      setShouldScrollToBottom(false);
+  const handleScroll = () => {
+    const scrollArea = scrollAreaRef.current;
+    if (!scrollArea) return;
+
+    const isAtBottom = scrollArea.scrollHeight - scrollArea.scrollTop - scrollArea.clientHeight < 50;
+    const isScrollingUp = scrollArea.scrollTop < lastScrollTopRef.current;
+    
+    if (isAtBottom) {
+      setShowScrollToBottom(false);
+    } else if (isScrollingUp) {
+      setShowScrollToBottom(true);
     }
-  }, [messages, shouldScrollToBottom]);
+    lastScrollTopRef.current = scrollArea.scrollTop;
+  };
+  
+  useEffect(() => {
+    const scrollArea = scrollAreaRef.current;
+    if (!scrollArea) return;
+
+    if (!showScrollToBottom) {
+      scrollArea.scrollTo({ top: scrollArea.scrollHeight, behavior: 'smooth' });
+    }
+  }, [messages, showScrollToBottom]);
+
 
   useEffect(() => {
     if (!event.chatId) return;
@@ -77,24 +92,19 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
         setMessages(fetchedMessages);
 
         if (wasAtBottom) {
-            setShouldScrollToBottom(true);
+            setShowScrollToBottom(false);
         } else {
             if (snapshot.docChanges().some(change => change.type === 'added')) {
-                 setShowScrollToBottom(true);
+                 const lastMessage = fetchedMessages[fetchedMessages.length - 1];
+                 if (lastMessage && lastMessage.senderId !== currentUser.id) {
+                     setShowScrollToBottom(true);
+                 }
             }
         }
     });
 
     return () => unsubscribe();
 }, [event.chatId, db, usersCache, currentUser.id]);
-
-  const handleScroll = (e: UIEvent<HTMLDivElement>) => {
-    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
-    if(isAtBottom) {
-        setShowScrollToBottom(false);
-    }
-  };
 
   const sendNewMessage = async (content: MessageContent) => {
     if (event.chatId) {
@@ -104,7 +114,7 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
             content: content,
             timestamp: serverTimestamp(),
         });
-        setShouldScrollToBottom(true);
+        setShowScrollToBottom(false);
     }
   }
 
@@ -181,14 +191,10 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
             </ScrollArea>
             {showScrollToBottom && (
                 <Button
-                    onClick={() => {
-                        if(scrollAreaRef.current) {
-                            scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: 'smooth' });
-                        }
-                    }}
+                    onClick={() => setShowScrollToBottom(false)}
                     variant="secondary"
                     size="icon"
-                    className="absolute bottom-20 right-4 rounded-full h-10 w-10 shadow-lg animate-bounce"
+                    className="absolute bottom-20 right-4 rounded-full h-10 w-10 shadow-lg"
                 >
                     <ArrowDown className="h-5 w-5" />
                 </Button>
@@ -216,3 +222,5 @@ export default function GroupChatView({ event, currentUser, onLeaveChat }: Group
     </div>
   );
 }
+
+    

@@ -3,7 +3,7 @@
 
 import { useAuth } from '@/hooks/use-auth';
 import type { GameState } from '@/lib/types';
-import { doc, getFirestore, updateDoc } from 'firebase/firestore';
+import { doc, getFirestore, updateDoc, runTransaction } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
@@ -38,34 +38,39 @@ export default function ConnectFour({ chatId, gameState, setGameState }: Connect
         if(landingRow === -1) return; // Column is full
         
         const chatRef = doc(db, 'chats', chatId);
-
-        // Optimistic update
         const tempBoard = [...currentBoard];
         tempBoard[colIndex + landingRow * 7] = myPlayerNumber;
-
-        const hasWon = checkWinner(tempBoard, myPlayerNumber as number);
-        const isDraw = !hasWon && tempBoard.every(cell => cell !== null);
-        const partnerId = Object.keys(players).find(id => id !== user?.uid);
-
-        const newGameData: Partial<GameState> = {
-            board: tempBoard,
-            turn: hasWon || isDraw ? null : partnerId,
-            status: hasWon ? 'win' : isDraw ? 'draw' : 'active',
-            winner: hasWon ? user?.uid : null,
-        };
-
-        const optimisticGameState = { ...gameState, ...newGameData };
-        setGameState(optimisticGameState);
+        setGameState(prev => ({...prev!, board: tempBoard, turn: null }));
 
         try {
-            await updateDoc(chatRef, { game: optimisticGameState });
-        } catch (e) {
+            await runTransaction(db, async (transaction) => {
+                const docSnap = await transaction.get(chatRef);
+                if (!docSnap.exists()) throw new Error("Chat does not exist!");
+                const currentGame = docSnap.data().game as GameState;
+                if(currentGame.turn !== user?.uid) throw new Error("Not your turn!");
+                if(currentGame.board[colIndex + landingRow * 7] !== null) throw new Error("This cell is already taken!");
+
+                const hasWon = checkWinner(tempBoard, myPlayerNumber);
+                const isDraw = !hasWon && tempBoard.every(cell => cell !== null);
+                const partnerId = Object.keys(players).find(id => id !== user?.uid);
+
+                const newGameData: Partial<GameState> = {
+                    board: tempBoard,
+                    turn: hasWon || isDraw ? null : partnerId,
+                    status: hasWon ? 'win' : isDraw ? 'draw' : 'active',
+                    winner: hasWon ? user?.uid : null,
+                };
+                
+                transaction.update(chatRef, { game: {...currentGame, ...newGameData} });
+            });
+        } catch (e: any) {
             console.error("Connect Four move failed: ", e);
-            toast({ variant: 'destructive', title: 'Error', description: 'Could not make move. The game may be out of sync.' });
+            toast({ variant: 'destructive', title: 'Error', description: e.message || 'Could not make move.' });
         }
     };
     
-    const checkWinner = (board: any[], player: number) => {
+    const checkWinner = (board: any[], player: number | 'X' | 'O' | 'p1' | 'p2' | null) => {
+        if (!player) return false;
         const C = 7, R = 6;
         for (let r = 0; r < R; r++) for (let c = 0; c < C - 3; c++) if (board[c+r*C]===player&&board[c+1+r*C]===player&&board[c+2+r*C]===player&&board[c+3+r*C]===player)return true;
         for (let c = 0; c < C; c++) for (let r = 0; r < R - 3; r++) if (board[c+r*C]===player&&board[c+(r+1)*C]===player&&board[c+(r+2)*C]===player&&board[c+(r+3)*C]===player)return true;
@@ -117,3 +122,5 @@ export default function ConnectFour({ chatId, gameState, setGameState }: Connect
         </div>
     )
 }
+
+    

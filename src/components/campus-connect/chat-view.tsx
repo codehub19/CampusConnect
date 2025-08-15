@@ -57,17 +57,32 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
   const storage = getStorage(firebaseApp);
 
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
-  const [shouldScrollToBottom, setShouldScrollToBottom] = useState(true);
+  const lastScrollTopRef = useRef(0);
+
+  const handleScroll = () => {
+    const scrollArea = scrollAreaRef.current;
+    if (!scrollArea) return;
+
+    const isAtBottom = scrollArea.scrollHeight - scrollArea.scrollTop - scrollArea.clientHeight < 50;
+    const isScrollingUp = scrollArea.scrollTop < lastScrollTopRef.current;
+    
+    if (isAtBottom) {
+      setShowScrollToBottom(false);
+    } else if (isScrollingUp) {
+      setShowScrollToBottom(true);
+    }
+    lastScrollTopRef.current = scrollArea.scrollTop;
+  };
 
   useEffect(() => {
-    if (shouldScrollToBottom && scrollAreaRef.current) {
-      scrollAreaRef.current.scrollTo({
-        top: scrollAreaRef.current.scrollHeight,
-        behavior: 'smooth',
-      });
-      setShouldScrollToBottom(false);
+    const scrollArea = scrollAreaRef.current;
+    if (!scrollArea) return;
+
+    if (!showScrollToBottom) {
+      scrollArea.scrollTo({ top: scrollArea.scrollHeight, behavior: 'smooth' });
     }
-  }, [messages, shouldScrollToBottom]);
+  }, [messages, showScrollToBottom]);
+
 
   const resetInactivityTimer = useCallback(() => {
       if (chat.isFriendChat) return;
@@ -124,37 +139,22 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
             wasAtBottom = scrollArea.scrollHeight - scrollArea.scrollTop - scrollArea.clientHeight < 50;
         }
 
-        let newMessagesAdded = false;
-        snapshot.docChanges().forEach((change) => {
-            if (change.type === 'added') {
-                newMessagesAdded = true;
-            }
-        });
-        
-        if (newMessagesAdded) {
-            const allMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
-            setMessages(allMessages);
-            resetInactivityTimer();
-            if (wasAtBottom) {
-                setShouldScrollToBottom(true);
-            } else {
+        const allMessages = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Message));
+        setMessages(allMessages);
+        resetInactivityTimer();
+
+        if (wasAtBottom) {
+            setShowScrollToBottom(false);
+        } else if (snapshot.docChanges().some(change => change.type === 'added')) {
+            const lastMessage = allMessages[allMessages.length - 1];
+            if (lastMessage && lastMessage.senderId !== user.uid) {
                 setShowScrollToBottom(true);
             }
         }
     });
 
-    return () => {
-        unsubscribeMessages();
-    };
+    return () => unsubscribeMessages();
 }, [chat.id, db, user, resetInactivityTimer]);
-
-  const handleScroll = (e: UIEvent<HTMLDivElement>) => {
-    const { scrollTop, scrollHeight, clientHeight } = e.currentTarget;
-    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
-    if (isAtBottom) {
-        setShowScrollToBottom(false);
-    }
-  };
 
   const sendNewMessage = async (content: MessageContent) => {
     if (!user) return;
@@ -166,7 +166,7 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
         status: 'sent',
     });
     resetInactivityTimer();
-    setShouldScrollToBottom(true);
+    setShowScrollToBottom(false);
   };
 
   const handleSendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -373,13 +373,11 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
                 {showScrollToBottom && (
                     <Button
                         onClick={() => { 
-                            if(scrollAreaRef.current) {
-                                scrollAreaRef.current.scrollTo({ top: scrollAreaRef.current.scrollHeight, behavior: 'smooth' });
-                            }
+                           setShowScrollToBottom(false);
                         }}
                         variant="secondary"
                         size="icon"
-                        className="absolute bottom-20 right-4 rounded-full h-10 w-10 shadow-lg animate-bounce"
+                        className="absolute bottom-20 right-4 rounded-full h-10 w-10 shadow-lg"
                     >
                         <ArrowDown className="h-5 w-5" />
                     </Button>
@@ -421,3 +419,5 @@ export default function ChatView({ chat, partner, onLeaveChat }: ChatViewProps) 
     </div>
   );
 }
+
+    
