@@ -9,7 +9,8 @@
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import { getFirestore as getAdminFirestore, cert, getApps, initializeApp } from 'firebase-admin/firestore';
+import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
+import { cert, getApps, initializeApp } from 'firebase-admin/app';
 import { arrayRemove } from 'firebase/firestore';
 
 // Initialize Firebase Admin SDK if not already initialized
