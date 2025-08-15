@@ -101,6 +101,8 @@ export default function DotsAndBoxes({ chatId, gameState, setGameState }: DotsAn
         )
     };
 
+    const gridDimensions = gridSize * 2 + 1;
+
     return (
         <div className="p-4 h-full flex flex-col items-center justify-center text-center bg-background">
             <h3 className="font-bold text-lg mb-2">Dots & Boxes</h3>
@@ -111,57 +113,93 @@ export default function DotsAndBoxes({ chatId, gameState, setGameState }: DotsAn
              <div className="text-center text-sm h-6 mb-2">
                 <p>{getStatusText()}</p>
              </div>
-             <div className="p-4">
-                {Array.from({ length: gridSize + 1 }).map((_, r) => (
-                    <React.Fragment key={r}>
-                    <div className="flex justify-center">
-                        {Array.from({ length: gridSize + 1 }).map((_, c) => (
-                        <React.Fragment key={c}>
-                            <div className="w-3 h-3 bg-muted rounded-full" />
-                            {c < gridSize && (
-                            <button
-                                onClick={() => handleMove('h', r * gridSize + c)}
-                                disabled={!isMyTurn || !!h_lines[r * gridSize + c] || status !== 'active'}
+             <div 
+                className="grid p-4" 
+                style={{ 
+                    gridTemplateColumns: `repeat(${gridDimensions}, auto)`,
+                    gridTemplateRows: `repeat(${gridDimensions}, auto)`,
+                }}
+            >
+                {Array.from({ length: gridDimensions * gridDimensions }).map((_, i) => {
+                    const row = Math.floor(i / gridDimensions);
+                    const col = i % gridDimensions;
+
+                    // Dot
+                    if (row % 2 === 0 && col % 2 === 0) {
+                        return <div key={i} className="w-3 h-3 bg-muted rounded-full" />;
+                    }
+
+                    // Horizontal Line
+                    if (row % 2 === 0 && col % 2 !== 0) {
+                        const r = row / 2;
+                        const c = (col - 1) / 2;
+                        const lineIndex = r * gridSize + c;
+                        const lineOwner = h_lines[lineIndex];
+                        return (
+                             <button
+                                key={i}
+                                onClick={() => handleMove('h', lineIndex)}
+                                disabled={!isMyTurn || !!lineOwner || status !== 'active'}
                                 className={cn(
-                                    "w-12 h-3 mx-1 rounded-full transition-all",
-                                    !h_lines[r * gridSize + c] && "bg-secondary hover:bg-primary/50",
-                                    h_lines[r * gridSize + c] && (players[h_lines[r*gridSize+c]] === 'p1' ? 'bg-yellow-400' : 'bg-red-500'),
-                                    isMyTurn && !h_lines[r * gridSize + c] && "cursor-pointer"
+                                    "w-12 h-3 flex items-center justify-center transition-all",
+                                    !lineOwner && "cursor-pointer"
                                 )}
-                            />
-                            )}
-                        </React.Fragment>
-                        ))}
-                    </div>
-                    {r < gridSize && (
-                        <div className="flex justify-center">
-                        {Array.from({ length: gridSize + 1 }).map((_, c) => (
-                            <React.Fragment key={c}>
+                            >
+                                <div className={cn(
+                                    "w-full h-1 rounded-full",
+                                    !lineOwner && "bg-secondary hover:bg-primary/50",
+                                    lineOwner && (players[lineOwner] === 'p1' ? 'bg-yellow-400' : 'bg-red-500')
+                                )}/>
+                            </button>
+                        );
+                    }
+
+                    // Vertical Line
+                    if (row % 2 !== 0 && col % 2 === 0) {
+                        const r = (row - 1) / 2;
+                        const c = col / 2;
+                        const lineIndex = r * (gridSize + 1) + c;
+                        const lineOwner = v_lines[lineIndex];
+                        return (
                             <button
-                                onClick={() => handleMove('v', r * (gridSize + 1) + c)}
-                                disabled={!isMyTurn || !!v_lines[r * (gridSize + 1) + c] || status !== 'active'}
+                                key={i}
+                                onClick={() => handleMove('v', lineIndex)}
+                                disabled={!isMyTurn || !!lineOwner || status !== 'active'}
                                 className={cn(
-                                    "w-3 h-12 my-1 rounded-full transition-all",
-                                    !v_lines[r * (gridSize + 1) + c] && "bg-secondary hover:bg-primary/50",
-                                    v_lines[r * (gridSize + 1) + c] && (players[v_lines[r*(gridSize+1)+c]] === 'p1' ? 'bg-yellow-400' : 'bg-red-500'),
-                                    isMyTurn && !v_lines[r * (gridSize + 1) + c] && "cursor-pointer"
+                                    "w-3 h-12 flex items-center justify-center transition-all",
+                                    !lineOwner && "cursor-pointer"
                                 )}
-                            />
-                            {c < gridSize && <div className={cn("w-12 h-12 flex items-center justify-center", boxes[r*gridSize+c] && (players[boxes[r*gridSize+c]] === 'p1' ? 'bg-yellow-400/20' : 'bg-red-500/20'))}>
-                                {boxes[r*gridSize+c] && (
-                                    <Avatar className={cn("h-8 w-8 opacity-50", players[boxes[r*gridSize+c]] === 'p1' ? 'bg-yellow-400' : 'bg-red-500')}>
+                            >
+                                <div className={cn(
+                                    "w-1 h-full rounded-full",
+                                    !lineOwner && "bg-secondary hover:bg-primary/50",
+                                     lineOwner && (players[lineOwner] === 'p1' ? 'bg-yellow-400' : 'bg-red-500')
+                                )}/>
+                            </button>
+                        );
+                    }
+                    
+                    // Box
+                    if (row % 2 !== 0 && col % 2 !== 0) {
+                        const r = (row-1)/2;
+                        const c = (col-1)/2;
+                        const boxIndex = r * gridSize + c;
+                        const boxOwner = boxes[boxIndex];
+                        return (
+                             <div key={i} className={cn("w-12 h-12 flex items-center justify-center transition-colors", boxOwner && (players[boxOwner] === 'p1' ? 'bg-yellow-400/20' : 'bg-red-500/20'))}>
+                                {boxOwner && (
+                                    <Avatar className={cn("h-8 w-8 opacity-50", players[boxOwner] === 'p1' ? 'bg-yellow-400' : 'bg-red-500')}>
                                         <AvatarFallback className="bg-transparent text-lg font-bold text-white">
-                                            {boxes[r*gridSize+c] === user?.uid ? 'Y' : 'O'}
+                                            {boxOwner === user?.uid ? 'Y' : 'O'}
                                         </AvatarFallback>
                                     </Avatar>
                                 )}
-                            </div>}
-                            </React.Fragment>
-                        ))}
-                        </div>
-                    )}
-                    </React.Fragment>
-                ))}
+                            </div>
+                        )
+                    }
+
+                    return null;
+                })}
              </div>
              {(status === 'win' || status === 'draw') ? (
                  <Button onClick={() => {
