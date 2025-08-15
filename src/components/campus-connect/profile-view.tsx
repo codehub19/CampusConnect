@@ -22,6 +22,7 @@ import { Pencil, Trash2, Users, Newspaper, Calendar, UserMinus, LogOut } from 'l
 import CreateEventView from './create-event-view';
 import { useAuth } from '@/hooks/use-auth';
 import { Textarea } from '../ui/textarea';
+import { removeFriend } from '@/ai/flows/remove-friend';
 
 interface ProfileViewProps {
   user: User;
@@ -50,16 +51,24 @@ const FriendListItem = ({ friendId }: { friendId: string }) => {
 
     const handleRemoveFriend = async () => {
         if(!currentUser || !friend) return;
-        const batch = writeBatch(db);
         
         const myRef = doc(db, 'users', currentUser.uid);
-        batch.update(myRef, { friends: arrayRemove(friend.id) });
-        
-        const friendRef = doc(db, 'users', friend.id);
-        batch.update(friendRef, { friends: arrayRemove(currentUser.uid) });
 
-        await batch.commit();
-        toast({ title: "Friend Removed" });
+        try {
+            // Step 1: Client removes friend from their own list (allowed)
+            await updateDoc(myRef, { friends: arrayRemove(friend.id) });
+
+            // Step 2: Trigger secure flow to remove self from friend's list
+            await removeFriend({
+                removerId: currentUser.uid,
+                removedId: friend.id,
+            });
+
+            toast({ title: "Friend Removed" });
+        } catch(error) {
+            console.error("Error removing friend:", error);
+            toast({ variant: 'destructive', title: "Error", description: "Could not remove friend. Please try again." });
+        }
     }
 
     if (!friend) return null;
