@@ -2,7 +2,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Sidebar, SidebarProvider, SidebarTrigger, SidebarContent, SidebarHeader, SidebarMenu, SidebarMenuItem, SidebarMenuButton, SidebarFooter, SidebarInset, useSidebar } from "@/components/ui/sidebar";
+import { Sidebar, SidebarProvider, SidebarTrigger, SidebarContent, SidebarHeader, SidebarInset, useSidebar } from "@/components/ui/sidebar";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
@@ -25,7 +25,7 @@ type ActiveView =
     | { type: 'welcome' }
     | { type: 'chat', data: { chat: Chat, user: UserProfile } };
 
-const MainLayoutContext = React.createContext<{
+const ChatPageContext = React.createContext<{
     activeView: ActiveView;
     setActiveView: React.Dispatch<React.SetStateAction<ActiveView>>;
     onBlockUser: () => void;
@@ -38,17 +38,17 @@ const MainLayoutContext = React.createContext<{
     onNavigateHome: () => void;
 } | null>(null);
 
-const useMainLayout = () => {
-    const context = React.useContext(MainLayoutContext);
+const useChatPage = () => {
+    const context = React.useContext(ChatPageContext);
     if (!context) {
-        throw new Error('useMainLayout must be used within a MainLayoutProvider');
+        throw new Error('useChatPage must be used within a ChatPageProvider');
     }
     return context;
 };
 
 function LayoutUI() {
     const { profile, logout } = useAuth();
-    const { onFindNewChat, isSearching, onStopSearching, onStartChatWithFriend, onNavigateHome } = useMainLayout();
+    const { onFindNewChat, isSearching, onStopSearching, onStartChatWithFriend, onNavigateHome } = useChatPage();
     const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
     const [friends, setFriends] = useState<UserProfile[]>([]);
     const db = getFirestore(firebaseApp);
@@ -98,18 +98,10 @@ function LayoutUI() {
             await batch.commit();
 
             // Action 3: Trigger the secure server-side flow to update the other user.
-            try {
-              await acceptFriendRequest({
-                  requesterId: req.fromId, // The user who sent the request
-                  accepterId: profile.id,  // The current user who is accepting
-              });
-            } catch (flowError) {
-                console.error("Error in acceptFriendRequest flow:", flowError);
-                // Note: A robust implementation would revert the batch write here.
-                // For now, we just notify the user.
-                toast({ variant: 'destructive', title: 'Could not finalize friend request', description: 'Please try again.'});
-                return;
-            }
+            await acceptFriendRequest({
+                requesterId: req.fromId, // The user who sent the request
+                accepterId: profile.id,  // The current user who is accepting
+            });
             
             toast({ title: 'Friend Added!' });
         } catch (error) {
@@ -205,7 +197,7 @@ function LayoutUI() {
 }
 
 function MainHeader() {
-    const { onBlockUser, onLeaveChat, onVideoCallToggle, activeView } = useMainLayout();
+    const { onBlockUser, onLeaveChat, onVideoCallToggle, activeView } = useChatPage();
     const { isMobile } = useSidebar();
 
     return (
@@ -238,7 +230,7 @@ function MainHeader() {
     );
 }
 
-function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) {
+function ChatPageContent({ onNavigateHome }: { onNavigateHome: () => void; }) {
     const { user, profile, loading } = useAuth();
     const [activeView, setActiveView] = useState<ActiveView>({ type: 'welcome' });
     const [isSearching, setIsSearching] = useState(false);
@@ -579,19 +571,17 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
     }
 
     return (
-        <MainLayoutContext.Provider value={providerValue}>
+        <ChatPageContext.Provider value={providerValue}>
             {activeView.type === 'chat' && isVideoCallOpen &&
                 <VideoCallView chatId={activeView.data.chat.id} onClose={() => setIsVideoCallOpen(false)} />
             }
             <LayoutUI />
-        </MainLayoutContext.Provider>
+        </ChatPageContext.Provider>
     );
 }
 
-export default function MainLayoutWrapper({ onNavigateHome }: { onNavigateHome: () => void; }) {
+export default function ChatPage({ onNavigateHome }: { onNavigateHome: () => void; }) {
     return (
-        <MainLayoutContent onNavigateHome={onNavigateHome} />
+        <ChatPageContent onNavigateHome={onNavigateHome} />
     )
 }
-
-    

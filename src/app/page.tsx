@@ -10,13 +10,13 @@ import HomeView from '@/components/campus-connect/home-view';
 import EventsView from '@/components/campus-connect/events-view';
 import MissedConnectionsView from '@/components/campus-connect/missed-connections-view';
 import ProfileView from '@/components/campus-connect/profile-view';
-import MainLayout from '@/components/campus-connect/main-layout';
 import { Loader2 } from 'lucide-react';
 import { goOffline, goOnline } from 'firebase/database';
 import { rtdb } from '@/lib/firebase';
 import AiAssistantView from '@/components/campus-connect/ai-assistant-view';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
+import ChatPage from './chat/page';
 
 type AppState = 'loading' | 'policy' | 'auth' | 'verify_email' | 'profile_setup' | 'home' | 'events' | 'missed_connections' | 'chat' | 'ai_chat';
 
@@ -148,7 +148,7 @@ function AppContent() {
           case 'missed_connections':
             return <MissedConnectionsView onNavigateHome={() => navigateTo('home')} />;
           case 'chat':
-            return <MainLayout onNavigateHome={() => navigateTo('home')} />;
+            return <ChatPage onNavigateHome={() => navigateTo('home')} />;
           case 'ai_chat':
             return (
               <div className="flex h-screen">
