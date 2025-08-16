@@ -21,7 +21,7 @@ import { format } from 'date-fns';
 import { Pencil, Trash2, Users, Newspaper, Calendar, UserMinus, LogOut } from 'lucide-react';
 import CreateEventView from './create-event-view';
 import { useAuth } from '@/hooks/use-auth';
-import { Textarea } from '../ui/textarea';
+import { Textarea } from '@/components/ui/textarea';
 import { removeFriend } from '@/ai/flows/remove-friend';
 
 interface ProfileViewProps {
@@ -59,17 +59,23 @@ const FriendListItem = ({ friendId }: { friendId: string }) => {
             await updateDoc(myRef, { friends: arrayRemove(friend.id) });
 
             // Step 2: Trigger secure flow to remove self from friend's list
-            await removeFriend({
-                removerId: currentUser.uid,
-                removedId: friend.id,
-            });
+            try {
+              await removeFriend({
+                  removerId: currentUser.uid,
+                  removedId: friend.id,
+              });
+            } catch (flowError) {
+              console.error("Error in removeFriend flow:", flowError);
+              toast({ variant: 'destructive', title: "Could not finalize friend removal", description: "Please try again." });
+              // Optional: Re-add friend to client-side list on flow failure
+              await updateDoc(myRef, { friends: arrayRemove(friend.id) });
+              return;
+            }
 
             toast({ title: "Friend Removed" });
         } catch(error) {
             console.error("Error removing friend:", error);
             toast({ variant: 'destructive', title: "Error", description: "Could not remove friend. Please try again." });
-            // Optional: Re-add friend to client-side list on flow failure
-            await updateDoc(myRef, { friends: arrayRemove(friend.id) });
         }
     }
 
@@ -153,7 +159,21 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
   
   const handleDeleteEvent = async (eventId: string) => {
     try {
-        await deleteDoc(doc(db, 'events', eventId));
+        const eventRef = doc(db, 'events', eventId);
+        // Also delete comments and reports subcollections if they exist for events
+        const commentsRef = collection(eventRef, 'comments');
+        const reportsRef = collection(eventRef, 'reports');
+        
+        const commentsSnapshot = await getDocs(commentsRef);
+        const reportsSnapshot = await getDocs(reportsRef);
+        
+        const batch = writeBatch(db);
+        
+        commentsSnapshot.forEach((doc) => batch.delete(doc.ref));
+        reportsSnapshot.forEach((doc) => batch.delete(doc.ref));
+        batch.delete(eventRef);
+
+        await batch.commit();
         toast({ title: "Event Deleted" });
     } catch (error) {
         toast({ variant: 'destructive', title: "Error", description: "Could not delete the event." });
@@ -162,7 +182,21 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
 
   const handleDeletePost = async (postId: string) => {
     try {
-        await deleteDoc(doc(db, 'missed_connections', postId));
+        const postRef = doc(db, 'missed_connections', postId);
+        const commentsRef = collection(postRef, 'comments');
+        const reportsRef = collection(postRef, 'reports');
+        
+        const commentsSnapshot = await getDocs(commentsRef);
+        const reportsSnapshot = await getDocs(reportsRef);
+        
+        const batch = writeBatch(db);
+        
+        commentsSnapshot.forEach((doc) => batch.delete(doc.ref));
+        reportsSnapshot.forEach((doc) => batch.delete(doc.ref));
+        batch.delete(postRef);
+
+        await batch.commit();
+
         toast({ title: "Post Deleted" });
     } catch (error) {
         console.error("Error deleting post: ", error);
@@ -310,7 +344,7 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
                                 <Calendar className="h-5 w-5 text-muted-foreground flex-shrink-0" />
                                 <div className="flex-grow min-w-0">
                                   <p className="font-medium truncate">{event.title}</p>
-                                  <p className="text-xs text-muted-foreground">{event.date.toDate ? format(event.date.toDate(), 'PPP') : format(new Date(event.date), 'PPP')}</p>
+                                  <p className="text-xs text-muted-foreground">{format(event.date.toDate(), 'PPP')}</p>
                                 </div>
                                 <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0" onClick={() => handleEditEvent(event)}><Pencil className="h-4 w-4" /></Button>
                                 <AlertDialog><AlertDialogTrigger asChild><Button variant="destructive" size="icon" className="h-8 w-8 flex-shrink-0"><Trash2 className="h-4 w-4" /></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete your event.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteEvent(event.id)}>Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>

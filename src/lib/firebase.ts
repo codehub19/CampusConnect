@@ -1,11 +1,14 @@
-// This file is machine-generated - edit at your own risk.
+
 import { initializeApp, getApp, getApps } from "firebase/app";
-import { initializeFirestore, CACHE_SIZE_UNLIMITED, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
+import { 
+  getFirestore, 
+  initializeFirestore,
+  persistentLocalCache, 
+  persistentMultipleTabManager 
+} from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getDatabase } from "firebase/database";
 
-// Your web app's Firebase configuration
-// IMPORTANT: DO NOT COMMIT THIS FILE WITH KEYS TO PUBLIC REPOSITORIES
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
@@ -17,25 +20,21 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-let firebaseApp;
-if (!getApps().length) {
-    firebaseApp = initializeApp(firebaseConfig);
-} else {
-    firebaseApp = getApp();
-}
+const firebaseApp = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 
-export { firebaseApp };
+// Initialize services
+const storage = getStorage(firebaseApp);
+const rtdb = getDatabase(firebaseApp);
 
-export const storage = getStorage(firebaseApp);
-export const rtdb = getDatabase(firebaseApp);
-
-// Enable offline persistence for Firestore
+// Initialize Firestore with offline persistence
 let db;
 try {
   db = initializeFirestore(firebaseApp, {
-    localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()})
+    localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
   });
 } catch (e) {
-  console.error("Error initializing Firestore:", e);
-  db = initializeFirestore(firebaseApp, {});
+  console.error("Firestore offline persistence could not be enabled:", e);
+  db = getFirestore(firebaseApp);
 }
+
+export { firebaseApp, storage, rtdb, db };

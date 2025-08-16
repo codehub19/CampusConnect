@@ -7,15 +7,15 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { LogOut, Search, UserPlus, X, Check, MessageSquare, ArrowLeft, Users, User, Heart } from 'lucide-react';
-import ChatView from './chat-view';
-import WelcomeView from './welcome-view';
-import VideoCallView from './video-call-view';
+import ChatView from "@/components/campus-connect/chat-view";
+import WelcomeView from "@/components/campus-connect/welcome-view";
+import VideoCallView from "@/components/campus-connect/video-call-view";
 import type { Chat, User as UserProfile, FriendRequest, WaitingUser } from '@/lib/types';
 import { collection, query, where, onSnapshot, getFirestore, getDocs, doc, runTransaction, addDoc, serverTimestamp, setDoc, updateDoc, deleteDoc, orderBy, getDoc, arrayUnion, writeBatch, limit, arrayRemove } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import ChatHeader from './chat-header';
+import ChatHeader from "@/components/campus-connect/chat-header";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { acceptFriendRequest } from '@/ai/flows/accept-friend-request';
@@ -98,22 +98,35 @@ function LayoutUI() {
             await batch.commit();
 
             // Action 3: Trigger the secure server-side flow to update the other user.
-            await acceptFriendRequest({
-                requesterId: req.fromId, // The user who sent the request
-                accepterId: profile.id,  // The current user who is accepting
-            });
+            try {
+              await acceptFriendRequest({
+                  requesterId: req.fromId, // The user who sent the request
+                  accepterId: profile.id,  // The current user who is accepting
+              });
+            } catch (flowError) {
+                console.error("Error in acceptFriendRequest flow:", flowError);
+                // Note: A robust implementation would revert the batch write here.
+                // For now, we just notify the user.
+                toast({ variant: 'destructive', title: 'Could not finalize friend request', description: 'Please try again.'});
+                return;
+            }
             
             toast({ title: 'Friend Added!' });
         } catch (error) {
             console.error("Error accepting friend request: ", error);
             toast({ variant: 'destructive', title: 'Error', description: 'Could not add friend. Please try again.' });
-            // Note: A robust implementation might try to revert the batch write.
         }
     };
 
     const handleDeclineFriend = async (reqId: string) => {
-        await deleteDoc(doc(db, 'friend_requests', reqId));
-        toast({ title: 'Request Declined' });
+        const requestRef = doc(db, 'friend_requests', reqId);
+        try {
+            await deleteDoc(requestRef);
+            toast({ title: 'Request Declined' });
+        } catch (error) {
+            console.error("Error declining friend request:", error);
+            toast({ variant: 'destructive', title: 'Error', description: 'Could not decline request.' });
+        }
     };
 
     const handleFindClick = () => {
@@ -276,46 +289,33 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         dismiss();
 
         const chatDocRef = doc(db, 'chats', chatId);
-        
-        chatListenerUnsub.current = onSnapshot(chatDocRef, (docSnap) => {
-            if (docSnap.exists()) {
-                const chatData = { id: docSnap.id, ...docSnap.data() } as Chat;
-                const partnerId = chatData.memberIds.find(id => id !== user?.uid);
-
-                if (!partnerId) {
-                    handleLeaveChat(false);
-                    return;
-                }
-                
-                const partnerIsActive = chatData.members[partnerId]?.active;
-                if (partnerIsActive === false) {
-                    toast({
-                        title: "Partner Left",
-                        description: `${chatData.members[partnerId].name} has left the chat.`
-                    });
-                    handleLeaveChat(false);
-                } else {
-                     setActiveView(prev => {
-                         if (prev.type === 'chat') {
-                             return { ...prev, data: { ...prev.data, chat: chatData } };
-                         }
-                         return prev;
-                     });
-                }
-            } else {
-                toast({ title: "Chat ended", description: "This chat no longer exists."});
-                handleLeaveChat(false);
-            }
-        });
-
         const chatDocSnap = await getDoc(chatDocRef);
-        if (!chatDocSnap.exists()) return;
+
+        if (!chatDocSnap.exists()) {
+            console.error("Attempted to switch to a non-existent chat.");
+            return;
+        }
 
         const chatData = { id: chatDocSnap.id, ...chatDocSnap.data() } as Chat;
         const partnerId = chatData.memberIds.find(id => id !== user?.uid);
-        if (!partnerId) return;
+
+        if (!partnerId) {
+            console.error("Could not find partner in chat.");
+            return;
+        }
 
         const partnerDocRef = doc(db, 'users', partnerId);
+        const partnerDocSnap = await getDoc(partnerDocRef);
+
+        if (!partnerDocSnap.exists()) {
+            console.error("Partner profile does not exist.");
+            return;
+        }
+        
+        const partnerProfile = partnerDocSnap.data() as UserProfile;
+        
+        await updateDoc(chatDocRef, { [`members.${user!.uid}.active`]: true });
+
         partnerListenerUnsub.current = onSnapshot(partnerDocRef, (docSnap) => {
             if (docSnap.exists()) {
                  setActiveView(prev => {
@@ -327,17 +327,59 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
             }
         });
         
-        const partnerDocSnap = await getDoc(partnerDocRef);
-        if (!partnerDocSnap.exists()) return;
-
-        const partnerProfile = partnerDocSnap.data() as UserProfile;
-        
-        await updateDoc(chatDocRef, { [`members.${user!.uid}.active`]: true });
-        
         setActiveView({ type: 'chat', data: { chat: chatData, user: partnerProfile } });
 
-    }, [user, db, cleanupListeners, dismiss, handleLeaveChat, toast]);
+    }, [user, db, cleanupListeners, dismiss]);
 
+     useEffect(() => {
+        if (activeView.type !== 'chat' || !user) {
+            if (chatListenerUnsub.current) {
+                chatListenerUnsub.current();
+                chatListenerUnsub.current = null;
+            }
+            return;
+        };
+
+        const chatId = activeView.data.chat.id;
+        const partnerId = activeView.data.user.id;
+        const partnerName = activeView.data.user.name;
+
+        const chatDocRef = doc(db, 'chats', chatId);
+        chatListenerUnsub.current = onSnapshot(chatDocRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const updatedChatData = { id: docSnap.id, ...docSnap.data() } as Chat;
+                const partnerIsActive = updatedChatData.members[partnerId]?.active;
+
+                if (partnerIsActive === false) {
+                    toast({
+                        title: "Partner Left",
+                        description: `${partnerName} has left the chat.`
+                    });
+                    setActiveView({ type: 'welcome' });
+                    cleanupListeners();
+                } else {
+                     setActiveView(prev => {
+                         if (prev.type === 'chat' && prev.data.chat.id === updatedChatData.id) {
+                            return { ...prev, data: { ...prev.data, chat: updatedChatData } };
+                         }
+                         return prev;
+                     });
+                }
+            } else {
+                toast({ title: "Chat ended", description: "This chat no longer exists."})
+                setActiveView({ type: 'welcome' });
+                cleanupListeners();
+            }
+        });
+        
+        return () => {
+            if (chatListenerUnsub.current) {
+                chatListenerUnsub.current();
+                chatListenerUnsub.current = null;
+            }
+        }
+
+    }, [activeView, user, db, toast, cleanupListeners]);
 
     const listenForMatches = useCallback(() => {
         if (!user || waitingListenerUnsub.current) return;
