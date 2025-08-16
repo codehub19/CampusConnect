@@ -7,15 +7,15 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { LogOut, Search, UserPlus, X, Check, MessageSquare, ArrowLeft, Users, User, Heart } from 'lucide-react';
-import ChatView from '@/components/campus-connect/chat-view';
-import WelcomeView from '@/components/campus-connect/welcome-view';
-import VideoCallView from '@/components/campus-connect/video-call-view';
+import ChatView from './chat-view';
+import WelcomeView from './welcome-view';
+import VideoCallView from './video-call-view';
 import type { Chat, User as UserProfile, FriendRequest, WaitingUser } from '@/lib/types';
 import { collection, query, where, onSnapshot, getFirestore, getDocs, doc, runTransaction, addDoc, serverTimestamp, setDoc, updateDoc, deleteDoc, orderBy, getDoc, arrayUnion, writeBatch, limit, arrayRemove } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
 import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
-import ChatHeader from '@/components/campus-connect/chat-header';
+import ChatHeader from './chat-header';
 import { cn } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { acceptFriendRequest } from '@/ai/flows/accept-friend-request';
@@ -551,5 +551,3 @@ export default function MainLayoutWrapper({ onNavigateHome }: { onNavigateHome: 
         <MainLayoutContent onNavigateHome={onNavigateHome} />
     )
 }
-
-    
