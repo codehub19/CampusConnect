@@ -16,7 +16,7 @@ import { rtdb } from '@/lib/firebase';
 import AiAssistantView from '@/components/campus-connect/ai-assistant-view';
 import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import ChatPage from './chat/page';
+import MainLayoutWrapper from '@/components/campus-connect/main-layout';
 
 type AppState = 'loading' | 'policy' | 'auth' | 'verify_email' | 'profile_setup' | 'home' | 'events' | 'missed_connections' | 'chat' | 'ai_chat';
 
@@ -148,7 +148,7 @@ function AppContent() {
           case 'missed_connections':
             return <MissedConnectionsView onNavigateHome={() => navigateTo('home')} />;
           case 'chat':
-            return <ChatPage onNavigateHome={() => navigateTo('home')} />;
+            return <MainLayoutWrapper onNavigateHome={() => navigateTo('home')} />;
           case 'ai_chat':
             return (
               <div className="flex h-screen">
