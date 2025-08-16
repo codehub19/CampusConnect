@@ -8,7 +8,7 @@ import { firebaseApp } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 
 interface ConnectFourProps {
     chatId: string;
@@ -16,27 +16,10 @@ interface ConnectFourProps {
     setGameState: React.Dispatch<React.SetStateAction<GameState | null>>;
 }
 
-export default function ConnectFour({ chatId, gameState: initialGameState, setGameState: setParentGameState }: ConnectFourProps) {
+export default function ConnectFour({ chatId, gameState, setGameState }: ConnectFourProps) {
     const { user } = useAuth();
     const db = getFirestore(firebaseApp);
     const [isMakingMove, setIsMakingMove] = useState(false);
-    
-    // Use local state to manage game state to avoid props-based re-renders causing flickers
-    const [gameState, setGameState] = useState(initialGameState);
-
-    useEffect(() => {
-        // If not currently making a move, update local state from parent
-        // This allows updates from Firestore (like opponent's move) to come in
-        if (!isMakingMove) {
-            setGameState(initialGameState);
-        }
-    }, [initialGameState, isMakingMove]);
-    
-    // Sync local state back to the parent component for other parts of the UI
-    useEffect(() => {
-        setParentGameState(gameState);
-    }, [gameState, setParentGameState]);
-
 
     const { status, players, turn, winner, board } = gameState;
     const myPlayerNumber = user ? players[user.uid] : null;
@@ -46,9 +29,8 @@ export default function ConnectFour({ chatId, gameState: initialGameState, setGa
         if (!isMyTurn || status !== 'active' || isMakingMove) return;
         
         let landingRow = -1;
-        const currentBoard = gameState.board;
         for (let r = 5; r >= 0; r--) {
-            if (currentBoard[colIndex + r * 7] === null) {
+            if (gameState.board[colIndex + r * 7] === null) {
                 landingRow = r;
                 break;
             }
@@ -57,9 +39,12 @@ export default function ConnectFour({ chatId, gameState: initialGameState, setGa
         
         setIsMakingMove(true);
         const chatRef = doc(db, 'chats', chatId);
-        const tempBoard = [...currentBoard];
+
+        // Optimistic update
+        const tempBoard = [...gameState.board];
         tempBoard[colIndex + landingRow * 7] = myPlayerNumber;
-        setGameState(prev => ({...prev!, board: tempBoard, turn: null }));
+        const newOptimisticState = { ...gameState, board: tempBoard, turn: null };
+        setGameState(newOptimisticState);
 
         try {
             await runTransaction(db, async (transaction) => {
@@ -67,14 +52,25 @@ export default function ConnectFour({ chatId, gameState: initialGameState, setGa
                 if (!docSnap.exists()) throw new Error("Chat does not exist!");
                 const currentGame = docSnap.data().game as GameState;
                 if(currentGame.turn !== user?.uid) throw new Error("Not your turn!");
-                if(currentGame.board[colIndex + landingRow * 7] !== null) throw new Error("This cell is already taken!");
 
-                const hasWon = checkWinner(tempBoard, myPlayerNumber);
-                const isDraw = !hasWon && tempBoard.every(cell => cell !== null);
+                let currentLandingRow = -1;
+                for (let r = 5; r >= 0; r--) {
+                    if (currentGame.board[colIndex + r * 7] === null) {
+                        currentLandingRow = r;
+                        break;
+                    }
+                }
+                if(currentLandingRow === -1) throw new Error("This column is already full!");
+
+                const finalBoard = [...currentGame.board];
+                finalBoard[colIndex + currentLandingRow * 7] = myPlayerNumber;
+
+                const hasWon = checkWinner(finalBoard, myPlayerNumber);
+                const isDraw = !hasWon && finalBoard.every(cell => cell !== null);
                 const partnerId = Object.keys(players).find(id => id !== user?.uid);
 
                 const newGameData: Partial<GameState> = {
-                    board: tempBoard,
+                    board: finalBoard,
                     turn: hasWon || isDraw ? null : partnerId,
                     status: hasWon ? 'win' : isDraw ? 'draw' : 'active',
                     winner: hasWon ? user?.uid : null,
@@ -86,7 +82,7 @@ export default function ConnectFour({ chatId, gameState: initialGameState, setGa
             console.error("Connect Four move failed: ", e);
             toast({ variant: 'destructive', title: 'Error', description: e.message || 'Could not make move.' });
             // Revert optimistic update on error
-            setGameState(initialGameState);
+            setGameState(gameState);
         } finally {
             setIsMakingMove(false);
         }
@@ -130,7 +126,7 @@ export default function ConnectFour({ chatId, gameState: initialGameState, setGa
                                     key={`${c}-${r}`} 
                                     className={cn("w-8 h-8 bg-background rounded-full flex items-center justify-center transition-transform", isEmpty && isMyTurn && status === 'active' && "cursor-pointer hover:bg-background/80 active:scale-90")}
                                     onClick={() => handleMove(c)}
-                                    disabled={!isMyTurn || status !== 'active' || !isEmpty}
+                                    disabled={!isMyTurn || status !== 'active' || isMakingMove}
                                 >
                                     {player === 1 && <div className="w-6 h-6 rounded-full bg-yellow-400"></div>}
                                     {player === 2 && <div className="w-6 h-6 rounded-full bg-red-500"></div>}

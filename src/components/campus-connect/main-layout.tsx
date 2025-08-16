@@ -19,6 +19,7 @@ import ChatHeader from './chat-header';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { acceptFriendRequest } from '@/ai/flows/accept-friend-request';
+import { removeFriend } from '@/ai/flows/remove-friend';
 
 type ActiveView =
     | { type: 'welcome' }
@@ -106,6 +107,7 @@ function LayoutUI() {
         } catch (error) {
             console.error("Error accepting friend request: ", error);
             toast({ variant: 'destructive', title: 'Error', description: 'Could not add friend. Please try again.' });
+            // Note: A robust implementation might try to revert the batch write.
         }
     };
 
@@ -274,33 +276,46 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         dismiss();
 
         const chatDocRef = doc(db, 'chats', chatId);
-        const chatDocSnap = await getDoc(chatDocRef);
+        
+        chatListenerUnsub.current = onSnapshot(chatDocRef, (docSnap) => {
+            if (docSnap.exists()) {
+                const chatData = { id: docSnap.id, ...docSnap.data() } as Chat;
+                const partnerId = chatData.memberIds.find(id => id !== user?.uid);
 
-        if (!chatDocSnap.exists()) {
-            console.error("Attempted to switch to a non-existent chat.");
-            return;
-        }
+                if (!partnerId) {
+                    handleLeaveChat(false);
+                    return;
+                }
+                
+                const partnerIsActive = chatData.members[partnerId]?.active;
+                if (partnerIsActive === false) {
+                    toast({
+                        title: "Partner Left",
+                        description: `${chatData.members[partnerId].name} has left the chat.`
+                    });
+                    handleLeaveChat(false);
+                } else {
+                     setActiveView(prev => {
+                         if (prev.type === 'chat') {
+                             return { ...prev, data: { ...prev.data, chat: chatData } };
+                         }
+                         return prev;
+                     });
+                }
+            } else {
+                toast({ title: "Chat ended", description: "This chat no longer exists."});
+                handleLeaveChat(false);
+            }
+        });
+
+        const chatDocSnap = await getDoc(chatDocRef);
+        if (!chatDocSnap.exists()) return;
 
         const chatData = { id: chatDocSnap.id, ...chatDocSnap.data() } as Chat;
         const partnerId = chatData.memberIds.find(id => id !== user?.uid);
-
-        if (!partnerId) {
-            console.error("Could not find partner in chat.");
-            return;
-        }
+        if (!partnerId) return;
 
         const partnerDocRef = doc(db, 'users', partnerId);
-        const partnerDocSnap = await getDoc(partnerDocRef);
-
-        if (!partnerDocSnap.exists()) {
-            console.error("Partner profile does not exist.");
-            return;
-        }
-        
-        const partnerProfile = partnerDocSnap.data() as UserProfile;
-        
-        await updateDoc(chatDocRef, { [`members.${user!.uid}.active`]: true });
-
         partnerListenerUnsub.current = onSnapshot(partnerDocRef, (docSnap) => {
             if (docSnap.exists()) {
                  setActiveView(prev => {
@@ -312,59 +327,17 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
             }
         });
         
+        const partnerDocSnap = await getDoc(partnerDocRef);
+        if (!partnerDocSnap.exists()) return;
+
+        const partnerProfile = partnerDocSnap.data() as UserProfile;
+        
+        await updateDoc(chatDocRef, { [`members.${user!.uid}.active`]: true });
+        
         setActiveView({ type: 'chat', data: { chat: chatData, user: partnerProfile } });
 
-    }, [user, db, cleanupListeners, dismiss]);
+    }, [user, db, cleanupListeners, dismiss, handleLeaveChat, toast]);
 
-     useEffect(() => {
-        if (activeView.type !== 'chat' || !user) {
-            if (chatListenerUnsub.current) {
-                chatListenerUnsub.current();
-                chatListenerUnsub.current = null;
-            }
-            return;
-        };
-
-        const chatId = activeView.data.chat.id;
-        const partnerId = activeView.data.user.id;
-        const partnerName = activeView.data.user.name;
-
-        const chatDocRef = doc(db, 'chats', chatId);
-        chatListenerUnsub.current = onSnapshot(chatDocRef, (docSnap) => {
-            if (docSnap.exists()) {
-                const updatedChatData = { id: docSnap.id, ...docSnap.data() } as Chat;
-                const partnerIsActive = updatedChatData.members[partnerId]?.active;
-
-                if (partnerIsActive === false) {
-                    toast({
-                        title: "Partner Left",
-                        description: `${partnerName} has left the chat.`
-                    });
-                    setActiveView({ type: 'welcome' });
-                    cleanupListeners();
-                } else {
-                     setActiveView(prev => {
-                         if (prev.type === 'chat' && prev.data.chat.id === updatedChatData.id) {
-                            return { ...prev, data: { ...prev.data, chat: updatedChatData } };
-                         }
-                         return prev;
-                     });
-                }
-            } else {
-                toast({ title: "Chat ended", description: "This chat no longer exists."})
-                setActiveView({ type: 'welcome' });
-                cleanupListeners();
-            }
-        });
-        
-        return () => {
-            if (chatListenerUnsub.current) {
-                chatListenerUnsub.current();
-                chatListenerUnsub.current = null;
-            }
-        }
-
-    }, [activeView, user, db, toast, cleanupListeners]);
 
     const listenForMatches = useCallback(() => {
         if (!user || waitingListenerUnsub.current) return;

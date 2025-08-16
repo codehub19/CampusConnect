@@ -1,7 +1,7 @@
 
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import type { GameState } from '@/lib/types';
 import { doc, getFirestore, updateDoc, runTransaction } from 'firebase/firestore';
@@ -15,27 +15,10 @@ interface TicTacToeProps {
     setGameState: React.Dispatch<React.SetStateAction<GameState | null>>;
 }
 
-export default function TicTacToe({ chatId, gameState: initialGameState, setGameState: setParentGameState }: TicTacToeProps) {
+export default function TicTacToe({ chatId, gameState, setGameState }: TicTacToeProps) {
     const { user } = useAuth();
     const db = getFirestore(firebaseApp);
     const [isMakingMove, setIsMakingMove] = useState(false);
-    
-    // Use local state to manage game state to avoid props-based re-renders causing flickers
-    const [gameState, setGameState] = useState(initialGameState);
-
-    useEffect(() => {
-        // If not currently making a move, update local state from parent
-        // This allows updates from Firestore (like opponent's move) to come in
-        if (!isMakingMove) {
-            setGameState(initialGameState);
-        }
-    }, [initialGameState, isMakingMove]);
-    
-    // Sync local state back to the parent component for other parts of the UI
-    useEffect(() => {
-        setParentGameState(gameState);
-    }, [gameState, setParentGameState]);
-
 
     const { status, players, turn, winner, board } = gameState;
     const mySymbol = user ? players[user.uid] : null;
@@ -46,9 +29,12 @@ export default function TicTacToe({ chatId, gameState: initialGameState, setGame
         
         setIsMakingMove(true);
         const chatRef = doc(db, 'chats', chatId);
-        const newBoard = [...board];
-        newBoard[index] = mySymbol;
-        setGameState(prev => ({...prev!, board: newBoard, turn: null}));
+        
+        // Optimistic update
+        const tempBoard = [...board];
+        tempBoard[index] = mySymbol;
+        const newOptimisticState = { ...gameState, board: tempBoard, turn: null };
+        setGameState(newOptimisticState);
 
         try {
             await runTransaction(db, async (transaction) => {
@@ -58,12 +44,15 @@ export default function TicTacToe({ chatId, gameState: initialGameState, setGame
                 if(currentGame.turn !== user?.uid) throw new Error("Not your turn!");
                 if(currentGame.board[index] !== null) throw new Error("This cell is already taken!");
 
-                const hasWon = checkWinner(newBoard, mySymbol);
-                const isDraw = !hasWon && newBoard.every(cell => cell !== null);
+                const finalBoard = [...currentGame.board];
+                finalBoard[index] = mySymbol;
+
+                const hasWon = checkWinner(finalBoard, mySymbol);
+                const isDraw = !hasWon && finalBoard.every(cell => cell !== null);
                 const partnerId = Object.keys(players).find(id => id !== user?.uid);
                 
                 const newGameData: Partial<GameState> = {
-                    board: newBoard,
+                    board: finalBoard,
                     turn: hasWon || isDraw ? null : partnerId,
                     status: hasWon ? 'win' : isDraw ? 'draw' : 'active',
                     winner: hasWon ? user?.uid : null,
@@ -75,7 +64,7 @@ export default function TicTacToe({ chatId, gameState: initialGameState, setGame
             console.error("Tic Tac Toe move failed: ", e);
             toast({ variant: 'destructive', title: 'Error', description: e.message || 'Could not make move.' });
             // Revert optimistic update on error
-            setGameState(initialGameState);
+            setGameState(gameState);
         } finally {
             setIsMakingMove(false);
         }
@@ -120,7 +109,7 @@ export default function TicTacToe({ chatId, gameState: initialGameState, setGame
                     <button
                         key={index}
                         onClick={() => handleMove(index)}
-                        disabled={!isMyTurn || cell !== null || status !== 'active'}
+                        disabled={!isMyTurn || cell !== null || status !== 'active' || isMakingMove}
                         className="aspect-square bg-secondary rounded-md flex items-center justify-center text-3xl font-bold disabled:cursor-not-allowed"
                     >
                         {cell === 'X' ? <span className="text-blue-400">X</span> : cell === 'O' ? <span className="text-yellow-400">O</span> : null}
