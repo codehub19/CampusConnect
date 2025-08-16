@@ -4,7 +4,7 @@ import { getFirestore } from 'firebase-admin/firestore';
 import { config } from 'dotenv';
 
 // Load environment variables from .env file
-config();
+config({ path: '.env' });
 
 // Initialize Firebase Admin SDK only if it hasn't been initialized yet
 if (!getApps().length) {

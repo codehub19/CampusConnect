@@ -19,6 +19,7 @@ import ChatHeader from './chat-header';
 import { cn } from '@/lib/utils';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { acceptFriendRequest } from '@/ai/flows/accept-friend-request';
+import { removeFriend } from '@/ai/flows/remove-friend';
 
 type ActiveView =
     | { type: 'welcome' }
@@ -45,9 +46,9 @@ const useMainLayout = () => {
     return context;
 };
 
-function LayoutUI({ onNavigateHome }: { onNavigateHome: () => void; }) {
+function LayoutUI() {
     const { profile, logout } = useAuth();
-    const { onFindNewChat, isSearching, onStopSearching, onStartChatWithFriend } = useMainLayout();
+    const { onFindNewChat, isSearching, onStopSearching, onStartChatWithFriend, onNavigateHome } = useMainLayout();
     const [friendRequests, setFriendRequests] = useState<FriendRequest[]>([]);
     const [friends, setFriends] = useState<UserProfile[]>([]);
     const db = getFirestore(firebaseApp);
@@ -97,10 +98,19 @@ function LayoutUI({ onNavigateHome }: { onNavigateHome: () => void; }) {
             await batch.commit();
 
             // Action 3: Trigger the secure server-side flow to update the other user.
-            await acceptFriendRequest({
-                requesterId: req.fromId, // The user who sent the request
-                accepterId: profile.id,  // The current user who is accepting
-            });
+            try {
+              await acceptFriendRequest({
+                  requesterId: req.fromId, // The user who sent the request
+                  accepterId: profile.id,  // The current user who is accepting
+              });
+            } catch (flowError) {
+                console.error("Error in acceptFriendRequest flow:", flowError);
+                // Optionally revert the client-side changes here if the flow fails
+                toast({ variant: 'destructive', title: 'Could not finalize friend request', description: 'Please try again.'});
+                // Note: a robust implementation might try to revert the batch write.
+                // For now, we just notify the user.
+                return;
+            }
             
             toast({ title: 'Friend Added!' });
         } catch (error) {
@@ -110,8 +120,14 @@ function LayoutUI({ onNavigateHome }: { onNavigateHome: () => void; }) {
     };
 
     const handleDeclineFriend = async (reqId: string) => {
-        await deleteDoc(doc(db, 'friend_requests', reqId));
-        toast({ title: 'Request Declined' });
+        const requestRef = doc(db, 'friend_requests', reqId);
+        try {
+            await deleteDoc(requestRef);
+            toast({ title: 'Request Declined' });
+        } catch (error) {
+            console.error("Error declining friend request:", error);
+            toast({ variant: 'destructive', title: 'Error', description: 'Could not decline request.' });
+        }
     };
 
     const handleFindClick = () => {
@@ -568,7 +584,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
             {activeView.type === 'chat' && isVideoCallOpen &&
                 <VideoCallView chatId={activeView.data.chat.id} onClose={() => setIsVideoCallOpen(false)} />
             }
-            <LayoutUI onNavigateHome={onNavigateHome} />
+            <LayoutUI />
         </MainLayoutContext.Provider>
     );
 }
