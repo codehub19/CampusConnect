@@ -6,6 +6,8 @@
  * - removeFriend - Updates the other user's friend list after a removal.
  * - RemoveFriendInput - The input type for the function.
  */
+import { config } from 'dotenv';
+config();
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';

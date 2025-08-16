@@ -6,6 +6,8 @@
  * - acceptFriendRequest - Updates the requester's friend list after an acceptance.
  * - AcceptFriendRequestInput - The input type for the function.
  */
+import { config } from 'dotenv';
+config();
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
