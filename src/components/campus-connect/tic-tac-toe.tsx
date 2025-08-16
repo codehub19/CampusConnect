@@ -1,7 +1,7 @@
 
 "use client";
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import type { GameState } from '@/lib/types';
 import { doc, getFirestore, updateDoc, runTransaction } from 'firebase/firestore';
@@ -15,17 +15,36 @@ interface TicTacToeProps {
     setGameState: React.Dispatch<React.SetStateAction<GameState | null>>;
 }
 
-export default function TicTacToe({ chatId, gameState, setGameState }: TicTacToeProps) {
+export default function TicTacToe({ chatId, gameState: initialGameState, setGameState: setParentGameState }: TicTacToeProps) {
     const { user } = useAuth();
     const db = getFirestore(firebaseApp);
+    const [isMakingMove, setIsMakingMove] = useState(false);
+    
+    // Use local state to manage game state to avoid props-based re-renders causing flickers
+    const [gameState, setGameState] = useState(initialGameState);
+
+    useEffect(() => {
+        // If not currently making a move, update local state from parent
+        // This allows updates from Firestore (like opponent's move) to come in
+        if (!isMakingMove) {
+            setGameState(initialGameState);
+        }
+    }, [initialGameState, isMakingMove]);
+    
+    // Sync local state back to the parent component for other parts of the UI
+    useEffect(() => {
+        setParentGameState(gameState);
+    }, [gameState, setParentGameState]);
+
 
     const { status, players, turn, winner, board } = gameState;
     const mySymbol = user ? players[user.uid] : null;
     const isMyTurn = turn === user?.uid;
 
     const handleMove = async (index: number) => {
-        if (!isMyTurn || board[index] !== null || status !== 'active') return;
+        if (!isMyTurn || board[index] !== null || status !== 'active' || isMakingMove) return;
         
+        setIsMakingMove(true);
         const chatRef = doc(db, 'chats', chatId);
         const newBoard = [...board];
         newBoard[index] = mySymbol;
@@ -55,6 +74,10 @@ export default function TicTacToe({ chatId, gameState, setGameState }: TicTacToe
         } catch (e: any) {
             console.error("Tic Tac Toe move failed: ", e);
             toast({ variant: 'destructive', title: 'Error', description: e.message || 'Could not make move.' });
+            // Revert optimistic update on error
+            setGameState(initialGameState);
+        } finally {
+            setIsMakingMove(false);
         }
     };
 
@@ -115,5 +138,3 @@ export default function TicTacToe({ chatId, gameState, setGameState }: TicTacToe
         </div>
     )
 }
-
-    

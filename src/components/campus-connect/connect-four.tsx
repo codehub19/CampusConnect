@@ -8,7 +8,7 @@ import { firebaseApp } from '@/lib/firebase';
 import { Button } from '@/components/ui/button';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 
 interface ConnectFourProps {
     chatId: string;
@@ -16,16 +16,34 @@ interface ConnectFourProps {
     setGameState: React.Dispatch<React.SetStateAction<GameState | null>>;
 }
 
-export default function ConnectFour({ chatId, gameState, setGameState }: ConnectFourProps) {
+export default function ConnectFour({ chatId, gameState: initialGameState, setGameState: setParentGameState }: ConnectFourProps) {
     const { user } = useAuth();
     const db = getFirestore(firebaseApp);
+    const [isMakingMove, setIsMakingMove] = useState(false);
+    
+    // Use local state to manage game state to avoid props-based re-renders causing flickers
+    const [gameState, setGameState] = useState(initialGameState);
+
+    useEffect(() => {
+        // If not currently making a move, update local state from parent
+        // This allows updates from Firestore (like opponent's move) to come in
+        if (!isMakingMove) {
+            setGameState(initialGameState);
+        }
+    }, [initialGameState, isMakingMove]);
+    
+    // Sync local state back to the parent component for other parts of the UI
+    useEffect(() => {
+        setParentGameState(gameState);
+    }, [gameState, setParentGameState]);
+
 
     const { status, players, turn, winner, board } = gameState;
     const myPlayerNumber = user ? players[user.uid] : null;
     const isMyTurn = turn === user?.uid;
 
     const handleMove = async (colIndex: number) => {
-        if (!isMyTurn || status !== 'active') return;
+        if (!isMyTurn || status !== 'active' || isMakingMove) return;
         
         let landingRow = -1;
         const currentBoard = gameState.board;
@@ -37,6 +55,7 @@ export default function ConnectFour({ chatId, gameState, setGameState }: Connect
         }
         if(landingRow === -1) return; // Column is full
         
+        setIsMakingMove(true);
         const chatRef = doc(db, 'chats', chatId);
         const tempBoard = [...currentBoard];
         tempBoard[colIndex + landingRow * 7] = myPlayerNumber;
@@ -66,6 +85,10 @@ export default function ConnectFour({ chatId, gameState, setGameState }: Connect
         } catch (e: any) {
             console.error("Connect Four move failed: ", e);
             toast({ variant: 'destructive', title: 'Error', description: e.message || 'Could not make move.' });
+            // Revert optimistic update on error
+            setGameState(initialGameState);
+        } finally {
+            setIsMakingMove(false);
         }
     };
     
@@ -98,14 +121,20 @@ export default function ConnectFour({ chatId, gameState, setGameState }: Connect
             <div className="mb-4 h-6">{getStatusText()} {status === 'active' && isMyTurn && <div className={cn("inline-block w-4 h-4 rounded-full", myPlayerNumber === 1 ? 'bg-yellow-400' : 'bg-red-500')}></div>}</div>
             <div className="grid grid-cols-7 gap-1 bg-primary p-2 rounded-lg">
                 {Array.from({ length: 7 }).map((_, c) => (
-                    <div key={c} className="flex flex-col-reverse gap-1 cursor-pointer" onClick={() => handleMove(c)}>
+                    <div key={c} className="flex flex-col-reverse gap-1">
                         {Array.from({ length: 6 }).map((_, r) => {
                              const player = board[c + r * 7];
+                             const isEmpty = player === null;
                              return (
-                                <div key={`${c}-${r}`} className="w-8 h-8 bg-background rounded-full flex items-center justify-center">
+                                <button 
+                                    key={`${c}-${r}`} 
+                                    className={cn("w-8 h-8 bg-background rounded-full flex items-center justify-center transition-transform", isEmpty && isMyTurn && status === 'active' && "cursor-pointer hover:bg-background/80 active:scale-90")}
+                                    onClick={() => handleMove(c)}
+                                    disabled={!isMyTurn || status !== 'active' || !isEmpty}
+                                >
                                     {player === 1 && <div className="w-6 h-6 rounded-full bg-yellow-400"></div>}
                                     {player === 2 && <div className="w-6 h-6 rounded-full bg-red-500"></div>}
-                                </div>
+                                </button>
                              )
                         })}
                     </div>
