@@ -9,14 +9,20 @@ config();
 // Initialize Firebase Admin SDK only if it hasn't been initialized yet
 if (!getApps().length) {
   try {
+    const serviceAccount = {
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+    };
+    
+    if (!serviceAccount.projectId || !serviceAccount.clientEmail || !serviceAccount.privateKey) {
+        throw new Error('Firebase Admin SDK credentials are not defined in environment variables.');
+    }
+
     initializeApp({
-      credential: cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-      }),
+      credential: cert(serviceAccount),
     });
-    console.log('Firebase Admin SDK initialized successfully.');
+    
   } catch (error: any) {
     console.error('Firebase Admin SDK initialization error:', error.message);
     // If initialization fails, we should not proceed.

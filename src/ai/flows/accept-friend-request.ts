@@ -10,7 +10,7 @@
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import { adminDb } from '@/lib/firebase-admin';
-import { arrayUnion } from 'firebase/firestore';
+import { arrayUnion } from 'firebase-admin/firestore';
 
 
 const AcceptFriendRequestInputSchema = z.object({

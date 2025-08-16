@@ -1,6 +1,6 @@
 // This file is machine-generated - edit at your own risk.
 import { initializeApp, getApp, getApps } from "firebase/app";
-import { initializeFirestore, CACHE_SIZE_UNLIMITED } from "firebase/firestore";
+import { initializeFirestore, CACHE_SIZE_UNLIMITED, persistentLocalCache, persistentMultipleTabManager } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 import { getDatabase } from "firebase/database";
 
@@ -17,11 +17,25 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase
-export const firebaseApp = !getApps().length ? initializeApp(firebaseConfig) : getApp();
+let firebaseApp;
+if (!getApps().length) {
+    firebaseApp = initializeApp(firebaseConfig);
+} else {
+    firebaseApp = getApp();
+}
+
+export { firebaseApp };
+
 export const storage = getStorage(firebaseApp);
 export const rtdb = getDatabase(firebaseApp);
 
 // Enable offline persistence for Firestore
-const db = initializeFirestore(firebaseApp, {
-  cacheSizeBytes: CACHE_SIZE_UNLIMITED,
-});
+let db;
+try {
+  db = initializeFirestore(firebaseApp, {
+    localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()})
+  });
+} catch (e) {
+  console.error("Error initializing Firestore:", e);
+  db = initializeFirestore(firebaseApp, {});
+}

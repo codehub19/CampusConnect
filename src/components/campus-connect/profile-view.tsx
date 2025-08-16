@@ -68,6 +68,8 @@ const FriendListItem = ({ friendId }: { friendId: string }) => {
         } catch(error) {
             console.error("Error removing friend:", error);
             toast({ variant: 'destructive', title: "Error", description: "Could not remove friend. Please try again." });
+            // Optional: Re-add friend to client-side list on flow failure
+            await updateDoc(myRef, { friends: arrayRemove(friend.id) });
         }
     }
 
@@ -308,7 +310,7 @@ export default function ProfileView({ user, isOpen, onOpenChange, onProfileUpdat
                                 <Calendar className="h-5 w-5 text-muted-foreground flex-shrink-0" />
                                 <div className="flex-grow min-w-0">
                                   <p className="font-medium truncate">{event.title}</p>
-                                  <p className="text-xs text-muted-foreground">{format(event.date.toDate(), 'PPP')}</p>
+                                  <p className="text-xs text-muted-foreground">{event.date.toDate ? format(event.date.toDate(), 'PPP') : format(new Date(event.date), 'PPP')}</p>
                                 </div>
                                 <Button variant="ghost" size="icon" className="h-8 w-8 flex-shrink-0" onClick={() => handleEditEvent(event)}><Pencil className="h-4 w-4" /></Button>
                                 <AlertDialog><AlertDialogTrigger asChild><Button variant="destructive" size="icon" className="h-8 w-8 flex-shrink-0"><Trash2 className="h-4 w-4" /></Button></AlertDialogTrigger><AlertDialogContent><AlertDialogHeader><AlertDialogTitle>Are you sure?</AlertDialogTitle><AlertDialogDescription>This will permanently delete your event.</AlertDialogDescription></AlertDialogHeader><AlertDialogFooter><AlertDialogCancel>Cancel</AlertDialogCancel><AlertDialogAction onClick={() => handleDeleteEvent(event.id)}>Delete</AlertDialogAction></AlertDialogFooter></AlertDialogContent></AlertDialog>
