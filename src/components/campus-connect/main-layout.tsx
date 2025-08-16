@@ -13,10 +13,10 @@ import VideoCallView from '@/components/campus-connect/video-call-view';
 import type { Chat, User as UserProfile, FriendRequest, WaitingUser } from '@/lib/types';
 import { collection, query, where, onSnapshot, getFirestore, getDocs, doc, runTransaction, addDoc, serverTimestamp, setDoc, updateDoc, deleteDoc, orderBy, getDoc, arrayUnion, writeBatch, limit, arrayRemove } from 'firebase/firestore';
 import { firebaseApp } from '@/lib/firebase';
-import { useToast } from '@/hooks/use-toast';
-import { Skeleton } from '@/components/ui/skeleton';
+import { useToast } from "@/hooks/use-toast";
+import { Skeleton } from "@/components/ui/skeleton";
 import ChatHeader from '@/components/campus-connect/chat-header';
-import { cn } from '@/lib/utils';
+import { cn } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { acceptFriendRequest } from '@/ai/flows/accept-friend-request';
 import { removeFriend } from '@/ai/flows/remove-friend';
@@ -551,3 +551,5 @@ export default function MainLayoutWrapper({ onNavigateHome }: { onNavigateHome: 
         <MainLayoutContent onNavigateHome={onNavigateHome} />
     )
 }
+
+    
