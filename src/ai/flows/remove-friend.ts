@@ -6,25 +6,12 @@
  * - removeFriend - Updates the other user's friend list after a removal.
  * - RemoveFriendInput - The input type for the function.
  */
-import { config } from 'dotenv';
-config();
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
-import { cert, getApps, initializeApp } from 'firebase-admin/app';
+import { adminDb } from '@/lib/firebase-admin';
 import { arrayRemove } from 'firebase/firestore';
 
-// Initialize Firebase Admin SDK if not already initialized
-if (!getApps().length) {
-  initializeApp({
-    credential: cert({
-      project_id: process.env.FIREBASE_PROJECT_ID,
-      client_email: process.env.FIREBASE_CLIENT_EMAIL,
-      private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    }),
-  });
-}
 
 const RemoveFriendInputSchema = z.object({
   removerId: z.string().describe('The ID of the user who initiated the removal.'),
@@ -43,11 +30,10 @@ const removeFriendFlow = ai.defineFlow(
     outputSchema: z.void(),
   },
   async ({ removerId, removedId }) => {
-    const db = getAdminFirestore();
     try {
       // This flow runs with admin privileges, so it can securely update
       // the document of the user who was removed.
-      const removedUserRef = db.collection('users').doc(removedId);
+      const removedUserRef = adminDb.collection('users').doc(removedId);
       
       // Remove the remover's ID from the removed user's friends list.
       await removedUserRef.update({

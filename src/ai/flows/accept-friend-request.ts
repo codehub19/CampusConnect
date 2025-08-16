@@ -6,25 +6,12 @@
  * - acceptFriendRequest - Updates the requester's friend list after an acceptance.
  * - AcceptFriendRequestInput - The input type for the function.
  */
-import { config } from 'dotenv';
-config();
 
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
-import { getFirestore as getAdminFirestore } from 'firebase-admin/firestore';
-import { cert, getApps, initializeApp } from 'firebase-admin/app';
+import { adminDb } from '@/lib/firebase-admin';
 import { arrayUnion } from 'firebase/firestore';
 
-// Initialize Firebase Admin SDK if not already initialized
-if (!getApps().length) {
-  initializeApp({
-    credential: cert({
-      project_id: process.env.FIREBASE_PROJECT_ID,
-      client_email: process.env.FIREBASE_CLIENT_EMAIL,
-      private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
-    }),
-  });
-}
 
 const AcceptFriendRequestInputSchema = z.object({
   requesterId: z.string().describe('The ID of the user who sent the friend request.'),
@@ -43,11 +30,10 @@ const acceptFriendRequestFlow = ai.defineFlow(
     outputSchema: z.void(),
   },
   async ({ requesterId, accepterId }) => {
-    const db = getAdminFirestore();
     try {
       // This flow runs with admin privileges, so it can securely update
       // the document of the user who *sent* the request.
-      const requesterUserRef = db.collection('users').doc(requesterId);
+      const requesterUserRef = adminDb.collection('users').doc(requesterId);
       
       // Add the accepter's ID to the requester's friends list.
       await requesterUserRef.update({
