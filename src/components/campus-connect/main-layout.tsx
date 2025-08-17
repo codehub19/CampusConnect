@@ -360,24 +360,33 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         const { id: toastId } = toast({ title: 'Searching for a chat...' });
 
         try {
+            // Step 1: Query for potential partners *outside* the transaction.
+            const waitingUsersRef = collection(db, 'waiting_users');
+            const q = query(waitingUsersRef, where('uid', '!=', user.uid), limit(10));
+            const waitingSnapshot = await getDocs(q);
+
+            const blockedByMe = profile.blockedUsers || [];
+            const potentialPartners = waitingSnapshot.docs
+                .map(d => d.data() as WaitingUser)
+                .filter(p => 
+                    !p.matchedChatId &&
+                    !blockedByMe.includes(p.uid) && 
+                    !(p.blockedUsers || []).includes(user.uid)
+                );
+
+            let partner: WaitingUser | null = potentialPartners.length > 0 ? potentialPartners[0] : null;
+
+            // Step 2: Run the transaction
             const resultChatId = await runTransaction(db, async (transaction) => {
-                const waitingUsersRef = collection(db, 'waiting_users');
-                const q = query(waitingUsersRef, where('uid', '!=', user.uid), limit(10));
-                
-                const waitingSnapshot = await transaction.get(q);
-
-                const blockedByMe = profile.blockedUsers || [];
-                const potentialPartners = waitingSnapshot.docs
-                    .map(d => d.data() as WaitingUser)
-                    .filter(p => 
-                        !p.matchedChatId &&
-                        !blockedByMe.includes(p.uid) && 
-                        !p.blockedUsers.includes(user.uid)
-                    );
-
-                if (potentialPartners.length > 0) {
-                    const partner = potentialPartners[0];
+                if (partner) {
                     const partnerWaitingRef = doc(db, 'waiting_users', partner.uid);
+                    const partnerDoc = await transaction.get(partnerWaitingRef);
+
+                    // Verify the partner is still available inside the transaction
+                    if (!partnerDoc.exists() || partnerDoc.data().matchedChatId) {
+                        // Partner was matched by someone else, return null to signal a retry or wait
+                        return null;
+                    }
                     
                     const partnerProfileSnap = await transaction.get(doc(db, 'users', partner.uid));
                     if (!partnerProfileSnap.exists()) throw new Error("Partner profile not found.");
@@ -398,6 +407,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
                     transaction.update(partnerWaitingRef, { matchedChatId: newChatRef.id });
                     return newChatRef.id;
                 } else {
+                    // No partners found, so add self to the waiting pool.
                     const myWaitingRef = doc(db, 'waiting_users', user.uid);
                     transaction.set(myWaitingRef, {
                         uid: user.uid,
@@ -411,8 +421,13 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
 
             if (resultChatId) {
                 await switchToChat(resultChatId);
-            } else {
+            } else if (!partner) {
+                // We added ourselves to the waiting pool, now listen.
                 listenForMatches();
+            } else {
+                // We tried to match but failed, retry.
+                dismiss(toastId);
+                findNewChat();
             }
 
         } catch (err: any) {
