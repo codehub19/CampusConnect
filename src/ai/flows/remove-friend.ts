@@ -10,7 +10,7 @@
 import { ai } from '@/ai/genkit';
 import { z } from 'genkit';
 import { adminDb } from '@/lib/firebase-admin';
-import { arrayRemove } from 'firebase-admin/firestore';
+import { arrayRemove } from 'firebase/firestore';
 
 
 const RemoveFriendInputSchema = z.object({
