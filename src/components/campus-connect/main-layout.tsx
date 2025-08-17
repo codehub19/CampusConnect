@@ -19,6 +19,7 @@ import ChatHeader from "@/components/campus-connect/chat-header";
 import { cn } from "@/lib/utils";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { acceptFriendRequest } from '@/ai/flows/accept-friend-request';
+import { removeFriend } from '@/ai/flows/remove-friend';
 
 type ActiveView =
     | { type: 'welcome' }
@@ -230,6 +231,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
     const waitingListenerUnsub = useRef<(() => void) | null>(null);
     const chatListenerUnsub = useRef<(() => void) | null>(null);
     const partnerListenerUnsub = useRef<(() => void) | null>(null);
+    const previousPartnerStatus = useRef<boolean | undefined>(undefined);
 
     const { toast, dismiss } = useToast();
     const db = getFirestore(firebaseApp);
@@ -241,6 +243,7 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         waitingListenerUnsub.current = null;
         chatListenerUnsub.current = null;
         partnerListenerUnsub.current = null;
+        previousPartnerStatus.current = undefined;
     }, []);
 
     const handleLeaveChat = useCallback(async (showToast = true) => {
@@ -305,18 +308,22 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         const partnerRef = doc(db, 'users', partner.id);
         
         updateDoc(chatRef, { [`members.${user.uid}.active`]: true });
+        
+        previousPartnerStatus.current = activeView.data.chat.members[partner.id]?.active;
 
         chatListenerUnsub.current = onSnapshot(chatRef, (docSnap) => {
             if (docSnap.exists()) {
                 const updatedChatData = { id: docSnap.id, ...docSnap.data() } as Chat;
                 const partnerIsActive = updatedChatData.members[partner.id]?.active;
 
-                if (partnerIsActive === false) {
+                if (previousPartnerStatus.current === true && partnerIsActive === false) {
                     toast({ title: "Partner Left", description: `${partner.name} has left the chat.` });
                     handleLeaveChat(false);
                 } else {
                     setActiveView(prev => (prev.type === 'chat' ? { ...prev, data: { ...prev.data, chat: updatedChatData } } : prev));
                 }
+                previousPartnerStatus.current = partnerIsActive;
+
             } else {
                 toast({ title: "Chat ended", description: "This chat no longer exists." });
                 handleLeaveChat(false);
@@ -456,13 +463,17 @@ function MainLayoutContent({ onNavigateHome }: { onNavigateHome: () => void; }) 
         if (!querySnapshot.empty) {
             await switchToChat(querySnapshot.docs[0].id);
         } else {
+            const friendDoc = await getDoc(doc(db, 'users', friendId));
+            if (!friendDoc.exists()) return;
+            const friendProfile = friendDoc.data() as UserProfile;
+            
             const newChatRef = await addDoc(collection(db, "chats"), {
                 createdAt: serverTimestamp(),
                 isFriendChat: true,
                 memberIds: sortedIds,
                 members: {
                     [user.uid]: { name: profile.name, avatar: profile.avatar, online: true, active: true },
-                    [friendId]: { name: 'Loading...', avatar: '', online: true, active: true },
+                    [friendId]: { name: friendProfile.name, avatar: friendProfile.avatar, online: true, active: true },
                 },
                 game: null
             });
@@ -523,3 +534,5 @@ export default function MainLayoutWrapper({ onNavigateHome }: { onNavigateHome: 
         <MainLayoutContent onNavigateHome={onNavigateHome} />
     )
 }
+
+    
