@@ -106,6 +106,8 @@ function LayoutUI() {
             toast({ title: 'Friend Added!' });
         } catch (error) {
             console.error("Error accepting friend request: ", error);
+            // If the flow fails, we should ideally revert the client-side changes.
+            // For now, we show a clear error.
             toast({ variant: 'destructive', title: 'Error', description: 'Could not add friend. Please try again.' });
         }
     };

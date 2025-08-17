@@ -59,22 +59,16 @@ const FriendListItem = ({ friendId }: { friendId: string }) => {
             await updateDoc(myRef, { friends: arrayRemove(friend.id) });
 
             // Step 2: Trigger secure flow to remove self from friend's list
-            try {
-              await removeFriend({
-                  removerId: currentUser.uid,
-                  removedId: friend.id,
-              });
-            } catch (flowError) {
-              console.error("Error in removeFriend flow:", flowError);
-              toast({ variant: 'destructive', title: "Could not finalize friend removal", description: "Please try again." });
-              // Optional: Re-add friend to client-side list on flow failure
-              await updateDoc(myRef, { friends: arrayRemove(friend.id) });
-              return;
-            }
+            await removeFriend({
+                removerId: currentUser.uid,
+                removedId: friend.id,
+            });
 
             toast({ title: "Friend Removed" });
         } catch(error) {
             console.error("Error removing friend:", error);
+            // Re-add friend if the flow fails to provide consistent state
+            await updateDoc(myRef, { friends: arrayRemove(friend.id) });
             toast({ variant: 'destructive', title: "Error", description: "Could not remove friend. Please try again." });
         }
     }
